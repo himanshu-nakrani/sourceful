@@ -1,33 +1,66 @@
-"""Pydantic request / response models."""
+"""Pydantic request and response models for the production API."""
+
+from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
-from typing import Literal
-from datetime import datetime
 
 
-# ---------------------------------------------------------------------------
-# Documents
-# ---------------------------------------------------------------------------
+class Citation(BaseModel):
+    chunk_id: str
+    document_id: str
+    excerpt: str
+    score: float
+    page_number: int | None = None
+
 
 class DocumentResponse(BaseModel):
     id: str
     filename: str
     provider: str
     embedding_model: str
+    mime_type: str
+    checksum: str
     chunk_count: int
     file_size: int
-    status: str  # processing | ready | error
-    error_message: str | None = None
+    page_count: int | None = None
+    status: str
+    current_job_id: str | None = None
+    current_stage: str | None = None
+    last_job_id: str | None = None
     created_at: datetime
+    processed_at: datetime | None = None
+    last_error: str | None = None
 
 
 class DocumentListResponse(BaseModel):
     documents: list[DocumentResponse]
 
 
-# ---------------------------------------------------------------------------
-# Chat
-# ---------------------------------------------------------------------------
+class JobResponse(BaseModel):
+    id: str
+    document_id: str
+    status: str
+    stage: str
+    progress: float
+    attempt_count: int
+    max_attempts: int
+    next_retry_at: datetime | None = None
+    terminal: bool = False
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    updated_at: datetime
+
+
+class IngestResponse(BaseModel):
+    document_id: str
+    job_id: str | None = None
+    status: str
+    embedding_model: str
+    deduplicated: bool = False
+
 
 class ChatRequest(BaseModel):
     provider: Literal["openai", "gemini"]
@@ -37,37 +70,11 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
-# SSE event types
-class TokenEvent(BaseModel):
-    type: Literal["token"] = "token"
-    content: str
-
-
-class SourcesEvent(BaseModel):
-    type: Literal["sources"] = "sources"
-    chunks: list[str]
-
-
-class DoneEvent(BaseModel):
-    type: Literal["done"] = "done"
-    conversation_id: str
-    message_id: str
-
-
-class ErrorEvent(BaseModel):
-    type: Literal["error"] = "error"
-    message: str
-
-
-# ---------------------------------------------------------------------------
-# Conversations
-# ---------------------------------------------------------------------------
-
 class MessageResponse(BaseModel):
     id: str
     role: str
     content: str
-    sources: list[str] | None = None
+    sources: list[Citation] | None = None
     created_at: datetime
 
 
@@ -91,3 +98,24 @@ class ConversationListItem(BaseModel):
 
 class ConversationListResponse(BaseModel):
     conversations: list[ConversationListItem]
+
+
+class UpdateConversationRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+
+class ChunkPreviewResponse(BaseModel):
+    chunk_id: str
+    document_id: str
+    content: str
+    page_number: int | None = None
+    chunk_index: int
+
+
+class DocumentStatusResponse(BaseModel):
+    status: str
+    chunk_count: int
+    current_job_id: str | None = None
+    current_stage: str | None = None
+    last_job_id: str | None = None
+    last_error: str | None = None

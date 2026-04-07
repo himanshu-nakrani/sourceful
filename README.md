@@ -1,75 +1,127 @@
-# Document QA — Enterprise RAG Platform
+# Document RAG
 
-A production-ready **Next.js** frontend and **FastAPI** backend for **retrieval-augmented generation (RAG)**. 
-Upload **PDF**, **Markdown**, **Word** (.docx), or **plain text** files to index them into a vector database, then ask questions with **OpenAI** or **Google Gemini** using real-time streaming and source citations.
+A self-hostable document question-answering app with a Next.js frontend, FastAPI API, durable background ingestion jobs, PostgreSQL + pgvector storage, and BYOK support for OpenAI or Google Gemini.
 
-The UI features a stunning, high-end "Deep Zinc" aesthetic inspired by modern SaaS platforms like Vercel and Linear.
-
-## Features
-
-- **Multi-Model Support**: Native integrations for both **OpenAI** and **Google Gemini** (chat and embeddings).
-- **Hybrid Database Architecture**: 
-  - **Local Development**: Utilizes `SQLite` for relational data and local `NumPy` files (`.npz`) for fast vector storage.
-  - **Production Deployment**: Dynamically switches to **PostgreSQL** with **pgvector** (e.g., Supabase) when `DATABASE_URL` is detected.
-- **Advanced RAG Pipeline**: Asynchronous ingestion, intelligent chunking (with overlap), and highly scalable vector cosine similarity search.
-- **Real-Time Streaming**: Uses Server-Sent Events (SSE) to stream tokens instantly to the UI, alongside an array of source document citations.
-- **Conversation State**: Fully persists chat histories and contexts so users can seamlessly swap between active documents and chats.
-- **Premium UI/UX**: Built with Tailwind CSS v4, featuring glassmorphism, responsive micro-animations, Markdown rendering natively (with syntax highlighting), and a responsive sidebar structure.
+## What Changed
+- PostgreSQL + pgvector is now the primary production path.
+- Document ingestion is durable and worker-backed instead of `asyncio.create_task` fire-and-forget processing.
+- The API separates app access control from provider credentials.
+- Documents, jobs, chunks, conversations, and messages are scoped to a stable client session.
+- Answers stream with structured citations that include chunk ids, similarity scores, and page references.
 
 ## Architecture
+- `web`: Next.js 16 app for upload, chat, chunk preview, and conversation management.
+- `api`: FastAPI service for document CRUD, chat SSE, jobs, metrics, and readiness.
+- `worker`: background process that claims queued jobs, extracts text, builds embeddings, and stores chunks.
+- `postgres`: primary production datastore with pgvector.
+- SQLite remains available as a local-dev fallback when `DATABASE_URL` is not set.
 
-- **Frontend**: Next.js 15+ deployed on **Vercel**. Communicates with the backend using the `NEXT_PUBLIC_API_URL` environment variable.
-- **Backend**: FastAPI (Python 3.14+) deployed on **Heroku**.
-- **Database**: 
-  - Local: `data/ragapp.db` and `data/vectors/`
-  - Production: **Supabase** (PostgreSQL + pgvector enabled)
-  
-## Setup & Installation
+## Auth Model
+The app uses two request headers:
 
-### Local Development
+- `X-Provider-Api-Key: <OpenAI or Gemini key>`
+  Required for ingest, reprocess, and chat because the app is BYOK.
+- `X-Client-Session: <stable client id>`
+  Used to isolate data between browser sessions in self-hosted deployments.
 
-**1. Start the FastAPI Backend**
+The frontend now generates and stores the client session id automatically.
+
+## Main API Endpoints
+- `POST /api/ingest`
+  Queues a document for ingestion and returns `202` with `document_id`, `job_id`, `status`, and `embedding_model`.
+- `GET /api/jobs/{job_id}`
+  Returns job status, stage, progress, attempts, and timestamps.
+- `GET /api/documents`
+  Lists scoped documents.
+- `GET /api/documents/{document_id}/chunks`
+  Returns a chunk preview for the selected document.
+- `POST /api/documents/{document_id}/reprocess`
+  Queues re-embedding or retry processing.
+- `POST /api/chat`
+  Streams SSE events: `sources`, `token`, `message_saved`, `done`, and `error`.
+- `PATCH /api/conversations/{conversation_id}`
+  Renames a conversation.
+- `GET /api/conversations/{conversation_id}/export`
+  Exports a conversation as Markdown or JSON.
+
+## Local Development
+### 1. Backend
 ```bash
-# Create and activate a virtual environment
 python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies (including psycopg for postgres support)
-pip install -r backend/requirements.txt
-
-# Run the server on port 8000
-uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+.venv/bin/pip install -r backend/requirements.txt
+.venv/bin/uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
-*Note: If no `DATABASE_URL` is provided, the backend will automatically fallback to SQLite and local `.npz` storage.*
 
-**2. Start the Next.js Frontend**
+### 2. Worker
 ```bash
-# Install node dependencies
-npm install
+.venv/bin/python -m backend.worker
+```
 
-# Start the development server
+### 3. Frontend
+```bash
+npm install
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) to view the application. The frontend automatically rewrites `/api/*` to `http://127.0.0.1:8000` locally.
 
-### Production Environment Variables
+Open [http://localhost:3000](http://localhost:3000).
 
-| Variable | Service | Purpose |
-|----------|---------|---------|
-| `DATABASE_URL` | FastAPI | Connection string to PostgreSQL containing `pgvector` (e.g., Supabase IPv4 Pooler URL). |
-| `CORS_ORIGINS` | FastAPI | Must be set to your Vercel frontend URL (e.g., `https://myapp.vercel.app`) |
-| `NEXT_PUBLIC_API_URL` | Next.js | Must be set to your Heroku backend URL (e.g., `https://myapp.herokuapp.com`) |
+## Docker Compose
+```bash
+docker compose up --build
+```
 
-*API Keys (OpenAI & Gemini) and Model strings are gracefully configured by the user via the robust Settings panel in the UI, keeping your server secure from hardcoded secrets!*
+Services started:
+- `postgres` on port `5432`
+- `api` on port `8000`
+- `worker` for durable ingestion
+- `web` on port `3000`
 
-## API Endpoints (v2)
+## Environment Variables
+See [`.env.example`](./.env.example) for the full list. The most important ones are:
+- `DATABASE_URL`
+- `RATE_LIMIT_RPM`
+- `REQUEST_TIMEOUT_SECONDS`
+- `MAX_DOCUMENT_BYTES`
+- `CHUNK_SIZE`
+- `CHUNK_OVERLAP`
+- `RAG_TOP_K`
+- `WORKER_POLL_INTERVAL_SECONDS`
+- `WORKER_HEARTBEAT_TTL_SECONDS`
+- `BACKEND_URL`
+- `NEXT_PUBLIC_API_URL`
+- `CORS_ORIGINS`
 
-- `GET /api/documents` — Lists all indexed documents.
-- `DELETE /api/documents/{doc_id}` — Deletes documents and their associated vector records.
-- `GET /api/documents/{doc_id}/conversations` — Lists saved conversations for a document.
-- `GET /api/conversations/{conv_id}` — Gets full chat history for a session.
-- `POST /api/ingest` — `multipart/form-data`: parses PDF/MD/TXT/CSV, chunks it, embeds with selected provider, and stores it vectorially. 
-- `POST /api/chat/stream` — `application/json`: Streams JSON-encoded Server-Sent Events (`token`, `sources`, `done`, `error`) via FastAPI streaming responses.
+## Quality Gates
+```bash
+npm run lint
+npm run build
+pytest -q backend/tests
+```
 
-## License
-MIT
+## Production Operations
+### Health and readiness
+- `GET /health` checks basic process liveness.
+- `GET /ready` verifies schema readiness and recent worker heartbeat.
+- `GET /metrics` exposes Prometheus-style counters and timing metrics.
+
+### Backup and restore
+Example PostgreSQL backup:
+```bash
+docker compose exec postgres pg_dump -U document_rag document_rag > backup.sql
+```
+
+Example restore:
+```bash
+cat backup.sql | docker compose exec -T postgres psql -U document_rag -d document_rag
+```
+
+### Reverse proxy notes
+Run the Next.js `web` container behind your reverse proxy and proxy `/api`, `/health`, `/ready`, and `/metrics` to the API service if you expose them separately.
+
+## CI
+A GitHub Actions workflow is included to run:
+- frontend lint
+- frontend production build
+- backend tests
+- Docker Compose validation
+- Docker image smoke builds

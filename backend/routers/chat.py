@@ -1,223 +1,171 @@
-"""Chat endpoint with SSE streaming, conversation history, and source citations."""
+"""Chat endpoint with SSE streaming and structured citations."""
+
+from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import uuid
-from typing import Annotated
 
-from fastapi import APIRouter, Header, Request
-from fastapi.responses import JSONResponse
-from sse_starlette.sse import EventSourceResponse
+from fastapi import APIRouter, Depends, Request
 from openai import APIError
+from sse_starlette.sse import EventSourceResponse
 
 from backend.database import execute, fetch_all, fetch_one
-from backend.models import ChatRequest
-from backend.routers.deps import extract_api_key
-from backend.services.embeddings import (
-    embed_query_gemini_sync,
-    embed_query_openai,
-)
-from backend.services.llm import (
-    build_rag_prompt,
-    create_openai_text_stream,
-    gemini_text_stream,
-)
-from backend.services import vectorstore
+from backend.errors import api_error_response
+from backend.metrics import metrics
+from backend.models import ChatRequest, Citation
+from backend.routers.deps import RequestContext, get_request_context, require_provider_api_key
+from backend.services.embeddings import embed_query
+from backend.services.llm import build_rag_prompt, create_openai_text, gemini_text
+from backend.services.vectorstore import query_similar
 from backend.settings import settings
 
-logger = logging.getLogger("ragapp")
+logger = logging.getLogger("ragapp.chat")
+TIMESTAMP_SQL = "NOW()" if settings.using_postgres else "CURRENT_TIMESTAMP"
 router = APIRouter()
 
 
 @router.post("/chat", response_model=None)
 async def chat(
     body: ChatRequest,
-    authorization: Annotated[str | None, Header()] = None,
+    request: Request,
+    context: RequestContext = Depends(get_request_context),
+    provider_api_key: str = Depends(require_provider_api_key),
 ):
-    api_key = extract_api_key(authorization)
-    if not api_key:
-        return JSONResponse(
-            status_code=401,
-            content={"error": "Missing or invalid Authorization header (use Bearer token)."},
-        )
-
-    p = body.provider
-    model_trim = body.model.strip()
-    q = body.question.strip()
-    doc_id = body.document_id.strip()
-
-    # ---- Validate document exists and is ready ----
-    doc = await fetch_one("SELECT * FROM documents WHERE id = ?", (doc_id,))
-    if not doc:
-        return JSONResponse(
+    document = await fetch_one(
+        "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
+        (body.document_id.strip(), context.owner_id),
+    )
+    if not document:
+        return api_error_response(
+            request=request,
             status_code=404,
-            content={"error": "Unknown document_id. Ingest the document first."},
+            error="Unknown document_id.",
+            code="DOCUMENT_NOT_FOUND",
+            details={"document_id": body.document_id.strip()},
         )
-    if doc["status"] != "ready":
-        return JSONResponse(
+    if document["status"] != "ready":
+        return api_error_response(
+            request=request,
             status_code=400,
-            content={"error": f"Document is not ready. Current status: {doc['status']}"},
+            error=f"Document is not ready. Current status: {document['status']}",
+            code="DOCUMENT_NOT_READY",
+            details={"status": document["status"]},
         )
-    if doc["provider"] != p:
-        return JSONResponse(
+    if document["provider"] != body.provider:
+        return api_error_response(
+            request=request,
             status_code=400,
-            content={"error": "Provider does not match the document you indexed. Switch provider or re-index."},
+            error="Provider does not match the indexed document.",
+            code="PROVIDER_MISMATCH",
         )
 
-    emb_model = doc.get("embedding_model", "")
-    if not emb_model:
-        return JSONResponse(status_code=500, content={"error": "Corrupt document record."})
-
-    # ---- Embed query ----
+    question = body.question.strip()
     try:
-        if p == "openai":
-            q_emb = await embed_query_openai(api_key, emb_model, q)
-        else:
-            q_emb = await asyncio.to_thread(embed_query_gemini_sync, api_key, emb_model, q)
-    except Exception as e:
-        return JSONResponse(status_code=502, content={"error": f"Query embedding failed: {e!s}"})
-
-    # ---- Retrieve chunks ----
-    try:
-        contexts = await vectorstore.query_similar(doc_id, q_emb, top_k=settings.rag_top_k)
-    except Exception as e:
-        return JSONResponse(status_code=404, content={"error": f"Could not load vector index: {e!s}"})
-
-    if not contexts:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "No matching context found. Try re-indexing the document."},
+        question_embedding = await embed_query(body.provider, provider_api_key, document["embedding_model"], question)
+    except Exception as exc:
+        metrics.inc("chat_stream_failures_total", reason="embedding_failed")
+        return api_error_response(
+            request=request,
+            status_code=502,
+            error=f"Query embedding failed: {exc}",
+            code="QUERY_EMBEDDING_FAILED",
         )
 
-    # ---- Resolve or create conversation ----
+    citations = await query_similar(body.document_id, context.owner_id, question_embedding, settings.rag_top_k)
+    if not citations:
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error="No matching context found. Try re-indexing the document.",
+            code="NO_MATCHING_CONTEXT",
+        )
+    metrics.observe("chat_citations_count", float(len(citations)), provider=body.provider)
+
     conversation_id = body.conversation_id
     if conversation_id:
-        conv = await fetch_one(
-            "SELECT id, document_id FROM conversations WHERE id = ?",
-            (conversation_id,),
+        conversation = await fetch_one(
+            "SELECT id, document_id FROM conversations WHERE id = ? AND owner_id = ?",
+            (conversation_id, context.owner_id),
         )
-        if not conv:
-            return JSONResponse(status_code=404, content={"error": "Conversation not found."})
-        if conv["document_id"] != doc_id:
-            return JSONResponse(
+        if not conversation:
+            return api_error_response(
+                request=request,
+                status_code=404,
+                error="Conversation not found.",
+                code="CONVERSATION_NOT_FOUND",
+                details={"conversation_id": conversation_id},
+            )
+        if conversation["document_id"] != body.document_id:
+            return api_error_response(
+                request=request,
                 status_code=400,
-                content={"error": "Conversation does not belong to the specified document."},
+                error="Conversation does not belong to that document.",
+                code="CONVERSATION_DOCUMENT_MISMATCH",
             )
     else:
         conversation_id = str(uuid.uuid4())
-        title = q[:80] + ("…" if len(q) > 80 else "")
+        title = question[:80] + ("..." if len(question) > 80 else "")
         await execute(
-            "INSERT INTO conversations (id, document_id, title) VALUES (?, ?, ?)",
-            (conversation_id, doc_id, title),
+            "INSERT INTO conversations (id, owner_id, document_id, title) VALUES (?, ?, ?, ?)",
+            (conversation_id, context.owner_id, body.document_id, title),
         )
 
-    # ---- Load conversation history for multi-turn ----
     history_rows = await fetch_all(
-        "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
-        (conversation_id,),
+        "SELECT role, content FROM messages WHERE conversation_id = ? AND owner_id = ? ORDER BY created_at ASC",
+        (conversation_id, context.owner_id),
     )
-    history = [{"role": r["role"], "content": r["content"]} for r in history_rows]
-    # Truncate to configured max
-    history = history[-(settings.max_conversation_history):]
+    history = [{"role": row["role"], "content": row["content"]} for row in history_rows][-settings.max_conversation_history:]
 
-    # ---- Save user message ----
-    user_msg_id = str(uuid.uuid4())
+    user_message_id = str(uuid.uuid4())
     await execute(
-        "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', ?)",
-        (user_msg_id, conversation_id, q),
+        "INSERT INTO messages (id, owner_id, conversation_id, role, content) VALUES (?, ?, ?, 'user', ?)",
+        (user_message_id, context.owner_id, conversation_id, question),
     )
 
-    # ---- Build prompt ----
-    prompt = build_rag_prompt(contexts, q, history=history)
+    prompt = build_rag_prompt(citations, question, history=history)
+    assistant_message_id = str(uuid.uuid4())
+    source_payload = [
+        Citation(
+            chunk_id=citation.chunk_id,
+            document_id=citation.document_id,
+            excerpt=citation.excerpt,
+            score=citation.score,
+            page_number=citation.page_number,
+        ).model_dump(mode="json")
+        for citation in citations
+    ]
 
-    # ---- Stream response via SSE ----
-    assistant_msg_id = str(uuid.uuid4())
+    try:
+        if body.provider == "openai":
+            answer = await create_openai_text(provider_api_key, body.model.strip(), prompt)
+        else:
+            loop = asyncio.get_running_loop()
+            answer = await loop.run_in_executor(None, gemini_text, provider_api_key, body.model.strip(), prompt)
+    except APIError as exc:
+        metrics.inc("chat_stream_failures_total", reason="provider_api_error")
+        return api_error_response(request=request, status_code=502, error=str(exc), code="PROVIDER_API_ERROR")
+    except Exception as exc:
+        logger.exception("chat_generation_failed")
+        metrics.inc("chat_stream_failures_total", reason="stream_failed")
+        return api_error_response(request=request, status_code=500, error=str(exc), code="GENERATION_FAILED")
 
-    async def event_generator():
-        # First: send sources
-        yield {
-            "event": "sources",
-            "data": json.dumps({"type": "sources", "chunks": contexts}),
-        }
+    await execute(
+        """
+        INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json)
+        VALUES (?, ?, ?, 'assistant', ?, ?)
+        """,
+        (assistant_message_id, context.owner_id, conversation_id, answer, json.dumps(source_payload)),
+    )
+    await execute(
+        f"UPDATE conversations SET updated_at = {TIMESTAMP_SQL} WHERE id = ? AND owner_id = ?",
+        (conversation_id, context.owner_id),
+    )
 
-        # Collect full answer for DB storage
-        full_answer = []
-
-        try:
-            if p == "openai":
-                try:
-                    stream = await create_openai_text_stream(api_key, model_trim, prompt)
-                except APIError as e:
-                    yield {
-                        "event": "error",
-                        "data": json.dumps({"type": "error", "message": str(e)}),
-                    }
-                    return
-
-                async for token in stream:
-                    full_answer.append(token)
-                    yield {
-                        "event": "token",
-                        "data": json.dumps({"type": "token", "content": token}),
-                    }
-            else:
-                # Gemini sync generator — stream incrementally via a queue
-                queue: asyncio.Queue[str | None] = asyncio.Queue()
-
-                def _gemini_producer():
-                    try:
-                        for tok in gemini_text_stream(api_key, model_trim, prompt):
-                            queue.put_nowait(tok)
-                    except Exception as e:
-                        queue.put_nowait(e)
-                    finally:
-                        queue.put_nowait(None)
-
-                asyncio.get_running_loop().run_in_executor(None, _gemini_producer)
-
-                while True:
-                    token = await queue.get()
-                    if token is None:
-                        break
-                    if isinstance(token, Exception):
-                        raise token
-                    
-                    full_answer.append(token)
-                    yield {
-                        "event": "token",
-                        "data": json.dumps({"type": "token", "content": token}),
-                    }
-        except Exception as e:
-            logger.exception("Stream error")
-            yield {
-                "event": "error",
-                "data": json.dumps({"type": "error", "message": str(e)}),
-            }
-            return
-
-        # Save assistant message
-        answer_text = "".join(full_answer)
-        try:
-            await execute(
-                "INSERT INTO messages (id, conversation_id, role, content, sources_json) VALUES (?, ?, 'assistant', ?, ?)",
-                (assistant_msg_id, conversation_id, answer_text, json.dumps(contexts)),
-            )
-            await execute(
-                "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?",
-                (conversation_id,),
-            )
-        except Exception:
-            logger.exception("Failed to save assistant message")
-
-        # Done event
-        yield {
-            "event": "done",
-            "data": json.dumps({
-                "type": "done",
-                "conversation_id": conversation_id,
-                "message_id": assistant_msg_id,
-            }),
-        }
-
-    return EventSourceResponse(event_generator())
+    return {
+        "conversation_id": conversation_id,
+        "message_id": assistant_message_id,
+        "sources": source_payload,
+        "content": answer,
+    }

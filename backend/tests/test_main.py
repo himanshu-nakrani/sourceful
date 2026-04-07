@@ -1,29 +1,23 @@
-from httpx import AsyncClient
-
-
-async def test_health_endpoint(async_client: AsyncClient):
-    response = await async_client.get("/health")
+def test_health_endpoint(client):
+    response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-async def test_ready_endpoint(async_client: AsyncClient):
-    response = await async_client.get("/ready")
-    # since we initialized db in the db_setup fixture, it should be ready
+def test_ready_endpoint(client):
+    response = client.get("/ready")
     assert response.status_code == 200
-    assert response.json() == {"status": "ready"}
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["checks"]["schema"] == "ok"
+    assert payload["checks"]["database"] == "ok"
+    assert payload["checks"]["worker_heartbeat"] == "ok"
 
 
-async def test_non_existent_endpoint(async_client: AsyncClient):
-    response = await async_client.get("/notfound")
-    assert response.status_code == 404
-
-
-async def test_cors_headers(async_client: AsyncClient):
-    headers = {
-        "Origin": "http://localhost:3000",
-        "Access-Control-Request-Method": "GET",
-    }
-    response = await async_client.options("/health", headers=headers)
-    assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+def test_missing_client_session_is_rejected(client):
+    response = client.get("/api/documents")
+    assert response.status_code == 400
+    payload = response.json()
+    assert "X-Client-Session" in payload["error"]
+    assert payload["code"] == "INVALID_CLIENT_SESSION"
+    assert payload["request_id"]

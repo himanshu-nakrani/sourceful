@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Copy, Check, User, Bot } from "lucide-react";
+import { Bot, Check, Copy, User } from "lucide-react";
 import type { Message } from "../lib/api";
 
 interface MessageBubbleProps {
@@ -18,15 +18,10 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div
       className="flex gap-3 animate-fade-in"
-      style={{
-        justifyContent: isUser ? "flex-end" : "flex-start",
-        maxWidth: "100%",
-      }}
+      style={{ justifyContent: isUser ? "flex-end" : "flex-start", maxWidth: "100%" }}
     >
-      {!isUser && (
-        <div
-          className="flex-shrink-0 flex items-start pt-1"
-        >
+      {!isUser ? (
+        <div className="flex-shrink-0 flex items-start pt-1">
           <div
             className="flex items-center justify-center rounded-lg"
             style={{
@@ -39,7 +34,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             <Bot size={16} style={{ color: "var(--accent)" }} />
           </div>
         </div>
-      )}
+      ) : null}
 
       <div
         className="rounded-2xl px-4 py-3"
@@ -48,44 +43,42 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           background: isUser ? "var(--accent)" : "var(--bg-surface)",
           border: isUser ? "none" : "1px solid var(--border)",
           color: isUser ? "var(--accent-fg)" : "var(--text-primary)",
-          borderTopRightRadius: isUser ? "4px" : undefined,
-          borderTopLeftRadius: !isUser ? "4px" : undefined,
+          borderTopRightRadius: isUser ? 4 : undefined,
+          borderTopLeftRadius: !isUser ? 4 : undefined,
         }}
       >
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-            {message.content}
-          </p>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
         ) : (
           <div className="markdown-body">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ className, children, ...props }) {
-                  const match = /language-(\w+)/.exec(className || "");
-                  const codeStr = String(children).replace(/\n$/, "");
-
-                  if (match) {
+            {!message.content ? (
+              <TypingIndicator />
+            ) : (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    const code = String(children).replace(/\n$/, "");
+                    if (match) {
+                      return <CodeBlock language={match[1]} code={code} />;
+                    }
                     return (
-                      <CodeBlock language={match[1]} code={codeStr} />
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
                     );
-                  }
-
-                  return (
-                    <code className={className} {...props}>
-                      {children}
-                    </code>
-                  );
-                },
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
+                  },
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            )}
           </div>
         )}
       </div>
 
-      {isUser && (
+      {isUser ? (
         <div className="flex-shrink-0 flex items-start pt-1">
           <div
             className="flex items-center justify-center rounded-lg"
@@ -99,22 +92,22 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             <User size={16} style={{ color: "var(--text-secondary)" }} />
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Code block with copy button
-// ---------------------------------------------------------------------------
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
   };
 
   return (
@@ -131,6 +124,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
       >
         <span>{language}</span>
         <button
+          type="button"
           onClick={handleCopy}
           className="flex items-center gap-1 transition-colors"
           style={{ color: copied ? "var(--success)" : "var(--text-tertiary)" }}
@@ -153,6 +147,33 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
       >
         {code}
       </SyntaxHighlighter>
+    </div>
+  );
+}
+function TypingIndicator() {
+  return (
+    <div className="flex gap-1.5 items-center py-1">
+      <div 
+        className="w-1.5 h-1.5 rounded-full" 
+        style={{ 
+          background: "var(--text-tertiary)",
+          animation: 'pulse-dot 1s infinite' 
+        }} 
+      />
+      <div 
+        className="w-1.5 h-1.5 rounded-full" 
+        style={{ 
+          background: "var(--text-tertiary)",
+          animation: 'pulse-dot 1s infinite 0.2s' 
+        }} 
+      />
+      <div 
+        className="w-1.5 h-1.5 rounded-full" 
+        style={{ 
+          background: "var(--text-tertiary)",
+          animation: 'pulse-dot 1s infinite 0.4s' 
+        }} 
+      />
     </div>
   );
 }

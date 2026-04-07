@@ -1,23 +1,81 @@
-/**
- * Typed API client for the Document RAG backend.
- */
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export type Provider = "openai" | "gemini";
+
+export interface ClientAuthContext {
+  clientSessionId: string;
+  providerApiKey?: string;
+}
+
+export interface ApiError {
+  error: string;
+  code?: string;
+  request_id?: string;
+  details?: unknown;
+}
+
+export type JobStatus = "queued" | "processing" | "ready" | "error";
+
+export interface JobLifecycle {
+  status: JobStatus;
+  stage: string;
+  progress: number;
+  attempt_count: number;
+  max_attempts: number;
+  next_retry_at?: string | null;
+  terminal?: boolean;
+}
+
+export type StreamEvent = never;
+
+export interface Citation {
+  chunk_id: string;
+  document_id: string;
+  excerpt: string;
+  score: number;
+  page_number?: number | null;
+}
+
+export interface ChunkPreview {
+  chunk_id: string;
+  document_id: string;
+  content: string;
+  page_number?: number | null;
+  chunk_index: number;
+}
 
 export interface DocumentInfo {
   id: string;
   filename: string;
-  provider: string;
+  provider: Provider;
   embedding_model: string;
+  mime_type: string;
+  checksum: string;
   chunk_count: number;
   file_size: number;
-  status: "processing" | "ready" | "error";
+  page_count?: number | null;
+  status: JobStatus;
+  current_job_id?: string | null;
+  current_stage?: string | null;
+  last_job_id?: string | null;
+  created_at: string;
+  processed_at?: string | null;
+  last_error?: string | null;
+}
+
+export interface JobInfo {
+  id: string;
+  document_id: string;
+  status: JobStatus;
+  stage: string;
+  progress: number;
+  attempt_count: number;
+  max_attempts: number;
+  next_retry_at?: string | null;
+  terminal?: boolean;
   error_message?: string | null;
   created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  updated_at: string;
 }
 
 export interface ConversationListItem {
@@ -33,7 +91,7 @@ export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  sources?: string[] | null;
+  sources?: Citation[] | null;
   created_at: string;
 }
 
@@ -46,9 +104,22 @@ export interface Conversation {
   messages: Message[];
 }
 
-// ---------------------------------------------------------------------------
-// API base
-// ---------------------------------------------------------------------------
+export interface IngestResponse {
+  document_id: string;
+  job_id?: string | null;
+  status: string;
+  embedding_model: string;
+  deduplicated?: boolean;
+}
+
+export interface DocumentStatus {
+  status: JobStatus;
+  chunk_count: number;
+  current_job_id?: string | null;
+  current_stage?: string | null;
+  last_job_id?: string | null;
+  last_error?: string | null;
+}
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
@@ -56,51 +127,68 @@ function url(path: string): string {
   return apiBase ? `${apiBase}${path}` : path;
 }
 
-function authHeaders(apiKey: string): Record<string, string> {
-  return { Authorization: `Bearer ${apiKey}` };
+function baseHeaders(
+  auth: ClientAuthContext,
+  options?: { includeJson?: boolean; includeProviderKey?: boolean }
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-Client-Session": auth.clientSessionId,
+  };
+  if (options?.includeJson) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (options?.includeProviderKey && auth.providerApiKey?.trim()) {
+    headers["X-Provider-Api-Key"] = auth.providerApiKey.trim();
+  }
+  return headers;
 }
 
-// ---------------------------------------------------------------------------
-// Documents
-// ---------------------------------------------------------------------------
-
-export async function listDocuments(apiKey: string): Promise<DocumentInfo[]> {
-  const res = await fetch(url("/api/documents"), {
-    headers: authHeaders(apiKey),
-  });
+export async function listDocuments(auth: ClientAuthContext): Promise<DocumentInfo[]> {
+  const res = await fetch(url("/api/documents"), { headers: baseHeaders(auth) });
   if (!res.ok) throw new Error(await errorMessage(res));
-  const data = await res.json();
+  const data = (await res.json()) as { documents?: DocumentInfo[] };
   return data.documents ?? [];
 }
 
 export async function getDocumentStatus(
-  apiKey: string,
+  auth: ClientAuthContext,
   documentId: string
-): Promise<{ status: string; chunk_count: number; error_message?: string }> {
+): Promise<DocumentStatus> {
   const res = await fetch(url(`/api/documents/${documentId}/status`), {
-    headers: authHeaders(apiKey),
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function getDocumentChunks(
+  auth: ClientAuthContext,
+  documentId: string
+): Promise<ChunkPreview[]> {
+  const res = await fetch(url(`/api/documents/${documentId}/chunks`), {
+    headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }
 
 export async function deleteDocument(
-  apiKey: string,
+  auth: ClientAuthContext,
   documentId: string
 ): Promise<void> {
   const res = await fetch(url(`/api/documents/${documentId}`), {
     method: "DELETE",
-    headers: authHeaders(apiKey),
+    headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
 }
 
 export async function ingestDocument(
-  apiKey: string,
+  auth: ClientAuthContext,
   provider: Provider,
   file: File,
   embeddingModel: string
-): Promise<{ document_id: string; status: string; embedding_model: string }> {
+): Promise<IngestResponse> {
   const formData = new FormData();
   formData.append("provider", provider);
   formData.append("embedding_model", embeddingModel);
@@ -108,153 +196,151 @@ export async function ingestDocument(
 
   const res = await fetch(url("/api/ingest"), {
     method: "POST",
-    headers: authHeaders(apiKey),
+    headers: baseHeaders(auth, { includeProviderKey: true }),
     body: formData,
   });
-
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Conversations
-// ---------------------------------------------------------------------------
-
-export async function listConversations(
-  apiKey: string,
-  documentId?: string
-): Promise<ConversationListItem[]> {
-  const q = documentId ? `?document_id=${documentId}` : "";
-  const res = await fetch(url(`/api/conversations${q}`), {
-    headers: authHeaders(apiKey),
+export async function reprocessDocument(
+  auth: ClientAuthContext,
+  documentId: string,
+  embeddingModel?: string
+): Promise<IngestResponse> {
+  const endpoint = embeddingModel?.trim()
+    ? `/api/documents/${documentId}/reprocess?embedding_model=${encodeURIComponent(
+        embeddingModel.trim()
+      )}`
+    : `/api/documents/${documentId}/reprocess`;
+  const res = await fetch(url(endpoint), {
+    method: "POST",
+    headers: baseHeaders(auth, { includeProviderKey: true }),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
-  const data = await res.json();
+  return res.json();
+}
+
+export async function getJob(
+  auth: ClientAuthContext,
+  jobId: string
+): Promise<JobInfo> {
+  const res = await fetch(url(`/api/jobs/${jobId}`), {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function listConversations(
+  auth: ClientAuthContext,
+  documentId?: string
+): Promise<ConversationListItem[]> {
+  const query = documentId ? `?document_id=${encodeURIComponent(documentId)}` : "";
+  const res = await fetch(url(`/api/conversations${query}`), {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const data = (await res.json()) as { conversations?: ConversationListItem[] };
   return data.conversations ?? [];
 }
 
 export async function getConversation(
-  apiKey: string,
+  auth: ClientAuthContext,
   conversationId: string
 ): Promise<Conversation> {
   const res = await fetch(url(`/api/conversations/${conversationId}`), {
-    headers: authHeaders(apiKey),
+    headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }
 
-export async function deleteConversation(
-  apiKey: string,
-  conversationId: string
+export async function renameConversation(
+  auth: ClientAuthContext,
+  conversationId: string,
+  title: string
 ): Promise<void> {
   const res = await fetch(url(`/api/conversations/${conversationId}`), {
-    method: "DELETE",
-    headers: authHeaders(apiKey),
+    method: "PATCH",
+    headers: baseHeaders(auth, { includeJson: true }),
+    body: JSON.stringify({ title }),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
 }
 
-// ---------------------------------------------------------------------------
-// Chat (SSE streaming)
-// ---------------------------------------------------------------------------
-
-export interface ChatSSECallbacks {
-  onSources?: (chunks: string[]) => void;
-  onToken?: (token: string) => void;
-  onDone?: (conversationId: string, messageId: string) => void;
-  onError?: (message: string) => void;
+export async function exportConversation(
+  auth: ClientAuthContext,
+  conversationId: string,
+  format: "markdown" | "json"
+): Promise<Blob> {
+  const res = await fetch(
+    url(`/api/conversations/${conversationId}/export?format=${format}`),
+    { headers: baseHeaders(auth) }
+  );
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.blob();
 }
 
-export async function streamChat(
-  apiKey: string,
+export async function deleteConversation(
+  auth: ClientAuthContext,
+  conversationId: string
+): Promise<void> {
+  const res = await fetch(url(`/api/conversations/${conversationId}`), {
+    method: "DELETE",
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+}
+
+export interface ChatResponse {
+  conversation_id: string;
+  message_id: string;
+  sources: Citation[];
+  content: string;
+}
+
+export async function sendChat(
+  auth: ClientAuthContext,
   provider: Provider,
   model: string,
   documentId: string,
   question: string,
   conversationId: string | null,
-  callbacks: ChatSSECallbacks,
   signal?: AbortSignal
-): Promise<void> {
-  const body = {
-    provider,
-    model: model.trim(),
-    document_id: documentId,
-    question: question.trim(),
-    conversation_id: conversationId,
-  };
-
+): Promise<ChatResponse> {
   const res = await fetch(url("/api/chat"), {
     method: "POST",
-    headers: {
-      ...authHeaders(apiKey),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
+    headers: baseHeaders(auth, { includeJson: true, includeProviderKey: true }),
+    body: JSON.stringify({
+      provider,
+      model: model.trim(),
+      document_id: documentId,
+      question: question.trim(),
+      conversation_id: conversationId,
+    }),
     signal,
   });
 
   if (!res.ok) {
-    const msg = await errorMessage(res);
-    callbacks.onError?.(msg);
-    return;
+    throw new Error(await errorMessage(res));
   }
 
-  const reader = res.body?.getReader();
-  if (!reader) {
-    callbacks.onError?.("No response body.");
-    return;
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        const raw = line.slice(6);
-        try {
-          const evt = JSON.parse(raw);
-          switch (evt.type) {
-            case "sources":
-              callbacks.onSources?.(evt.chunks ?? []);
-              break;
-            case "token":
-              callbacks.onToken?.(evt.content ?? "");
-              break;
-            case "done":
-              callbacks.onDone?.(evt.conversation_id, evt.message_id);
-              break;
-            case "error":
-              callbacks.onError?.(evt.message ?? "Unknown error");
-              break;
-          }
-        } catch {
-          // skip malformed lines
-        }
-      }
-    }
-  }
+  return res.json();
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 async function errorMessage(res: Response): Promise<string> {
   try {
     const ct = res.headers.get("content-type") ?? "";
     if (ct.includes("application/json")) {
-      const data = await res.json();
-      return data.error ?? `Request failed (${res.status})`;
+      const data = (await res.json()) as ApiError & { detail?: string };
+      if (data.error) return data.error;
+      if (data.detail) return data.detail;
+      if (data.code) return `Request failed (${res.status}, ${data.code})`;
+      return `Request failed (${res.status})`;
     }
-  } catch { /* fall through */ }
+  } catch {
+    return `Request failed (${res.status})`;
+  }
   return `Request failed (${res.status})`;
 }

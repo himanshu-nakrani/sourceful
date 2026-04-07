@@ -1,13 +1,10 @@
 import os
 import shutil
 from pathlib import Path
-import pytest
-import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
 
-# Set environment variables for testing before importing settings or app.
-# Note: This is done before imports because Pydantic BaseSettings evaluates
-# the environment variables at module import time.
+import pytest
+from fastapi.testclient import TestClient
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEST_DATA_DIR = BASE_DIR / "data"
 
@@ -16,13 +13,14 @@ os.environ["VECTOR_STORE_DIRECTORY"] = str(TEST_DATA_DIR / "test_vectors")
 os.environ["DOCUMENT_REGISTRY_PATH"] = str(TEST_DATA_DIR / "test_documents.json")
 os.environ["LOG_LEVEL"] = "DEBUG"
 os.environ["RATE_LIMIT_RPM"] = "1000"
+os.environ["WORKER_HEARTBEAT_TTL_SECONDS"] = "600"
 
+from backend.database import close_db, init_db, record_heartbeat
 from backend.main import app
-from backend.database import init_db, close_db
 from backend.settings import settings
 
 
-def cleanup_test_data():
+def cleanup_test_data() -> None:
     if os.path.exists(settings.database_path):
         try:
             os.remove(settings.database_path)
@@ -40,21 +38,19 @@ def cleanup_test_data():
             pass
 
 
-@pytest_asyncio.fixture(autouse=True)
-async def db_setup():
-    # Clean up before test
+@pytest.fixture(autouse=True)
+def db_setup():
     cleanup_test_data()
+    import asyncio
 
-    await init_db()
+    asyncio.run(init_db())
+    asyncio.run(record_heartbeat("worker"))
     yield
-    await close_db()
-    
-    # Clean up after test
+    asyncio.run(close_db())
     cleanup_test_data()
 
 
-@pytest_asyncio.fixture
-async def async_client():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+@pytest.fixture
+def client():
+    with TestClient(app) as test_client:
+        yield test_client

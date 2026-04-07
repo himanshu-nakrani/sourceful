@@ -1,88 +1,133 @@
-"""Vector storage service. Supports both pgvector (Supabase) and local NumPy files."""
+"""Vector persistence and retrieval for PostgreSQL + pgvector and SQLite fallback."""
 
-import os
-from pathlib import Path
-import numpy as np
+from __future__ import annotations
+
 import json
-import psycopg
+from dataclasses import dataclass
+
+import numpy as np
+
+from backend.database import execute, fetch_all
+from backend.services.chunking import ChunkPayload
 from backend.settings import settings
 
-# If running with Postgres, we use the 'vectors' table
-# Schema: id, document_id, content, embedding (vector)
 
-async def _get_pg_conn():
-    if not settings.database_url:
-        return None
-    return await psycopg.AsyncConnection.connect(settings.database_url, autocommit=True)
+@dataclass(slots=True)
+class RetrievedChunk:
+    chunk_id: str
+    document_id: str
+    excerpt: str
+    score: float
+    page_number: int | None = None
 
-async def add_chunks(
+
+
+def _vector_literal(embedding: list[float]) -> str:
+    return "[" + ",".join(f"{value:.10f}" for value in embedding) + "]"
+
+
+async def replace_chunks(
     document_id: str,
-    chunk_texts: list[str],
+    owner_id: str,
+    chunks: list[ChunkPayload],
     embeddings: list[list[float]],
 ) -> None:
-    if settings.database_url:
-        # PostgreSQL with pgvector
-        async with await _get_pg_conn() as conn:
-            async with conn.cursor() as cur:
-                # Batch insert
-                for text, emb in zip(chunk_texts, embeddings):
-                    await cur.execute(
-                        "INSERT INTO vectors (document_id, content, embedding) VALUES (%s, %s, %s)",
-                        (document_id, text, emb)
-                    )
-    else:
-        # NumPy Local Storage
-        base = Path(settings.vector_store_directory)
-        base.mkdir(parents=True, exist_ok=True)
-        path = base / f"{document_id}.npz"
-        E = np.asarray(embeddings, dtype=np.float32)
-        texts = np.asarray(chunk_texts, dtype=object)
-        np.savez_compressed(path, embeddings=E, texts=texts)
+    await execute("DELETE FROM document_chunks WHERE document_id = ? AND owner_id = ?", (document_id, owner_id))
+    for chunk, embedding in zip(chunks, embeddings, strict=True):
+        if settings.using_postgres:
+            await execute(
+                """
+                INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, embedding)
+                VALUES (?, ?, ?, ?, ?, ?, ?::vector)
+                """,
+                (
+                    f"{document_id}:{chunk.chunk_index}",
+                    document_id,
+                    owner_id,
+                    chunk.chunk_index,
+                    chunk.content,
+                    chunk.page_number,
+                    _vector_literal(embedding),
+                ),
+            )
+        else:
+            await execute(
+                """
+                INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, embedding_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"{document_id}:{chunk.chunk_index}",
+                    document_id,
+                    owner_id,
+                    chunk.chunk_index,
+                    chunk.content,
+                    chunk.page_number,
+                    json.dumps(embedding),
+                ),
+            )
 
-async def query_similar(
-    document_id: str,
-    query_embedding: list[float],
-    top_k: int,
-) -> list[str]:
-    if settings.database_url:
-        # PostgreSQL with pgvector (Cosine Similarity)
-        async with await _get_pg_conn() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT content 
-                    FROM vectors 
-                    WHERE document_id = %s 
-                    ORDER BY embedding <=> %s::vector 
-                    LIMIT %s
-                    """,
-                    (document_id, query_embedding, top_k)
-                )
-                rows = await cur.fetchall()
-                return [r[0] for r in rows]
-    else:
-        # NumPy Local Storage
-        path = Path(settings.vector_store_directory) / f"{document_id}.npz"
-        if not path.is_file():
-            return []
-        data = np.load(path, allow_pickle=True)
-        E = data["embeddings"]
-        texts = data["texts"]
-        q = np.asarray(query_embedding, dtype=np.float32)
-        qn = q / (np.linalg.norm(q) + 1e-9)
-        En = E / (np.linalg.norm(E, axis=1, keepdims=True) + 1e-9)
-        sims = En @ qn
-        idx = np.argsort(-sims)[:top_k]
-        return [str(texts[i]) for i in idx]
 
-async def delete_collection(document_id: str) -> None:
-    if settings.database_url:
-        async with await _get_pg_conn() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("DELETE FROM vectors WHERE document_id = %s", (document_id,))
-    else:
-        path = Path(settings.vector_store_directory) / f"{document_id}.npz"
-        try:
-            path.unlink()
-        except OSError:
-            pass
+async def preview_chunks(document_id: str, owner_id: str, limit: int = 8) -> list[dict]:
+    return await fetch_all(
+        """
+        SELECT id AS chunk_id, document_id, content, page_number, chunk_index
+        FROM document_chunks
+        WHERE document_id = ? AND owner_id = ?
+        ORDER BY chunk_index ASC
+        LIMIT ?
+        """,
+        (document_id, owner_id, limit),
+    )
+
+
+async def query_similar(document_id: str, owner_id: str, query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
+    if settings.using_postgres:
+        rows = await fetch_all(
+            """
+            SELECT id, document_id, content, page_number,
+                   1 - (embedding <=> ?::vector) AS score
+            FROM document_chunks
+            WHERE document_id = ? AND owner_id = ?
+            ORDER BY embedding <=> ?::vector
+            LIMIT ?
+            """,
+            (_vector_literal(query_embedding), document_id, owner_id, _vector_literal(query_embedding), top_k),
+        )
+        return [
+            RetrievedChunk(
+                chunk_id=row["id"],
+                document_id=row["document_id"],
+                excerpt=row["content"],
+                score=float(row["score"] or 0.0),
+                page_number=row.get("page_number"),
+            )
+            for row in rows
+        ]
+
+    rows = await fetch_all(
+        "SELECT id, document_id, content, page_number, embedding_json FROM document_chunks WHERE document_id = ? AND owner_id = ?",
+        (document_id, owner_id),
+    )
+    if not rows:
+        return []
+
+    matrix = np.asarray([json.loads(row["embedding_json"]) for row in rows], dtype=np.float32)
+    query = np.asarray(query_embedding, dtype=np.float32)
+    query = query / (np.linalg.norm(query) + 1e-9)
+    matrix = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9)
+    scores = matrix @ query
+    indices = np.argsort(-scores)[:top_k]
+    result: list[RetrievedChunk] = []
+    for index in indices:
+        row = rows[int(index)]
+        result.append(
+            RetrievedChunk(
+                chunk_id=row["id"],
+                document_id=row["document_id"],
+                excerpt=row["content"],
+                score=float(scores[int(index)]),
+                page_number=row.get("page_number"),
+            )
+        )
+    return result

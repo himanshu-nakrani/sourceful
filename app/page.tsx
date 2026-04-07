@@ -1,28 +1,21 @@
 "use client";
 
 import React, { useState } from "react";
-import { StoreProvider, useStore } from "./lib/store";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
-import UploadModal from "./components/UploadModal";
 import SettingsPanel from "./components/SettingsPanel";
+import UploadModal from "./components/UploadModal";
+import { ServerStateProvider } from "./lib/server-state";
+import { StoreProvider, useStore } from "./lib/store";
 
 function AppShell() {
   const { state, dispatch } = useStore();
   const [uploadOpen, setUploadOpen] = useState(false);
 
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{ background: "var(--bg-primary)" }}
-    >
-      {/* Sidebar */}
+    <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-primary)" }}>
       <Sidebar onUploadClick={() => setUploadOpen(true)} />
-
-      {/* Main chat area */}
       <ChatArea onUploadClick={() => setUploadOpen(true)} />
-
-      {/* Modals */}
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
       <SettingsPanel
         open={state.settingsOpen}
@@ -35,7 +28,9 @@ function AppShell() {
 export default function Home() {
   return (
     <StoreProvider>
-      <AppShell />
+      <ServerStateProvider>
+        <AppShell />
+      </ServerStateProvider>
     </StoreProvider>
   );
 }

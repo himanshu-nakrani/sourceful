@@ -1,29 +1,29 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useMemo, useState } from "react";
 import {
+  Download,
   FileText,
-  Upload,
-  Settings,
-  MessageSquare,
-  Trash2,
-  ChevronRight,
-  Plus,
   Loader2,
-  CheckCircle2,
-  AlertCircle,
-  X,
+  MessageSquare,
+  Pencil,
+  Plus,
+  RefreshCcw,
+  Search,
+  Settings,
+  Trash2,
+  Upload,
   PanelLeftClose,
 } from "lucide-react";
-import { useStore } from "../lib/store";
-import type { DocumentInfo, ConversationListItem } from "../lib/api";
 import {
-  listDocuments,
-  deleteDocument,
-  listConversations,
-  getConversation,
   deleteConversation,
+  deleteDocument,
+  exportConversation,
+  renameConversation,
+  reprocessDocument,
 } from "../lib/api";
+import { useServerState } from "../lib/server-state";
+import { useStore } from "../lib/store";
 
 interface SidebarProps {
   onUploadClick: () => void;
@@ -32,105 +32,109 @@ interface SidebarProps {
 export default function Sidebar({ onUploadClick }: SidebarProps) {
   const { state, dispatch } = useStore();
   const {
-    settings,
     documents,
-    activeDocumentId,
+    documentsLoading,
+    documentsError,
     conversations,
-    activeConversationId,
-    sidebarOpen,
-  } = state;
-  const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const refreshDocuments = useCallback(async () => {
-    if (!settings.apiKey) return;
-    setLoading(true);
-    try {
-      const docs = await listDocuments(settings.apiKey);
-      dispatch({ type: "SET_DOCUMENTS", payload: docs });
-    } catch { /* silent */ }
-    setLoading(false);
-  }, [settings.apiKey, dispatch]);
-
-  const refreshConversations = useCallback(
-    async (docId: string) => {
-      if (!settings.apiKey) return;
-      try {
-        const convs = await listConversations(settings.apiKey, docId);
-        dispatch({ type: "SET_CONVERSATIONS", payload: convs });
-      } catch { /* silent */ }
-    },
-    [settings.apiKey, dispatch]
-  );
-
-  const handleDocumentClick = useCallback(
-    async (doc: DocumentInfo) => {
-      dispatch({ type: "SET_ACTIVE_DOCUMENT", payload: doc.id });
-      await refreshConversations(doc.id);
-    },
-    [dispatch, refreshConversations]
-  );
-
-  const handleDeleteDocument = useCallback(
-    async (e: React.MouseEvent, docId: string) => {
-      e.stopPropagation();
-      if (!settings.apiKey) return;
-      try {
-        await deleteDocument(settings.apiKey, docId);
-        dispatch({ type: "REMOVE_DOCUMENT", payload: docId });
-      } catch { /* silent */ }
-    },
-    [settings.apiKey, dispatch]
-  );
-
-  const handleConversationClick = useCallback(
-    async (conv: ConversationListItem) => {
-      dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: conv.id });
-      if (!settings.apiKey) return;
-      try {
-        const full = await getConversation(settings.apiKey, conv.id);
-        dispatch({ type: "SET_MESSAGES", payload: full.messages });
-      } catch { /* silent */ }
-    },
-    [settings.apiKey, dispatch]
-  );
-
-  const handleDeleteConversation = useCallback(
-    async (e: React.MouseEvent, convId: string) => {
-      e.stopPropagation();
-      if (!settings.apiKey) return;
-      try {
-        await deleteConversation(settings.apiKey, convId);
-        if (activeConversationId === convId) {
-          dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: null });
-          dispatch({ type: "SET_MESSAGES", payload: [] });
-        }
-        if (activeDocumentId) await refreshConversations(activeDocumentId);
-      } catch { /* silent */ }
-    },
-    [settings.apiKey, activeConversationId, activeDocumentId, dispatch, refreshConversations]
-  );
-
-  const handleNewConversation = () => {
-    dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: null });
-    dispatch({ type: "SET_MESSAGES", payload: [] });
+    conversationsLoading,
+    chunkPreview,
+    chunkPreviewLoading,
+    refreshDocuments,
+    refreshConversations,
+    refreshChunkPreview,
+    selectConversation,
+    selectDocument,
+    setMessages,
+  } = useServerState();
+  const { settings, activeConversationId, activeDocumentId, sidebarOpen } = state;
+  const [search, setSearch] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const auth = {
+    clientSessionId: settings.clientSessionId,
+    providerApiKey: settings.providerApiKey,
   };
 
-  // Auto-load documents when apiKey changes
-  React.useEffect(() => {
-    if (settings.apiKey) refreshDocuments();
-  }, [settings.apiKey, refreshDocuments]);
+  const visibleDocuments = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return documents;
+    return documents.filter((document) => document.filename.toLowerCase().includes(term));
+  }, [documents, search]);
 
-  const statusIcon = (status: string) => {
-    if (status === "ready")
-      return <CheckCircle2 size={14} className="text-emerald-400 flex-shrink-0" />;
-    if (status === "error")
-      return <AlertCircle size={14} className="text-red-400 flex-shrink-0" />;
-    return <Loader2 size={14} className="text-indigo-400 animate-spin flex-shrink-0" />;
+  const activeConversation = conversations.find(
+    (conversation) => conversation.id === activeConversationId
+  ) ?? null;
+
+  const handleDeleteDocument = async (documentId: string) => {
+    try {
+      await deleteDocument(auth, documentId);
+      if (activeDocumentId === documentId) {
+        await selectDocument(null);
+        setMessages([]);
+      }
+      await refreshDocuments();
+      setActionError(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to delete document.");
+    }
+  };
+
+  const handleReprocess = async (documentId: string) => {
+    if (!settings.providerApiKey.trim()) {
+      setActionError("Add your provider API key in Settings before reprocessing.");
+      return;
+    }
+    try {
+      await reprocessDocument(auth, documentId, settings.embeddingModel);
+      await refreshDocuments();
+      if (activeDocumentId === documentId) {
+        await refreshChunkPreview(documentId);
+      }
+      setActionError(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to reprocess document.");
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId: string) => {
+    try {
+      await deleteConversation(auth, conversationId);
+      if (activeConversationId === conversationId) {
+        await selectConversation(null);
+      }
+      await refreshConversations(activeDocumentId);
+      setActionError(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to delete conversation.");
+    }
+  };
+
+  const handleRenameConversation = async () => {
+    if (!activeConversation) return;
+    const nextTitle = window.prompt("Rename conversation", activeConversation.title)?.trim();
+    if (!nextTitle) return;
+    try {
+      await renameConversation(auth, activeConversation.id, nextTitle);
+      await refreshConversations(activeDocumentId);
+      setActionError(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to rename conversation.");
+    }
+  };
+
+  const handleExportConversation = async (format: "markdown" | "json") => {
+    if (!activeConversation) return;
+    try {
+      const blob = await exportConversation(auth, activeConversation.id, format);
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = `${activeConversation.title.replace(/[^a-z0-9-_]+/gi, "-") || "conversation"}.${format === "json" ? "json" : "md"}`;
+      anchor.click();
+      URL.revokeObjectURL(downloadUrl);
+      setActionError(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to export conversation.");
+    }
   };
 
   if (!sidebarOpen) return null;
@@ -139,9 +143,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
     <aside
       style={{ width: "var(--sidebar-width)" }}
       className="flex flex-col h-full border-r animate-slide-in-left flex-shrink-0"
-      css-border="border-color: var(--border)"
     >
-      {/* ── Header ── */}
       <div
         className="flex items-center justify-between px-4 flex-shrink-0"
         style={{
@@ -153,11 +155,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         <div className="flex items-center gap-2">
           <div
             className="flex items-center justify-center rounded-lg"
-            style={{
-              width: 32,
-              height: 32,
-              background: "var(--accent-soft)",
-            }}
+            style={{ width: 32, height: 32, background: "var(--accent-soft)" }}
           >
             <FileText size={16} style={{ color: "var(--text-primary)" }} />
           </div>
@@ -166,209 +164,237 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           </span>
         </div>
         <button
+          type="button"
           onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
-          className="p-1.5 rounded-md transition-colors"
+          className="p-1.5 rounded-md"
           style={{ color: "var(--text-tertiary)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         >
           <PanelLeftClose size={18} />
         </button>
       </div>
 
-      {/* ── Action buttons ── */}
       <div className="px-3 py-3 flex gap-2 flex-shrink-0">
         <button
+          type="button"
           onClick={onUploadClick}
-          disabled={!mounted || !settings.apiKey}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
-          style={{
-            background: "var(--accent)",
-            color: "var(--accent-fg)",
-            opacity: mounted && settings.apiKey ? 1 : 0.5,
-          }}
-          onMouseEnter={(e) => {
-            if (mounted && settings.apiKey) e.currentTarget.style.background = "var(--accent-hover)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "var(--accent)";
-          }}
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
+          style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
         >
           <Upload size={15} />
           Upload
         </button>
         <button
+          type="button"
           onClick={() => dispatch({ type: "TOGGLE_SETTINGS" })}
-          className="flex items-center justify-center px-3 py-2 rounded-lg transition-colors"
+          className="flex items-center justify-center px-3 py-2 rounded-lg"
           style={{
             background: "var(--bg-surface)",
             color: "var(--text-secondary)",
             border: "1px solid var(--border)",
           }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--bg-surface-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "var(--bg-surface)")
-          }
         >
           <Settings size={16} />
         </button>
       </div>
 
-      {/* ── Documents list ── */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
+      <div className="px-3 pb-2 flex-shrink-0">
+        <div
+          className="flex items-center gap-2 rounded-lg px-3 py-2"
+          style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+        >
+          <Search size={14} style={{ color: "var(--text-muted)" }} />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search documents"
+            className="w-full bg-transparent text-sm outline-none"
+            style={{ color: "var(--text-primary)" }}
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
         <div className="px-2 py-1.5 flex items-center justify-between">
-          <span
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--text-tertiary)" }}
-          >
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
             Documents
           </span>
-          {loading && <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-tertiary)" }} />}
+          <div className="flex items-center gap-2">
+            {(documentsLoading || conversationsLoading) && <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-tertiary)" }} />}
+            <button type="button" onClick={() => void refreshDocuments()} style={{ color: "var(--text-tertiary)" }}>
+              <RefreshCcw size={12} />
+            </button>
+          </div>
         </div>
 
-        {documents.length === 0 && (
+        {documentsError ? (
+          <div className="mx-2 mb-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--error-soft)", color: "var(--error)" }}>
+            {documentsError}
+          </div>
+        ) : null}
+        {actionError ? (
+          <div className="mx-2 mb-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--error-soft)", color: "var(--error)" }}>
+            {actionError}
+          </div>
+        ) : null}
+
+        {visibleDocuments.length === 0 ? (
           <div className="px-3 py-6 text-center">
-            <FileText
-              size={32}
-              className="mx-auto mb-2"
-              style={{ color: "var(--text-muted)" }}
-            />
+            <FileText size={32} className="mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
             <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-              {!mounted ? (
-                "Loading..."
-              ) : settings.apiKey ? (
-                "No documents yet. Upload one to get started."
-              ) : (
-                "Enter your API key in settings to begin."
-              )}
+              {search ? "No matching documents." : "No indexed documents yet."}
             </p>
           </div>
-        )}
+        ) : null}
 
-        {documents.map((doc) => (
-          <div key={doc.id} className="mb-1">
-            <div
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all group cursor-pointer"
-              style={{
-                background:
-                  activeDocumentId === doc.id
-                    ? "var(--accent-soft)"
-                    : "transparent",
-                border:
-                  activeDocumentId === doc.id
-                    ? "1px solid var(--border-accent)"
-                    : "1px solid transparent",
-              }}
-              onMouseEnter={(e) => {
-                if (activeDocumentId !== doc.id)
-                  e.currentTarget.style.background = "var(--bg-surface)";
-              }}
-              onMouseLeave={(e) => {
-                if (activeDocumentId !== doc.id)
-                  e.currentTarget.style.background = "transparent";
-              }}
-              onClick={() => handleDocumentClick(doc)}
-            >
-              {statusIcon(doc.status)}
-              <div className="flex-1 min-w-0">
-                <p
-                  className="text-sm font-medium truncate"
-                  style={{
-                    color:
-                      activeDocumentId === doc.id
-                        ? "var(--text-primary)"
-                        : "var(--text-primary)",
-                  }}
-                >
-                  {doc.filename}
-                </p>
-                <p className="text-xs truncate" style={{ color: "var(--text-tertiary)" }}>
-                  {doc.chunk_count} chunks ·{" "}
-                  {(doc.file_size / 1024).toFixed(0)} KB
-                </p>
-              </div>
-              <button
-                onClick={(e) => handleDeleteDocument(e, doc.id)}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded transition-all hover:bg-red-500/10"
-                style={{ color: "var(--text-tertiary)" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--error)")}
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.color = "var(--text-tertiary)")
-                }
+        {visibleDocuments.map((document) => {
+          const isActive = activeDocumentId === document.id;
+          const statusColor =
+            document.status === "ready"
+              ? "var(--success)"
+              : document.status === "error"
+              ? "var(--error)"
+              : "var(--warning)";
+          return (
+            <div key={document.id} className="mb-2">
+              <div
+                className="group rounded-xl px-3 py-3 cursor-pointer"
+                style={{
+                  background: isActive ? "var(--accent-soft)" : "transparent",
+                  border: `1px solid ${isActive ? "var(--border-accent)" : "transparent"}`,
+                }}
+                onClick={() => void selectDocument(document.id)}
               >
-                <Trash2 size={14} />
-              </button>
-            </div>
-
-            {/* Conversations under active document */}
-            {activeDocumentId === doc.id && doc.status === "ready" && (
-              <div className="ml-5 mt-1 mb-2 pl-3" style={{ borderLeft: "2px solid var(--border)" }}>
-                <button
-                  onClick={handleNewConversation}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium transition-colors mb-1"
-                  style={{ color: "var(--text-primary)" }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "var(--bg-surface-hover)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = "transparent")
-                  }
-                >
-                  <Plus size={12} />
-                  New conversation
-                </button>
-                {conversations.map((conv) => (
+                <div className="flex items-start gap-2.5">
                   <div
-                    key={conv.id}
-                    onClick={() => handleConversationClick(conv)}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors group cursor-pointer"
-                    style={{
-                      background:
-                        activeConversationId === conv.id
-                          ? "var(--bg-surface)"
-                          : "transparent",
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "var(--bg-surface)")
-                    }
-                    onMouseLeave={(e) => {
-                      if (activeConversationId !== conv.id)
-                        e.currentTarget.style.background = "transparent";
-                    }}
-                  >
-                    <MessageSquare size={12} style={{ color: "var(--text-tertiary)", flexShrink: 0 }} />
-                    <span
-                      className="text-xs truncate flex-1"
-                      style={{
-                        color:
-                          activeConversationId === conv.id
-                            ? "var(--text-primary)"
-                            : "var(--text-secondary)",
-                      }}
-                    >
-                      {conv.title}
-                    </span>
+                    className="mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0"
+                    style={{ background: statusColor }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                      {document.filename}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: "var(--text-tertiary)" }}>
+                      {document.status}
+                      {document.current_stage ? ` (${document.current_stage})` : ""}
+                      {" · "}
+                      {document.chunk_count} chunks
+                      {document.page_count ? ` · ${document.page_count} pages` : ""}
+                    </p>
+                    {document.last_error ? (
+                      <p className="text-xs mt-1 line-clamp-2" style={{ color: "var(--error)" }}>
+                        {document.last_error}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {document.status === "error" || document.status === "ready" ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleReprocess(document.id);
+                        }}
+                        style={{ color: "var(--text-tertiary)" }}
+                      >
+                        <RefreshCcw size={14} />
+                      </button>
+                    ) : null}
                     <button
-                      onClick={(e) => handleDeleteConversation(e, conv.id)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded transition-all hover:bg-red-500/10"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteDocument(document.id);
+                      }}
                       style={{ color: "var(--text-tertiary)" }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.color = "var(--error)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.color = "var(--text-tertiary)")
-                      }
                     >
-                      <Trash2 size={11} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
-                ))}
+                </div>
               </div>
-            )}
-          </div>
-        ))}
+
+              {isActive ? (
+                <div className="ml-6 mt-2 pl-3" style={{ borderLeft: "2px solid var(--border)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => void selectConversation(null)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs"
+                      style={{ color: "var(--text-primary)", background: "var(--bg-surface)" }}
+                    >
+                      <Plus size={12} />
+                      New Chat
+                    </button>
+                    {activeConversation ? (
+                      <>
+                        <button type="button" onClick={() => void handleRenameConversation()} style={{ color: "var(--text-tertiary)" }}>
+                          <Pencil size={12} />
+                        </button>
+                        <button type="button" onClick={() => void handleExportConversation("markdown")} style={{ color: "var(--text-tertiary)" }}>
+                          <Download size={12} />
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+
+                  {conversations.map((conversation) => (
+                    <div
+                      key={conversation.id}
+                      className="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer"
+                      style={{
+                        background:
+                          activeConversationId === conversation.id ? "var(--bg-surface)" : "transparent",
+                      }}
+                      onClick={() => void selectConversation(conversation.id)}
+                    >
+                      <MessageSquare size={12} style={{ color: "var(--text-tertiary)", flexShrink: 0 }} />
+                      <span className="text-xs truncate flex-1" style={{ color: "var(--text-secondary)" }}>
+                        {conversation.title}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDeleteConversation(conversation.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ color: "var(--text-tertiary)" }}
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  ))}
+
+                  {document.status === "ready" ? (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+                          Chunk Preview
+                        </span>
+                        {chunkPreviewLoading ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-tertiary)" }} /> : null}
+                      </div>
+                      {chunkPreview.slice(0, 4).map((chunk) => (
+                        <div
+                          key={chunk.chunk_id}
+                          className="rounded-lg px-3 py-2 mb-2"
+                          style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+                        >
+                          <div className="flex items-center gap-2 text-[11px] mb-1" style={{ color: "var(--text-tertiary)" }}>
+                            <span>Chunk {chunk.chunk_index + 1}</span>
+                            {chunk.page_number ? <span>Page {chunk.page_number}</span> : null}
+                          </div>
+                          <p className="text-xs line-clamp-4" style={{ color: "var(--text-secondary)" }}>
+                            {chunk.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </aside>
   );

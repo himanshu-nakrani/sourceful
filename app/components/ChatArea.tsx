@@ -1,20 +1,22 @@
 "use client";
 
-import React, { useCallback, useRef, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Send,
-  Loader2,
-  PanelLeftOpen,
   FileText,
-  Sparkles,
+  Loader2,
   MessageSquarePlus,
+  PanelLeftOpen,
+  RefreshCcw,
+  Send,
   Settings,
+  Sparkles,
+  StopCircle,
 } from "lucide-react";
-import { useStore } from "../lib/store";
-import { streamChat, listConversations } from "../lib/api";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import type { Message } from "../lib/api";
+import { reprocessDocument, sendChat, type Citation, type Message } from "../lib/api";
+import { useServerState } from "../lib/server-state";
+import { useStore } from "../lib/store";
 
 interface ChatAreaProps {
   onUploadClick: () => void;
@@ -23,125 +25,117 @@ interface ChatAreaProps {
 export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const { state, dispatch } = useStore();
   const {
-    settings,
-    activeDocumentId,
-    activeConversationId,
-    messages,
     documents,
-    sidebarOpen,
-  } = state;
-
+    messages,
+    messagesLoading,
+    addMessage,
+    appendToLastAssistant,
+    refreshConversations,
+    updateLastAssistantSources,
+    setMessages,
+  } = useServerState();
+  const { settings, activeConversationId, activeDocumentId, sidebarOpen } = state;
+  const activeDocument = useMemo(
+    () => documents.find((document) => document.id === activeDocumentId) ?? null,
+    [documents, activeDocumentId]
+  );
   const [question, setQuestion] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [currentSources, setCurrentSources] = useState<string[]>([]);
+  const [currentSources, setCurrentSources] = useState<Citation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const auth = useMemo(
+    () => ({
+      clientSessionId: settings.clientSessionId,
+      providerApiKey: settings.providerApiKey,
+    }),
+    [settings.clientSessionId, settings.providerApiKey]
+  );
 
-  const activeDoc = documents.find((d) => d.id === activeDocumentId);
-  const canAsk =
+  const suggestions = [
+    "Summarize the main themes",
+    "List the most important findings",
+    "What evidence supports the core conclusion?",
+    "What should I pay attention to first?",
+  ];
+
+  const canAsk = Boolean(
     activeDocumentId &&
-    activeDoc?.status === "ready" &&
-    settings.apiKey &&
-    settings.chatModel &&
-    question.trim() &&
-    !streaming;
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+      activeDocument?.status === "ready" &&
+      settings.providerApiKey.trim() &&
+      settings.chatModel.trim() &&
+      question.trim() &&
+      !streaming
+  );
 
   useEffect(() => {
-    scrollToBottom();
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, currentSources]);
 
-  // Auto-resize textarea
   useEffect(() => {
-    const el = textareaRef.current;
-    if (el) {
-      el.style.height = "auto";
-      el.style.height = Math.min(el.scrollHeight, 160) + "px";
-    }
+    const element = textareaRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
   }, [question]);
 
   const handleSubmit = useCallback(
-    async (e?: React.FormEvent) => {
-      e?.preventDefault();
+    async (event?: React.FormEvent) => {
+      event?.preventDefault();
       if (!canAsk || !activeDocumentId) return;
 
-      const q = question.trim();
+      const prompt = question.trim();
       setQuestion("");
       setError(null);
       setCurrentSources([]);
       setStreaming(true);
 
-      // Add user message
-      const userMsg: Message = {
+      const userMessage: Message = {
         id: `temp-user-${Date.now()}`,
         role: "user",
-        content: q,
+        content: prompt,
         created_at: new Date().toISOString(),
       };
-      dispatch({ type: "ADD_MESSAGE", payload: userMsg });
-
-      // Add empty assistant message
-      const assistantMsg: Message = {
+      const assistantMessage: Message = {
         id: `temp-assistant-${Date.now()}`,
         role: "assistant",
         content: "",
         created_at: new Date().toISOString(),
+        sources: [],
       };
-      dispatch({ type: "ADD_MESSAGE", payload: assistantMsg });
+      addMessage(userMessage);
+      addMessage(assistantMessage);
 
       const controller = new AbortController();
       abortRef.current = controller;
-
       try {
-        await streamChat(
-          settings.apiKey,
+        const response = await sendChat(
+          auth,
           settings.provider,
           settings.chatModel,
           activeDocumentId,
-          q,
+          prompt,
           activeConversationId,
-          {
-            onSources: (chunks) => {
-              setCurrentSources(chunks);
-            },
-            onToken: (token) => {
-              dispatch({ type: "APPEND_TO_LAST_MESSAGE", payload: token });
-            },
-            onDone: async (conversationId) => {
-              dispatch({
-                type: "SET_ACTIVE_CONVERSATION",
-                payload: conversationId,
-              });
-              // Refresh conversations list
-              if (settings.apiKey && activeDocumentId) {
-                try {
-                  const convs = await listConversations(
-                    settings.apiKey,
-                    activeDocumentId
-                  );
-                  dispatch({ type: "SET_CONVERSATIONS", payload: convs });
-                } catch { /* silent */ }
-              }
-            },
-            onError: (msg) => {
-              setError(msg);
-            },
-          },
           controller.signal
         );
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
-          setError(err.message || "Stream interrupted.");
+
+        setCurrentSources(response.sources);
+        updateLastAssistantSources(response.sources);
+        appendToLastAssistant(response.content);
+        dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: response.conversation_id });
+        await refreshConversations(activeDocumentId);
+      } catch (streamError) {
+        setMessages((current) => current.slice(0, -1));
+        if (
+          !(streamError instanceof DOMException) ||
+          streamError.name !== "AbortError"
+        ) {
+          setError(
+            streamError instanceof Error ? streamError.message : "Request failed."
+          );
         }
       } finally {
         setStreaming(false);
@@ -149,33 +143,112 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       }
     },
     [
-      canAsk,
-      activeDocumentId,
       activeConversationId,
-      question,
-      settings,
+      activeDocumentId,
+      addMessage,
+      appendToLastAssistant,
+      auth,
+      canAsk,
       dispatch,
+      question,
+      refreshConversations,
+      setMessages,
+      settings.chatModel,
+      settings.provider,
+      updateLastAssistantSources,
     ]
   );
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
+  const handleRetryDocument = async () => {
+    if (!activeDocumentId || !settings.providerApiKey.trim()) return;
+    try {
+      setError(null);
+      await reprocessDocument(auth, activeDocumentId, settings.embeddingModel);
+    } catch (retryError) {
+      setError(retryError instanceof Error ? retryError.message : "Unable to retry indexing.");
     }
   };
 
-  // Suggested questions for empty state
-  const suggestions = [
-    "What are the main topics covered?",
-    "Summarize the key findings",
-    "What are the conclusions?",
-    "List the important data points",
-  ];
+  const stopStreaming = () => {
+    abortRef.current?.abort();
+    setStreaming(false);
+  };
+
+  const renderEmptyState = () => {
+    if (!activeDocument) {
+      return (
+        <StateCard
+          title="Welcome to Document RAG"
+          description="Upload a document, inspect the extracted chunks, and ask grounded questions with source citations."
+          primaryLabel="Upload Document"
+          onPrimary={onUploadClick}
+          secondaryLabel="Open Settings"
+          onSecondary={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
+        />
+      );
+    }
+
+    if (activeDocument.status !== "ready") {
+      return (
+        <StateCard
+          title={activeDocument.status === "error" ? "Indexing Failed" : "Indexing In Progress"}
+          description={
+            activeDocument.status === "error"
+              ? activeDocument.last_error || "The document could not be indexed."
+              : "The worker is preparing chunks and embeddings for this document."
+          }
+          primaryLabel={activeDocument.status === "error" ? "Retry Indexing" : undefined}
+          onPrimary={activeDocument.status === "error" ? handleRetryDocument : undefined}
+        />
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+        <div
+          className="flex items-center justify-center rounded-2xl mb-4"
+          style={{
+            width: 64,
+            height: 64,
+            background: "linear-gradient(135deg, var(--bg-surface), var(--bg-tertiary))",
+            border: "1px solid var(--border)",
+            boxShadow: "var(--shadow-glow)",
+          }}
+        >
+          <Sparkles size={28} style={{ color: "var(--text-primary)" }} />
+        </div>
+        <h3 className="text-lg font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
+          Ask about {activeDocument.filename}
+        </h3>
+        <p className="text-sm mb-6 text-center max-w-md" style={{ color: "var(--text-tertiary)" }}>
+          Retrieved chunks will appear with similarity scores and page references so you can inspect the grounding before trusting the answer.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
+          {suggestions.map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              onClick={() => {
+                setQuestion(suggestion);
+                textareaRef.current?.focus();
+              }}
+              className="text-left px-3 py-2.5 rounded-lg text-sm"
+              style={{
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0">
-      {/* ── Header ── */}
       <div
         className="flex items-center gap-3 px-4 flex-shrink-0"
         style={{
@@ -184,38 +257,27 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           background: "var(--bg-secondary)",
         }}
       >
-        {!sidebarOpen && (
+        {!sidebarOpen ? (
           <button
+            type="button"
             onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
-            className="p-1.5 rounded-md transition-colors"
+            className="p-1.5 rounded-md"
             style={{ color: "var(--text-tertiary)" }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "var(--bg-surface)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
           >
             <PanelLeftOpen size={18} />
           </button>
-        )}
-        {activeDoc ? (
+        ) : null}
+        {activeDocument ? (
           <div className="flex items-center gap-2 min-w-0">
             <FileText size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
-            <span
-              className="text-sm font-medium truncate"
-              style={{ color: "var(--text-primary)" }}
-            >
-              {activeDoc.filename}
+            <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+              {activeDocument.filename}
             </span>
             <span
               className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
-              style={{
-                background: "var(--accent-soft)",
-                color: "var(--accent-hover)",
-              }}
+              style={{ background: "var(--accent-soft)", color: "var(--accent-hover)" }}
             >
-              {activeDoc.chunk_count} chunks
+              {activeDocument.chunk_count} chunks
             </span>
           </div>
         ) : (
@@ -223,228 +285,52 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
             Select a document to start
           </span>
         )}
+        <div className="flex-1" />
+        {activeDocument && activeDocument.status !== "ready" ? (
+          <button type="button" onClick={handleRetryDocument} style={{ color: "var(--text-tertiary)" }}>
+            <RefreshCcw size={16} />
+          </button>
+        ) : null}
       </div>
 
-      {/* ── Messages area ── */}
-      <div
-        className="flex-1 overflow-y-auto px-4 py-6"
-        style={{ background: "var(--bg-primary)" }}
-      >
+      <div className="flex-1 overflow-y-auto px-4 py-6" style={{ background: "var(--bg-primary)" }}>
         <div className="max-w-3xl mx-auto flex flex-col gap-4">
-          {messages.length === 0 && activeDoc ? (
-            /* Empty state with suggestions */
-            <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
-              <div
-                className="flex items-center justify-center rounded-2xl mb-4"
-                style={{
-                  width: 64,
-                  height: 64,
-                  background:
-                    "linear-gradient(135deg, var(--bg-surface), var(--bg-tertiary))",
-                  border: "1px solid var(--border)",
-                  boxShadow: "var(--shadow-glow)",
-                }}
-              >
-                <Sparkles size={28} style={{ color: "var(--text-primary)" }} />
-              </div>
-              <h3
-                className="text-lg font-semibold mb-1"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Ask about your document
-              </h3>
-              <p
-                className="text-sm mb-6 text-center max-w-md"
-                style={{ color: "var(--text-tertiary)" }}
-              >
-                AI-powered answers grounded in{" "}
-                <span style={{ color: "var(--accent-hover)" }}>
-                  {activeDoc.filename}
-                </span>
-                . Ask anything about its contents.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
-                {suggestions.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => {
-                      setQuestion(s);
-                      textareaRef.current?.focus();
-                    }}
-                    className="text-left px-3 py-2.5 rounded-lg text-sm transition-all"
-                    style={{
-                      background: "var(--bg-surface)",
-                      border: "1px solid var(--border)",
-                      color: "var(--text-secondary)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "var(--bg-surface-hover)";
-                      e.currentTarget.style.borderColor = "var(--border-hover)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "var(--bg-surface)";
-                      e.currentTarget.style.borderColor = "var(--border)";
-                    }}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : messages.length === 0 && !activeDoc ? (
-            /* No document selected */
-            <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-              <div
-                className="flex items-center justify-center rounded-2xl mb-4"
-                style={{
-                  width: 72,
-                  height: 72,
-                  background:
-                    "linear-gradient(135deg, var(--bg-secondary), var(--bg-primary))",
-                  border: "1px solid var(--border)",
-                  boxShadow: "var(--shadow-glow)",
-                }}
-              >
-                <FileText size={32} style={{ color: "var(--text-secondary)" }} />
-              </div>
-              <h3
-                className="text-lg font-semibold mb-2"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Welcome to Document RAG
-              </h3>
-              <p
-                className="text-sm text-center max-w-md mb-6"
-                style={{ color: "var(--text-tertiary)" }}
-              >
-                Upload a document and ask AI-powered questions about its
-                contents. Your answers are grounded in the document with source
-                citations.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={onUploadClick}
-                  disabled={!mounted || !settings.apiKey}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all"
-                  style={{
-                    background: mounted && settings.apiKey
-                      ? "var(--accent)"
-                      : "var(--bg-elevated)",
-                    color: mounted && settings.apiKey ? "var(--accent-fg)" : "var(--text-tertiary)",
-                    cursor: mounted && settings.apiKey ? "pointer" : "not-allowed",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (mounted && settings.apiKey)
-                      e.currentTarget.style.background = "var(--accent-hover)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (mounted && settings.apiKey)
-                      e.currentTarget.style.background = "var(--accent)";
-                  }}
-                >
-                  <MessageSquarePlus size={16} />
-                  Upload Document
-                </button>
-                {mounted && !settings.apiKey && (
-                  <button
-                    onClick={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all"
-                    style={{
-                      background: "var(--bg-surface)",
-                      color: "var(--text-secondary)",
-                      border: "1px solid var(--border)",
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background =
-                        "var(--bg-surface-hover)")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "var(--bg-surface)")
-                    }
-                  >
-                    <Settings size={16} />
-                    Configure API Key
-                  </button>
-                )}
-              </div>
-            </div>
+          {messages.length === 0 ? (
+            renderEmptyState()
           ) : (
-            /* Messages */
             <>
-              {messages.map((msg, i) => (
-                <React.Fragment key={msg.id}>
-                  <MessageBubble message={msg} />
-                  {/* Show sources after the first assistant message with sources */}
-                  {msg.role === "assistant" &&
-                    msg.sources &&
-                    msg.sources.length > 0 && (
-                      <SourceCard chunks={msg.sources} />
-                    )}
+              {messages.map((message) => (
+                <React.Fragment key={message.id}>
+                  <MessageBubble message={message} />
+                  {message.role === "assistant" && message.sources?.length ? (
+                    <SourceCard sources={message.sources} />
+                  ) : null}
                 </React.Fragment>
               ))}
-              {/* Current streaming sources */}
-              {streaming && currentSources.length > 0 && (
-                <SourceCard chunks={currentSources} />
-              )}
-              {/* Streaming indicator */}
-              {streaming &&
-                messages.length > 0 &&
-                messages[messages.length - 1]?.content === "" && (
-                  <div className="flex items-center gap-2 pl-11">
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="rounded-full"
-                          style={{
-                            width: 6,
-                            height: 6,
-                            background: "var(--accent)",
-                            animation: `pulse-dot 1.4s ease-in-out ${i * 0.2}s infinite`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                    <span
-                      className="text-xs"
-                      style={{ color: "var(--text-tertiary)" }}
-                    >
-                      Thinking…
-                    </span>
-                  </div>
-                )}
+              {streaming && currentSources.length ? <SourceCard sources={currentSources} /> : null}
+              {messagesLoading ? (
+                <div className="flex items-center gap-2 pl-11" style={{ color: "var(--text-tertiary)" }}>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span className="text-xs">Loading conversation…</span>
+                </div>
+              ) : null}
             </>
           )}
-          <div ref={messagesEndRef} />
+          <div ref={endRef} />
         </div>
       </div>
 
-      {/* ── Error ── */}
-      {error && (
-        <div
-          className="mx-4 mb-2 px-3 py-2 rounded-lg text-sm animate-fade-in"
-          style={{
-            background: "var(--error-soft)",
-            border: "1px solid rgba(239,68,68,0.3)",
-            color: "var(--error)",
-          }}
-        >
+      {error ? (
+        <div className="mx-4 mb-2 px-3 py-2 rounded-lg text-sm" style={{ background: "var(--error-soft)", color: "var(--error)" }}>
           {error}
         </div>
-      )}
+      ) : null}
 
-      {/* ── Input area ── */}
-      {activeDoc && activeDoc.status === "ready" && (
-        <div
-          className="flex-shrink-0 px-4 pb-4 pt-2"
-          style={{ background: "var(--bg-primary)" }}
-        >
-          <form
-            onSubmit={handleSubmit}
-            className="max-w-3xl mx-auto relative"
-          >
+      {activeDocument?.status === "ready" ? (
+        <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ background: "var(--bg-primary)" }}>
+          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto relative">
             <div
-              className="flex items-end rounded-2xl transition-all"
+              className="flex items-end rounded-2xl"
               style={{
                 background: "var(--glass-bg)",
                 backdropFilter: "blur(var(--glass-blur))",
@@ -452,79 +338,121 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                 border: "1px solid var(--glass-border)",
                 boxShadow: "var(--shadow-lg)",
               }}
-              onFocus={(e) => {
-                (
-                  e.currentTarget as HTMLElement
-                ).style.borderColor = "var(--border-accent)";
-                (
-                  e.currentTarget as HTMLElement
-                ).style.boxShadow = "var(--shadow-glow)";
-              }}
-              onBlur={(e) => {
-                (
-                  e.currentTarget as HTMLElement
-                ).style.borderColor = "var(--border)";
-                (
-                  e.currentTarget as HTMLElement
-                ).style.boxShadow = "var(--shadow-md)";
-              }}
             >
               <textarea
                 ref={textareaRef}
                 value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleSubmit();
+                  }
+                }}
                 placeholder={
-                  !mounted
-                    ? "Initializing..."
-                    : settings.apiKey
+                  settings.providerApiKey.trim()
                     ? "Ask a question about your document…"
-                    : "Set your API key in settings first"
+                    : "Add your provider API key in Settings first"
                 }
-                disabled={!mounted || !settings.apiKey || !activeDoc || streaming}
+                disabled={!settings.providerApiKey.trim() || streaming}
                 rows={1}
                 className="flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none"
-                style={{
-                  color: "var(--text-primary)",
-                  maxHeight: 160,
-                  minHeight: 44,
-                }}
+                style={{ color: "var(--text-primary)", maxHeight: 160, minHeight: 44 }}
               />
+              <button
+                type="button"
+                onClick={streaming ? stopStreaming : undefined}
+                disabled={!streaming}
+                className="flex items-center justify-center p-2 m-1.5 rounded-lg"
+                style={{ color: streaming ? "var(--warning)" : "var(--text-muted)" }}
+              >
+                <StopCircle size={18} />
+              </button>
               <button
                 type="submit"
                 disabled={!canAsk}
-                className="flex items-center justify-center p-2 m-1.5 rounded-lg transition-all"
+                className="flex items-center justify-center p-2 m-1.5 rounded-lg"
                 style={{
                   background: canAsk ? "var(--accent)" : "transparent",
                   color: canAsk ? "var(--accent-fg)" : "var(--text-muted)",
-                  cursor: canAsk ? "pointer" : "default",
-                }}
-                onMouseEnter={(e) => {
-                  if (canAsk)
-                    e.currentTarget.style.background = "var(--accent-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  if (canAsk)
-                    e.currentTarget.style.background = "var(--accent)";
                 }}
               >
-                {streaming ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <Send size={18} />
-                )}
+                {streaming ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>
             </div>
-            <p
-              className="text-center mt-2 text-xs"
-              style={{ color: "var(--text-muted)" }}
-            >
-              AI answers are grounded in your document. Review citations for
-              accuracy.
+            <p className="text-center mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
+              Structured sources include chunk ids, scores, and page references when available.
             </p>
           </form>
         </div>
-      )}
+      ) : null}
+    </div>
+  );
+}
+
+function StateCard({
+  title,
+  description,
+  primaryLabel,
+  onPrimary,
+  secondaryLabel,
+  onSecondary,
+}: {
+  title: string;
+  description: string;
+  primaryLabel?: string;
+  onPrimary?: () => void;
+  secondaryLabel?: string;
+  onSecondary?: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+      <div
+        className="flex items-center justify-center rounded-2xl mb-4"
+        style={{
+          width: 72,
+          height: 72,
+          background: "linear-gradient(135deg, var(--bg-secondary), var(--bg-primary))",
+          border: "1px solid var(--border)",
+          boxShadow: "var(--shadow-glow)",
+        }}
+      >
+        <MessageSquarePlus size={32} style={{ color: "var(--text-secondary)" }} />
+      </div>
+      <h3 className="text-lg font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+        {title}
+      </h3>
+      <p className="text-sm text-center max-w-md mb-6" style={{ color: "var(--text-tertiary)" }}>
+        {description}
+      </p>
+      <div className="flex gap-3">
+        {primaryLabel && onPrimary ? (
+          <button
+            type="button"
+            onClick={onPrimary}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium"
+            style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+          >
+            <MessageSquarePlus size={16} />
+            {primaryLabel}
+          </button>
+        ) : null}
+        {secondaryLabel && onSecondary ? (
+          <button
+            type="button"
+            onClick={onSecondary}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium"
+            style={{
+              background: "var(--bg-surface)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <Settings size={16} />
+            {secondaryLabel}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

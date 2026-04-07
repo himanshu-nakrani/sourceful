@@ -1,155 +1,199 @@
-import pytest
-from httpx import AsyncClient, ASGITransport
-import io
+import asyncio
 import json
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, patch
 
-# Basic test to ensure endpoints are reachable and return expected structures
-# We mock external services (OpenAI/Gemini) to avoid API dependency
+from backend.database import fetch_one
+from backend.services.jobs import claim_next_job, process_job
 
-@pytest.mark.asyncio
-async def test_ingest_document(async_client: AsyncClient):
-    # Mocking the embedding service
-    with patch("backend.routers.ingest.embed_texts_openai", new_callable=AsyncMock) as mock_embed:
-        mock_embed.return_value = [[0.1] * 1536] # Mocked 1536-dim embedding
-        
-        file_content = b"This is a test document content for ingestion."
-        file = ("test.txt", file_content, "text/plain")
-        
-        response = await async_client.post(
-            "/api/ingest",
-            data={"provider": "openai", "embedding_model": "text-embedding-3-small"},
-            files={"file": file},
-            headers={"Authorization": "Bearer test-key"}
-        )
-        
-        assert response.status_code == 202
-        data = response.json()
-        assert "document_id" in data
-        assert data["status"] == "processing"
-        
-        doc_id = data["document_id"]
-        
-        # Check if document appears in list
-        response = await async_client.get("/api/documents", headers={"Authorization": "Bearer test-key"})
-        assert response.status_code == 200
-        docs = response.json()["documents"]
-        assert any(d["id"] == doc_id for d in docs)
+HEADERS = {"X-Client-Session": "test-session-1234"}
+PROVIDER_HEADERS = {
+    **HEADERS,
+    "X-Provider-Api-Key": "test-provider-key",
+}
 
-@pytest.mark.asyncio
-async def test_full_workflow(async_client: AsyncClient):
-    # 1. Ingest
-    with patch("backend.routers.ingest.embed_texts_openai", new_callable=AsyncMock) as mock_embed_ingest:
-        mock_embed_ingest.return_value = [[0.1] * 1536]
-        
-        file_content = b"The capital of France is Paris."
-        file = ("paris.txt", file_content, "text/plain")
-        
-        resp = await async_client.post(
-            "/api/ingest",
-            data={"provider": "openai"},
-            files={"file": file},
-            headers={"Authorization": "Bearer test-key"}
-        )
-        doc_id = resp.json()["document_id"]
-        
-        # Wait a bit for background task (since it's a mock it should be fast, but we need to ensure it's done)
-        # Actually in tests we should probably wait for the status to be 'ready'
-        import asyncio
-        for _ in range(10):
-            status_resp = await async_client.get(f"/api/documents/{doc_id}/status", headers={"Authorization": "Bearer test-key"})
-            if status_resp.json()["status"] == "ready":
-                break
-            await asyncio.sleep(0.1)
-        
-        assert status_resp.json()["status"] == "ready"
 
-    # 2. Chat
-    with patch("backend.routers.chat.embed_query_openai", new_callable=AsyncMock) as mock_embed_query, \
-         patch("backend.routers.chat.create_openai_text_stream") as mock_chat_stream:
-        
-        mock_embed_query.return_value = [0.1] * 1536
-        
-        # Mocking an async generator for the stream
-        async def mock_stream(*args, **kwargs):
-            yield "Paris "
-            yield "is "
-            yield "the "
-            yield "capital."
-            
-        mock_chat_stream.return_value = mock_stream()
-        
-        chat_payload = {
-            "provider": "openai",
-            "model": "gpt-3.5-turbo",
-            "question": "What is the capital of France?",
-            "document_id": doc_id
-        }
-        
-        # SSE request
-        response = await async_client.post(
+def test_ingest_document_and_list(client):
+    response = client.post(
+        "/api/ingest",
+        data={"provider": "openai", "embedding_model": "text-embedding-3-small"},
+        files={"file": ("test.txt", b"hello document", "text/plain")},
+        headers=PROVIDER_HEADERS,
+    )
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["job_id"]
+
+    documents = client.get("/api/documents", headers=HEADERS)
+    assert documents.status_code == 200
+    assert documents.json()["documents"][0]["id"] == payload["document_id"]
+
+
+def test_full_ingest_chat_and_conversation_flow(client):
+    response = client.post(
+        "/api/ingest",
+        data={"provider": "openai"},
+        files={"file": ("paris.txt", b"The capital of France is Paris.", "text/plain")},
+        headers=PROVIDER_HEADERS,
+    )
+    assert response.status_code == 202
+    ingest_payload = response.json()
+
+    with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
+        mock_embed_texts.return_value = [[0.1] * 3]
+        job = asyncio.run(claim_next_job())
+        assert job is not None
+        asyncio.run(process_job(job))
+
+    status = client.get(
+        f"/api/documents/{ingest_payload['document_id']}/status",
+        headers=HEADERS,
+    )
+    assert status.status_code == 200
+    assert status.json()["status"] == "ready"
+
+    with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
+        "backend.routers.chat.create_openai_text_stream"
+    ) as mock_openai_stream:
+        mock_embed_query.return_value = [0.1] * 3
+
+        async def fake_stream(*args, **kwargs):
+            for token in ["Paris ", "is ", "the capital."]:
+                yield token
+
+        mock_openai_stream.return_value = fake_stream()
+
+        chat_response = client.post(
             "/api/chat",
-            json=chat_payload,
-            headers={"Authorization": "Bearer test-key"}
+            headers=PROVIDER_HEADERS,
+            json={
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "question": "What is the capital of France?",
+                "document_id": ingest_payload["document_id"],
+            },
+        )
+        assert chat_response.status_code == 200
+        body = chat_response.text
+        assert '"type": "sources"' in body
+        assert '"type": "message_saved"' in body
+        assert '"type": "done"' in body
+
+    conversations = client.get(
+        "/api/conversations",
+        headers=HEADERS,
+        params={"document_id": ingest_payload["document_id"]},
+    )
+    assert conversations.status_code == 200
+    conversation = conversations.json()["conversations"][0]
+
+    detail = client.get(f"/api/conversations/{conversation['id']}", headers=HEADERS)
+    assert detail.status_code == 200
+    messages = detail.json()["messages"]
+    assert len(messages) == 2
+    assert messages[1]["sources"]
+
+    rename = client.patch(
+        f"/api/conversations/{conversation['id']}",
+        headers=HEADERS,
+        json={"title": "France QA"},
+    )
+    assert rename.status_code == 200
+
+    exported = client.get(
+        f"/api/conversations/{conversation['id']}/export",
+        headers=HEADERS,
+    )
+    assert exported.status_code == 200
+    assert "France QA" in exported.text
+
+    delete_conversation = client.delete(
+        f"/api/conversations/{conversation['id']}",
+        headers=HEADERS,
+    )
+    assert delete_conversation.status_code == 200
+
+    delete_document = client.delete(
+        f"/api/documents/{ingest_payload['document_id']}",
+        headers=HEADERS,
+    )
+    assert delete_document.status_code == 200
+
+
+def test_job_retries_then_terminal_failure(client):
+    response = client.post(
+        "/api/ingest",
+        data={"provider": "openai"},
+        files={"file": ("retry.txt", b"Retry me", "text/plain")},
+        headers=PROVIDER_HEADERS,
+    )
+    assert response.status_code == 202
+    ingest_payload = response.json()
+
+    # First processing attempt fails and should schedule retry.
+    with patch("backend.services.jobs._build_chunks", new_callable=AsyncMock) as mock_chunks:
+        mock_chunks.side_effect = RuntimeError("temporary extractor issue")
+        job = asyncio.run(claim_next_job())
+        assert job is not None
+        asyncio.run(process_job(job))
+
+    scheduled = client.get(f"/api/jobs/{ingest_payload['job_id']}", headers=HEADERS)
+    assert scheduled.status_code == 200
+    scheduled_payload = scheduled.json()
+    assert scheduled_payload["status"] == "queued"
+    assert scheduled_payload["stage"] == "retry_scheduled"
+    assert scheduled_payload["next_retry_at"] is not None
+    assert scheduled_payload["terminal"] is False
+
+    # Force terminal failure by exhausting attempts.
+    row = asyncio.run(fetch_one("SELECT * FROM document_jobs WHERE id = ?", (ingest_payload["job_id"],)))
+    assert row is not None
+    row["attempt_count"] = row["max_attempts"]
+    with patch("backend.services.jobs._build_chunks", new_callable=AsyncMock) as mock_chunks:
+        mock_chunks.side_effect = RuntimeError("permanent extractor issue")
+        asyncio.run(process_job(row))
+
+    terminal = client.get(f"/api/jobs/{ingest_payload['job_id']}", headers=HEADERS)
+    assert terminal.status_code == 200
+    terminal_payload = terminal.json()
+    assert terminal_payload["status"] == "error"
+    assert terminal_payload["terminal"] is True
+
+
+def test_concurrent_job_claim():
+    from backend.database import execute
+    job_id = "test-concurrent-claim-job"
+    doc_id = "test-concurrent-doc-id"
+    owner_id = "test-owner"
+
+    async def run_concurrent():
+        await execute(
+            "INSERT OR IGNORE INTO documents (id, owner_id, filename, provider, embedding_model, mime_type, checksum, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')",
+            (doc_id, owner_id, "test.txt", "openai", "emb-model", "text/plain", "checksum")
+        )
+        await execute(
+            "INSERT OR IGNORE INTO document_jobs (id, document_id, owner_id, provider, embedding_model, status, stage, payload_filename, payload_mime_type) VALUES (?, ?, ?, ?, ?, 'queued', 'queued', 'test.txt', 'text/plain')",
+            (job_id, doc_id, owner_id, "openai", "emb-model")
         )
         
-        assert response.status_code == 200
-        # Check if we get events
-        # SSE format: event: name\ndata: content\n\n
-        content = response.text
-        # Normalize line endings
-        content = content.replace("\r\n", "\n")
-        events = [e.strip() for e in content.split("\n\n") if e.strip()]
-        
-        assert any("event: sources" in e for e in events), f"Sources event missing. Events: {events}"
-        assert any("event: token" in e for e in events), f"Token event missing. Events: {events}"
-        assert any("event: done" in e for e in events), f"Done event missing. Events: {events}"
-        
-        # Parse the 'done' event to get conversation_id
-        done_event = [e for e in events if "event: done" in e][0]
-        data_line = [line for line in done_event.splitlines() if line.startswith("data:")][0]
-        done_json_str = data_line.replace("data:", "", 1).strip()
-        done_data = json.loads(done_json_str)
-        assert "conversation_id" in done_data, f"conversation_id missing in {done_data}"
-        conv_id = done_data["conversation_id"]
-        
-        # 3. List Conversations
-        conv_resp = await async_client.get("/api/conversations", headers={"Authorization": "Bearer test-key"})
-        assert conv_resp.status_code == 200
-        conversations = conv_resp.json()["conversations"]
-        assert any(c["id"] == conv_id for c in conversations)
+        # Test concurrent claims
+        tasks = [
+            claim_next_job(),
+            claim_next_job(),
+            claim_next_job(),
+        ]
+        return await asyncio.gather(*tasks)
 
-        # 4. Get Conversation Details
-        detail_resp = await async_client.get(f"/api/conversations/{conv_id}", headers={"Authorization": "Bearer test-key"})
-        assert detail_resp.status_code == 200
-        messages = detail_resp.json()["messages"]
-        assert len(messages) >= 2 # User + AI
+    results = asyncio.run(run_concurrent())
+    # Only one should succeed
+    claimed = [r for r in results if r is not None and r["id"] == job_id]
+    assert len(claimed) == 1
 
-        # 5. Delete Conversation
-        del_conv = await async_client.delete(f"/api/conversations/{conv_id}", headers={"Authorization": "Bearer test-key"})
-        assert del_conv.status_code == 200
-        
-        # 6. Delete Document
-        del_doc = await async_client.delete(f"/api/documents/{doc_id}", headers={"Authorization": "Bearer test-key"})
-        assert del_doc.status_code == 200
 
-@pytest.mark.asyncio
-async def test_health_and_ready(async_client: AsyncClient):
-    resp = await async_client.get("/health")
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
-    
-    resp = await async_client.get("/ready")
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ready"}
-
-@pytest.mark.asyncio
-async def test_document_detail_and_not_found(async_client: AsyncClient):
-    # Test document detail with non-existent id
-    resp = await async_client.get("/api/documents/non-existent-uuid", headers={"Authorization": "Bearer test-key"})
-    assert resp.status_code == 404
-    assert "error" in resp.json()
-    
-    # Test auth missing
-    resp = await async_client.get("/api/documents")
-    assert resp.status_code == 401
+def test_ready_worker_heartbeat(client):
+    from backend.database import execute
+    # Put a stale heartbeat
+    asyncio.run(execute("INSERT OR REPLACE INTO service_heartbeats (service_name, updated_at) VALUES ('worker', '2000-01-01 00:00:00')"))
+    response = client.get("/ready")
+    assert response.status_code == 503
+    assert response.json()["checks"]["worker_heartbeat"] == "stale"

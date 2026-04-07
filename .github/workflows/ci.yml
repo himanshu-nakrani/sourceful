@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Frontend lint
+        run: npm run lint
+
+      - name: Frontend build
+        run: npm run build
+
+      - name: Backend tests
+        run: pytest -q backend/tests
+
+      - name: Validate Compose
+        run: docker compose config
+
+      - name: Build API image
+        run: docker build -f backend/Dockerfile .
+
+      - name: Build web image
+        run: docker build -f Dockerfile .

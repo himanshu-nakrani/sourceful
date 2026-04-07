@@ -9,7 +9,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:backend": "pytest -q backend/tests",
+    "check": "npm run lint && npm run build"
   },
   "dependencies": {
     "lucide-react": "^1.7.0",

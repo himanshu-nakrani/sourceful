@@ -1,8 +1,24 @@
-"""Sentence-aware character-based chunking with overlap and metadata."""
+"""Chunk extracted sections while keeping chunk/page metadata."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from backend.services.extract import ExtractedSection
 
 
-def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
-    """Split text into overlapping chunks, preferring sentence boundaries."""
+@dataclass(slots=True)
+class ChunkPayload:
+    chunk_index: int
+    content: str
+    page_number: int | None = None
+
+
+SENTENCE_ENDINGS = {".", "!", "?", "\n"}
+
+
+
+def _chunk_one(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     text = text.strip()
     if not text:
         return []
@@ -10,36 +26,44 @@ def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     if chunk_overlap >= chunk_size:
         chunk_overlap = max(0, chunk_size // 5)
 
-    # Sentence boundary characters
-    sentence_endings = {'.', '!', '?', '\n'}
-
     chunks: list[str] = []
-    i = 0
-    n = len(text)
-
-    while i < n:
-        end = min(i + chunk_size, n)
-
-        # If we're not at the end, try to find a sentence boundary to break at
-        if end < n:
-            # Look backwards from `end` for a sentence boundary (within last 20% of chunk)
-            search_start = max(i + int(chunk_size * 0.8), i)
+    index = 0
+    length = len(text)
+    while index < length:
+        end = min(index + chunk_size, length)
+        if end < length:
+            search_start = max(index + int(chunk_size * 0.8), index)
             best_break = end
-            for j in range(end - 1, search_start - 1, -1):
-                if text[j] in sentence_endings:
-                    best_break = j + 1
+            for cursor in range(end - 1, search_start - 1, -1):
+                if text[cursor] in SENTENCE_ENDINGS:
+                    best_break = cursor + 1
                     break
             end = best_break
 
-        piece = text[i:end].strip()
+        piece = text[index:end].strip()
         if piece:
             chunks.append(piece)
 
-        if end >= n:
+        if end >= length:
             break
 
-        # Move forward by (chunk_end - overlap), but at least 1 character
-        step = max(1, (end - i) - chunk_overlap)
-        i += step
+        index += max(1, (end - index) - chunk_overlap)
 
     return chunks
+
+
+
+def chunk_sections(sections: list[ExtractedSection], chunk_size: int, chunk_overlap: int) -> list[ChunkPayload]:
+    payloads: list[ChunkPayload] = []
+    chunk_index = 0
+    for section in sections:
+        for piece in _chunk_one(section.text, chunk_size, chunk_overlap):
+            payloads.append(
+                ChunkPayload(
+                    chunk_index=chunk_index,
+                    content=piece,
+                    page_number=section.page_number,
+                )
+            )
+            chunk_index += 1
+    return payloads

@@ -1,16 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronDown, ChevronUp, BookOpen } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronUp } from "lucide-react";
+import type { Citation } from "../lib/api";
 
 interface SourceCardProps {
-  chunks: string[];
+  sources: Citation[];
 }
 
-export default function SourceCard({ chunks }: SourceCardProps) {
+export default function SourceCard({ sources }: SourceCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  if (!chunks.length) return null;
+  if (!sources.length) return null;
 
   return (
     <div
@@ -22,21 +23,14 @@ export default function SourceCard({ chunks }: SourceCardProps) {
       }}
     >
       <button
-        onClick={() => setExpanded(!expanded)}
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
         className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
-        style={{
-          background: expanded ? "var(--bg-tertiary)" : "transparent",
-        }}
-        onMouseEnter={(e) => {
-          if (!expanded) e.currentTarget.style.background = "var(--bg-surface-hover)";
-        }}
-        onMouseLeave={(e) => {
-          if (!expanded) e.currentTarget.style.background = "transparent";
-        }}
+        style={{ background: expanded ? "var(--bg-tertiary)" : "transparent" }}
       >
         <BookOpen size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
         <span className="text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
-          {chunks.length} source{chunks.length !== 1 ? "s" : ""} retrieved
+          {sources.length} source{sources.length !== 1 ? "s" : ""} retrieved
         </span>
         <div className="flex-1" />
         {expanded ? (
@@ -47,39 +41,33 @@ export default function SourceCard({ chunks }: SourceCardProps) {
       </button>
 
       {expanded && (
-        <div
-          className="px-4 pb-3 flex flex-col gap-2"
-          style={{ borderTop: "1px solid var(--border)" }}
-        >
-          {chunks.map((chunk, i) => (
+        <div className="px-4 pb-3 flex flex-col gap-3" style={{ borderTop: "1px solid var(--border)" }}>
+          {sources.map((source, index) => (
             <div
-              key={i}
-              className="relative rounded-lg px-3 py-2.5 mt-2"
+              key={source.chunk_id}
+              className="rounded-lg px-3 py-3 mt-3"
               style={{
                 background: "var(--bg-tertiary)",
                 border: "1px solid var(--border)",
               }}
             >
-              <span
-                className="absolute -top-2 left-3 px-1.5 py-0 text-[0.625rem] font-bold rounded"
-                style={{
-                  background: "var(--accent)",
-                  color: "#fff",
-                }}
-              >
-                [{i + 1}]
-              </span>
-              <p
-                className="text-xs leading-relaxed"
-                style={{
-                  color: "var(--text-secondary)",
-                  display: "-webkit-box",
-                  WebkitLineClamp: 6,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
-                }}
-              >
-                {chunk}
+              <div className="flex items-center gap-2 mb-2 text-[11px] uppercase tracking-wider">
+                <span
+                  className="px-1.5 py-0.5 rounded"
+                  style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+                >
+                  [{index + 1}]
+                </span>
+                <span style={{ color: "var(--text-tertiary)" }}>{source.chunk_id}</span>
+                {source.page_number ? (
+                  <span style={{ color: "var(--text-tertiary)" }}>Page {source.page_number}</span>
+                ) : null}
+                <span style={{ color: "var(--text-tertiary)" }}>
+                  {Math.max(0, Math.min(100, Math.round(source.score * 100)))}% match
+                </span>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                {source.excerpt}
               </p>
             </div>
           ))}

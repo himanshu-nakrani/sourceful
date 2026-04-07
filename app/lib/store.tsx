@@ -3,32 +3,25 @@
 import React, {
   createContext,
   useContext,
-  useReducer,
-  useCallback,
   useEffect,
-  type ReactNode,
+  useReducer,
   type Dispatch,
+  type ReactNode,
 } from "react";
-import type { DocumentInfo, ConversationListItem, Message, Provider } from "./api";
-
-// ---------------------------------------------------------------------------
-// State shape
-// ---------------------------------------------------------------------------
+import type { Provider } from "./api";
 
 export interface AppSettings {
   provider: Provider;
   chatModel: string;
   embeddingModel: string;
-  apiKey: string;
+  providerApiKey: string;
+  clientSessionId: string;
 }
 
 export interface AppState {
   settings: AppSettings;
-  documents: DocumentInfo[];
   activeDocumentId: string | null;
-  conversations: ConversationListItem[];
   activeConversationId: string | null;
-  messages: Message[];
   sidebarOpen: boolean;
   settingsOpen: boolean;
 }
@@ -43,152 +36,132 @@ const DEFAULT_EMBEDDING: Record<Provider, string> = {
   gemini: "models/gemini-embedding-001",
 };
 
+function generateClientSessionId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `rag-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function loadSettings(): AppSettings {
   if (typeof window === "undefined") {
     return {
       provider: "openai",
       chatModel: DEFAULT_CHAT.openai,
       embeddingModel: DEFAULT_EMBEDDING.openai,
-      apiKey: "",
+      providerApiKey: "",
+      clientSessionId: "",
     };
   }
+
+  let provider: Provider = "openai";
+  let chatModel = DEFAULT_CHAT.openai;
+  let embeddingModel = DEFAULT_EMBEDDING.openai;
   try {
-    const raw = localStorage.getItem("rag-settings");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const prov: Provider = parsed.provider === "gemini" ? "gemini" : "openai";
-      let embeddingModel = parsed.embeddingModel ?? DEFAULT_EMBEDDING[prov];
-      // Migration for deprecated models
-      if (embeddingModel === "models/text-embedding-004") {
-        embeddingModel = DEFAULT_EMBEDDING[prov];
-      }
-      return {
-        provider: prov,
-        chatModel: parsed.chatModel ?? DEFAULT_CHAT[prov],
-        embeddingModel,
-        apiKey: parsed.apiKey ?? "",
-      };
+    const rawPrefs = localStorage.getItem("rag-prefs");
+    if (rawPrefs) {
+      const parsed = JSON.parse(rawPrefs) as Partial<AppSettings>;
+      provider = parsed.provider === "gemini" ? "gemini" : "openai";
+      chatModel = parsed.chatModel ?? DEFAULT_CHAT[provider];
+      embeddingModel = parsed.embeddingModel ?? DEFAULT_EMBEDDING[provider];
     }
-  } catch { /* use defaults */ }
+  } catch {
+    // Use defaults.
+  }
+
+  let providerApiKey = "";
+  let clientSessionId = "";
+  try {
+    const rawSecrets = sessionStorage.getItem("rag-session");
+    if (rawSecrets) {
+      const parsed = JSON.parse(rawSecrets) as Partial<AppSettings>;
+      providerApiKey = parsed.providerApiKey ?? "";
+      clientSessionId = parsed.clientSessionId ?? "";
+    }
+  } catch {
+    // Use defaults.
+  }
+
+  if (!clientSessionId) {
+    clientSessionId = generateClientSessionId();
+    sessionStorage.setItem(
+      "rag-session",
+      JSON.stringify({ providerApiKey, clientSessionId })
+    );
+  }
+
   return {
-    provider: "openai",
-    chatModel: DEFAULT_CHAT.openai,
-    embeddingModel: DEFAULT_EMBEDDING.openai,
-    apiKey: "",
+    provider,
+    chatModel,
+    embeddingModel,
+    providerApiKey,
+    clientSessionId,
   };
 }
 
 const initialState: AppState = {
   settings: loadSettings(),
-  documents: [],
   activeDocumentId: null,
-  conversations: [],
   activeConversationId: null,
-  messages: [],
   sidebarOpen: true,
   settingsOpen: false,
 };
 
-// ---------------------------------------------------------------------------
-// Actions
-// ---------------------------------------------------------------------------
-
-export type Action =
+type Action =
   | { type: "SET_SETTINGS"; payload: Partial<AppSettings> }
   | { type: "SET_PROVIDER"; payload: Provider }
-  | { type: "SET_DOCUMENTS"; payload: DocumentInfo[] }
-  | { type: "UPDATE_DOCUMENT"; payload: DocumentInfo }
-  | { type: "REMOVE_DOCUMENT"; payload: string }
   | { type: "SET_ACTIVE_DOCUMENT"; payload: string | null }
-  | { type: "SET_CONVERSATIONS"; payload: ConversationListItem[] }
   | { type: "SET_ACTIVE_CONVERSATION"; payload: string | null }
-  | { type: "SET_MESSAGES"; payload: Message[] }
-  | { type: "ADD_MESSAGE"; payload: Message }
-  | { type: "APPEND_TO_LAST_MESSAGE"; payload: string }
-  | { type: "UPDATE_LAST_MESSAGE_SOURCES"; payload: string[] }
   | { type: "TOGGLE_SIDEBAR" }
   | { type: "SET_SIDEBAR"; payload: boolean }
   | { type: "TOGGLE_SETTINGS" }
   | { type: "SET_SETTINGS_OPEN"; payload: boolean };
 
+function persistSettings(next: AppSettings): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    "rag-prefs",
+    JSON.stringify({
+      provider: next.provider,
+      chatModel: next.chatModel,
+      embeddingModel: next.embeddingModel,
+    })
+  );
+  sessionStorage.setItem(
+    "rag-session",
+    JSON.stringify({
+      providerApiKey: next.providerApiKey,
+      clientSessionId: next.clientSessionId || generateClientSessionId(),
+    })
+  );
+}
+
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "SET_SETTINGS": {
       const next = { ...state.settings, ...action.payload };
-      if (typeof window !== "undefined") {
-        localStorage.setItem("rag-settings", JSON.stringify(next));
-      }
+      persistSettings(next);
       return { ...state, settings: next };
     }
     case "SET_PROVIDER": {
-      const p = action.payload;
-      const next: AppSettings = {
+      const provider = action.payload;
+      const next = {
         ...state.settings,
-        provider: p,
-        chatModel: DEFAULT_CHAT[p],
-        embeddingModel: DEFAULT_EMBEDDING[p],
+        provider,
+        chatModel: DEFAULT_CHAT[provider],
+        embeddingModel: DEFAULT_EMBEDDING[provider],
       };
-      if (typeof window !== "undefined") {
-        localStorage.setItem("rag-settings", JSON.stringify(next));
-      }
+      persistSettings(next);
       return { ...state, settings: next };
     }
-    case "SET_DOCUMENTS":
-      return { ...state, documents: action.payload };
-    case "UPDATE_DOCUMENT":
-      return {
-        ...state,
-        documents: state.documents.map((d) =>
-          d.id === action.payload.id ? action.payload : d
-        ),
-      };
-    case "REMOVE_DOCUMENT":
-      return {
-        ...state,
-        documents: state.documents.filter((d) => d.id !== action.payload),
-        activeDocumentId:
-          state.activeDocumentId === action.payload
-            ? null
-            : state.activeDocumentId,
-        activeConversationId:
-          state.activeDocumentId === action.payload
-            ? null
-            : state.activeConversationId,
-        messages:
-          state.activeDocumentId === action.payload ? [] : state.messages,
-      };
     case "SET_ACTIVE_DOCUMENT":
       return {
         ...state,
         activeDocumentId: action.payload,
-        conversations: [],
         activeConversationId: null,
-        messages: [],
       };
-    case "SET_CONVERSATIONS":
-      return { ...state, conversations: action.payload };
     case "SET_ACTIVE_CONVERSATION":
       return { ...state, activeConversationId: action.payload };
-    case "SET_MESSAGES":
-      return { ...state, messages: action.payload };
-    case "ADD_MESSAGE":
-      return { ...state, messages: [...state.messages, action.payload] };
-    case "APPEND_TO_LAST_MESSAGE": {
-      const msgs = [...state.messages];
-      const last = msgs[msgs.length - 1];
-      if (last && last.role === "assistant") {
-        msgs[msgs.length - 1] = { ...last, content: last.content + action.payload };
-      }
-      return { ...state, messages: msgs };
-    }
-    case "UPDATE_LAST_MESSAGE_SOURCES": {
-      const msgs = [...state.messages];
-      const last = msgs[msgs.length - 1];
-      if (last && last.role === "assistant") {
-        msgs[msgs.length - 1] = { ...last, sources: action.payload };
-      }
-      return { ...state, messages: msgs };
-    }
     case "TOGGLE_SIDEBAR":
       return { ...state, sidebarOpen: !state.sidebarOpen };
     case "SET_SIDEBAR":
@@ -202,25 +175,19 @@ function reducer(state: AppState, action: Action): AppState {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Context
-// ---------------------------------------------------------------------------
-
 const StoreContext = createContext<{
   state: AppState;
   dispatch: Dispatch<Action>;
 }>({
   state: initialState,
-  dispatch: () => {},
+  dispatch: () => undefined,
 });
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Hydrate settings from localStorage on mount
   useEffect(() => {
-    const settings = loadSettings();
-    dispatch({ type: "SET_SETTINGS", payload: settings });
+    dispatch({ type: "SET_SETTINGS", payload: loadSettings() });
   }, []);
 
   return (

@@ -1,174 +1,96 @@
-"""Document ingestion endpoint with background processing."""
+"""Document ingestion endpoints backed by durable jobs."""
 
-import asyncio
-import logging
-import uuid
-from pathlib import PurePath
+from __future__ import annotations
+
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, Header, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
-from backend.database import execute
-from backend.services.chunking import chunk_text
-from backend.services.embeddings import embed_texts_gemini_sync, embed_texts_openai
-from backend.services.extract import extract_text
-from backend.services import vectorstore
+from backend.errors import api_error_response
+from backend.models import IngestResponse
+from backend.routers.deps import RequestContext, get_request_context, require_provider_api_key
+from backend.services.extract import FileValidationError, validate_upload
+from backend.services.jobs import enqueue_ingest_job
 from backend.settings import settings
 
-logger = logging.getLogger("ragapp")
 router = APIRouter()
 
-MAX_MODEL_LEN = 128
 
-
-def _parse_provider(raw: str) -> str | None:
-    if raw in ("openai", "gemini"):
-        return raw
-    return None
-
-
-async def _process_document(
-    document_id: str,
-    provider: str,
-    api_key: str,
-    emb_model: str,
-    filename: str,
-    raw: bytes,
-) -> None:
-    """Background task: extract, chunk, embed, store."""
-    try:
-        text = extract_text(filename=filename, raw=raw)
-
-        chunks = chunk_text(
-            text,
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-        )
-        if not chunks:
-            await execute(
-                "UPDATE documents SET status = 'error', error_message = ? WHERE id = ?",
-                ("No text content to index after processing.", document_id),
-            )
-            return
-
-        if len(chunks) > settings.max_chunks:
-            await execute(
-                "UPDATE documents SET status = 'error', error_message = ? WHERE id = ?",
-                (
-                    f"Document splits into too many chunks ({len(chunks)}). "
-                    f"Maximum is {settings.max_chunks}. Try a smaller file or increase CHUNK_SIZE.",
-                    document_id,
-                ),
-            )
-            return
-
-        # Embed
-        if provider == "openai":
-            embeddings = await embed_texts_openai(api_key, emb_model, chunks)
-        else:
-            embeddings = await asyncio.to_thread(
-                embed_texts_gemini_sync,
-                api_key,
-                emb_model,
-                chunks,
-            )
-
-        # Store vectors
-        await vectorstore.add_chunks(document_id, chunks, embeddings)
-
-        # Mark ready
-        await execute(
-            "UPDATE documents SET status = 'ready', chunk_count = ? WHERE id = ?",
-            (len(chunks), document_id),
-        )
-        logger.info("Document %s indexed: %d chunks", document_id, len(chunks))
-
-    except Exception as e:
-        logger.exception("Background indexing failed for %s", document_id)
-        await execute(
-            "UPDATE documents SET status = 'error', error_message = ? WHERE id = ?",
-            (str(e)[:500], document_id),
-        )
-
-
-@router.post("/ingest", response_model=None)
+@router.post("/ingest", response_model=IngestResponse, status_code=202)
 async def ingest(
+    request: Request,
     provider: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     embedding_model: str = Form(""),
-    authorization: Annotated[str | None, Header()] = None,
+    context: RequestContext = Depends(get_request_context),
+    provider_api_key: str = Depends(require_provider_api_key),
 ):
-    # ---- Auth ----
-    if not authorization or not authorization.startswith("Bearer "):
-        return JSONResponse(
-            status_code=401,
-            content={"error": "Missing or invalid Authorization header (use Bearer token)."},
-        )
-    api_key = authorization.removeprefix("Bearer ").strip()
-    if not api_key:
-        return JSONResponse(status_code=401, content={"error": "Missing API key."})
-
-    # ---- Validate provider ----
-    p = _parse_provider(provider)
-    if not p:
-        return JSONResponse(
+    if provider not in {"openai", "gemini"}:
+        return api_error_response(
+            request=request,
             status_code=400,
-            content={"error": 'Invalid or missing provider (use "openai" or "gemini").'},
+            error="Invalid provider.",
+            code="INVALID_PROVIDER",
+            details={"provider": provider},
         )
-
-    # ---- Validate file ----
     if not file.filename:
-        return JSONResponse(status_code=400, content={"error": "A document file is required."})
-
-    suffix = PurePath(file.filename.lower()).suffix
-    if suffix not in settings.allowed_extensions:
-        return JSONResponse(
+        return api_error_response(
+            request=request,
             status_code=400,
-            content={"error": f"Unsupported file type: {suffix}. Allowed: {settings.allowed_file_types}"},
+            error="A document file is required.",
+            code="MISSING_FILE",
         )
 
-    # ---- Validate embedding model ----
-    emb = embedding_model.strip()
-    if len(emb) > MAX_MODEL_LEN:
-        return JSONResponse(
-            status_code=400,
-            content={"error": f"Embedding model id is too long (max {MAX_MODEL_LEN} characters)."},
-        )
-    if not emb:
-        emb = (
+    model_name = embedding_model.strip()
+    if not model_name:
+        model_name = (
             settings.default_embedding_model_openai
-            if p == "openai"
+            if provider == "openai"
             else settings.default_embedding_model_gemini
         )
-
-    # ---- Read file ----
-    max_bytes = settings.max_document_bytes
-    raw = await file.read()
-    if len(raw) > max_bytes:
-        return JSONResponse(
-            status_code=413,
-            content={"error": f"File too large (max {max_bytes // 1024 // 1024} MB)."},
+    if len(model_name) > settings.max_model_name_length:
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error="Embedding model id is too long.",
+            code="INVALID_EMBEDDING_MODEL",
         )
 
-    # ---- Create document record ----
-    document_id = str(uuid.uuid4())
-    await execute(
-        "INSERT INTO documents (id, filename, provider, embedding_model, file_size, status) "
-        "VALUES (?, ?, ?, ?, ?, 'processing')",
-        (document_id, file.filename, p, emb, len(raw)),
-    )
+    raw = await file.read()
+    if len(raw) > settings.max_document_bytes:
+        return api_error_response(
+            request=request,
+            status_code=413,
+            error="File too large.",
+            code="FILE_TOO_LARGE",
+            details={"max_document_bytes": settings.max_document_bytes},
+        )
 
-    # ---- Launch background processing ----
-    asyncio.create_task(
-        _process_document(document_id, p, api_key, emb, file.filename, raw)
-    )
+    try:
+        validated = validate_upload(file.filename, raw, file.content_type)
+    except FileValidationError as exc:
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error=str(exc),
+            code="INVALID_FILE",
+        )
 
-    return JSONResponse(
-        status_code=202,
-        content={
-            "document_id": document_id,
-            "status": "processing",
-            "embedding_model": emb,
-        },
+    document, job, deduplicated = await enqueue_ingest_job(
+        owner_id=context.owner_id,
+        provider=provider,
+        embedding_model=model_name,
+        provider_api_key=provider_api_key,
+        filename=file.filename,
+        mime_type=validated.mime_type,
+        checksum=validated.checksum,
+        raw=raw,
+    )
+    status = document.get("status", "queued")
+    return IngestResponse(
+        document_id=document["id"],
+        job_id=job["id"] if job else document.get("current_job_id"),
+        status=status,
+        embedding_model=model_name,
+        deduplicated=deduplicated,
     )

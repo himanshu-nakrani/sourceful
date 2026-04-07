@@ -1,113 +1,159 @@
 """Conversation management endpoints."""
 
+from __future__ import annotations
+
 import json
-import logging
-from fastapi import APIRouter, Header
-from fastapi.responses import JSONResponse
-from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from backend.database import execute, fetch_all, fetch_one
-from backend.models import (
-    ConversationListItem,
-    ConversationListResponse,
-    ConversationResponse,
-    MessageResponse,
-)
-from backend.routers.deps import extract_api_key
+from backend.errors import api_error_response
+from backend.models import Citation, ConversationListItem, ConversationListResponse, ConversationResponse, MessageResponse, UpdateConversationRequest
+from backend.routers.deps import RequestContext, get_request_context
 
-logger = logging.getLogger("ragapp")
 router = APIRouter()
 
 
-
-@router.get("/conversations")
+@router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
-    document_id: str | None = None,
-    authorization: Annotated[str | None, Header()] = None,
+    document_id: str | None = Query(default=None),
+    context: RequestContext = Depends(get_request_context),
 ):
-    key = extract_api_key(authorization)
-    if not key:
-        return JSONResponse(status_code=401, content={"error": "Missing API key."})
-
+    params: tuple = (context.owner_id,)
+    where = "WHERE c.owner_id = ?"
     if document_id:
-        rows = await fetch_all(
-            "SELECT c.id, c.document_id, c.title, c.created_at, c.updated_at, "
-            "(SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) as message_count "
-            "FROM conversations c WHERE c.document_id = ? ORDER BY c.updated_at DESC LIMIT 200",
-            (document_id,),
-        )
-    else:
-        rows = await fetch_all(
-            "SELECT c.id, c.document_id, c.title, c.created_at, c.updated_at, "
-            "(SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) as message_count "
-            "FROM conversations c ORDER BY c.updated_at DESC LIMIT 200"
-        )
+        where += " AND c.document_id = ?"
+        params = (context.owner_id, document_id)
+    rows = await fetch_all(
+        f"""
+        SELECT c.id, c.document_id, c.title, c.created_at, c.updated_at,
+               (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+        FROM conversations c
+        {where}
+        ORDER BY c.updated_at DESC
+        LIMIT 200
+        """,
+        params,
+    )
+    return ConversationListResponse(conversations=[ConversationListItem(**row) for row in rows])
 
-    items = [ConversationListItem(**r) for r in rows]
-    return ConversationListResponse(conversations=items)
 
-
-@router.get("/conversations/{conversation_id}")
+@router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(
     conversation_id: str,
-    authorization: Annotated[str | None, Header()] = None,
+    request: Request,
+    context: RequestContext = Depends(get_request_context),
 ):
-    key = extract_api_key(authorization)
-    if not key:
-        return JSONResponse(status_code=401, content={"error": "Missing API key."})
-
-    conv = await fetch_one(
-        "SELECT id, document_id, title, created_at, updated_at FROM conversations WHERE id = ?",
-        (conversation_id,),
+    conversation = await fetch_one(
+        "SELECT id, document_id, title, created_at, updated_at FROM conversations WHERE id = ? AND owner_id = ?",
+        (conversation_id, context.owner_id),
     )
-    if not conv:
-        return JSONResponse(status_code=404, content={"error": "Conversation not found."})
-
-    msg_rows = await fetch_all(
-        "SELECT id, role, content, sources_json, created_at FROM messages "
-        "WHERE conversation_id = ? ORDER BY created_at ASC",
-        (conversation_id,),
+    if not conversation:
+        return api_error_response(
+            request=request,
+            status_code=404,
+            error="Conversation not found.",
+            code="CONVERSATION_NOT_FOUND",
+            details={"conversation_id": conversation_id},
+        )
+    rows = await fetch_all(
+        "SELECT id, role, content, sources_json, created_at FROM messages WHERE conversation_id = ? AND owner_id = ? ORDER BY created_at ASC",
+        (conversation_id, context.owner_id),
     )
     messages = []
-    for m in msg_rows:
+    for row in rows:
         sources = None
-        if m.get("sources_json"):
-            try:
-                sources = json.loads(m["sources_json"])
-            except (json.JSONDecodeError, TypeError):
-                pass
+        if row.get("sources_json"):
+            sources = [Citation(**item) for item in json.loads(row["sources_json"])]
         messages.append(
             MessageResponse(
-                id=m["id"],
-                role=m["role"],
-                content=m["content"],
+                id=row["id"],
+                role=row["role"],
+                content=row["content"],
                 sources=sources,
-                created_at=m["created_at"],
+                created_at=row["created_at"],
             )
         )
+    return ConversationResponse(**conversation, messages=messages)
 
-    return ConversationResponse(
-        id=conv["id"],
-        document_id=conv["document_id"],
-        title=conv["title"],
-        created_at=conv["created_at"],
-        updated_at=conv["updated_at"],
-        messages=messages,
+
+@router.patch("/conversations/{conversation_id}")
+async def rename_conversation(
+    conversation_id: str,
+    body: UpdateConversationRequest,
+    request: Request,
+    context: RequestContext = Depends(get_request_context),
+):
+    row = await fetch_one("SELECT id FROM conversations WHERE id = ? AND owner_id = ?", (conversation_id, context.owner_id))
+    if not row:
+        return api_error_response(
+            request=request,
+            status_code=404,
+            error="Conversation not found.",
+            code="CONVERSATION_NOT_FOUND",
+            details={"conversation_id": conversation_id},
+        )
+    await execute(
+        "UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+        (body.title.strip(), conversation_id, context.owner_id),
     )
+    return {"status": "updated", "conversation_id": conversation_id, "title": body.title.strip()}
+
+
+@router.get("/conversations/{conversation_id}/export")
+async def export_conversation(
+    conversation_id: str,
+    request: Request,
+    format: str = Query(default="markdown"),
+    context: RequestContext = Depends(get_request_context),
+):
+    conversation = await fetch_one(
+        "SELECT id, title, document_id, created_at, updated_at FROM conversations WHERE id = ? AND owner_id = ?",
+        (conversation_id, context.owner_id),
+    )
+    if not conversation:
+        return api_error_response(
+            request=request,
+            status_code=404,
+            error="Conversation not found.",
+            code="CONVERSATION_NOT_FOUND",
+            details={"conversation_id": conversation_id},
+        )
+    detail = await get_conversation(conversation_id, request, context)
+    if isinstance(detail, JSONResponse):
+        return detail
+    if format == "json":
+        return JSONResponse(content=detail.model_dump(mode="json"))
+
+    lines = [f"# {detail.title}", ""]
+    for message in detail.messages:
+        lines.append(f"## {message.role.capitalize()}")
+        lines.append(message.content)
+        if message.sources:
+            lines.append("")
+            lines.append("Sources:")
+            for source in message.sources:
+                page = f" page {source.page_number}" if source.page_number else ""
+                lines.append(f"- {source.chunk_id}{page}: {source.excerpt}")
+        lines.append("")
+    return PlainTextResponse("\n".join(lines))
 
 
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation(
     conversation_id: str,
-    authorization: Annotated[str | None, Header()] = None,
+    request: Request,
+    context: RequestContext = Depends(get_request_context),
 ):
-    key = extract_api_key(authorization)
-    if not key:
-        return JSONResponse(status_code=401, content={"error": "Missing API key."})
-
-    conv = await fetch_one("SELECT id FROM conversations WHERE id = ?", (conversation_id,))
-    if not conv:
-        return JSONResponse(status_code=404, content={"error": "Conversation not found."})
-
-    await execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+    row = await fetch_one("SELECT id FROM conversations WHERE id = ? AND owner_id = ?", (conversation_id, context.owner_id))
+    if not row:
+        return api_error_response(
+            request=request,
+            status_code=404,
+            error="Conversation not found.",
+            code="CONVERSATION_NOT_FOUND",
+            details={"conversation_id": conversation_id},
+        )
+    await execute("DELETE FROM conversations WHERE id = ? AND owner_id = ?", (conversation_id, context.owner_id))
     return {"status": "deleted", "conversation_id": conversation_id}

@@ -1,53 +1,37 @@
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
-from backend.database import init_db, close_db
-from backend.middleware import (
-    RateLimitMiddleware,
-    RequestIdMiddleware,
-    RequestLoggingMiddleware,
-)
+from backend.database import close_db, fetch_one, init_db, record_heartbeat, require_current_schema
+from backend.errors import api_error_payload
+from backend.logging_utils import configure_logging
+from backend.metrics import metrics
+from backend.middleware import RateLimitMiddleware, RequestIdMiddleware, RequestLoggingMiddleware
 from backend.routers import chat, conversations, documents, ingest
+from backend.routers import jobs as jobs_router
 from backend.settings import settings
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+configure_logging(settings.log_level)
 logger = logging.getLogger("ragapp")
 
 
-# ---------------------------------------------------------------------------
-# Application lifecycle
-# ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Document RAG API …")
     await init_db()
-    logger.info("Database ready.")
+    await require_current_schema()
+    await record_heartbeat("api")
+    logger.info("api_started")
     yield
     await close_db()
-    logger.info("Shutdown complete.")
+    logger.info("api_stopped")
 
 
-app = FastAPI(
-    title="Document RAG API",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-
-# ---------------------------------------------------------------------------
-# Middleware (outermost added last)
-# ---------------------------------------------------------------------------
+app = FastAPI(title="Document RAG API", version="2.0.0", lifespan=lifespan)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware, rpm=settings.rate_limit_rpm)
 app.add_middleware(RequestIdMiddleware)
@@ -60,22 +44,58 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------------------------
-# Global exception handler
-# ---------------------------------------------------------------------------
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     request_id = getattr(request.state, "request_id", None)
-    logger.exception("Unhandled error [%s]: %s", request_id, exc)
+    logger.exception("unhandled_exception", extra={"request_id": request_id})
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error.", "request_id": request_id},
+        content=api_error_payload(
+            error="Internal server error.",
+            code="INTERNAL_ERROR",
+            request_id=request_id,
+        ),
     )
 
 
-# ---------------------------------------------------------------------------
-# Health endpoints
-# ---------------------------------------------------------------------------
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    request_id = getattr(request.state, "request_id", None)
+    detail = exc.detail
+    if isinstance(detail, dict):
+        payload = {
+            "error": detail.get("error", "Request failed."),
+            "code": detail.get("code", "HTTP_ERROR"),
+            "request_id": request_id,
+        }
+        if detail.get("details") is not None:
+            payload["details"] = detail["details"]
+        return JSONResponse(status_code=exc.status_code, content=payload, headers=exc.headers)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=api_error_payload(
+            error=str(detail),
+            code="HTTP_ERROR",
+            request_id=request_id,
+        ),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    request_id = getattr(request.state, "request_id", None)
+    return JSONResponse(
+        status_code=422,
+        content=api_error_payload(
+            error="Request validation failed.",
+            code="VALIDATION_ERROR",
+            request_id=request_id,
+            details=exc.errors(),
+        ),
+    )
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -83,19 +103,74 @@ async def health():
 
 @app.get("/ready")
 async def ready():
-    from backend.database import get_db
     try:
-        db = await get_db()
-        await db.execute("SELECT 1")
-        return {"status": "ready"}
-    except Exception:
-        return JSONResponse(status_code=503, content={"status": "not ready"})
+        await require_current_schema()
+        await fetch_one("SELECT 1 AS ok")
+        worker = await fetch_one("SELECT updated_at FROM service_heartbeats WHERE service_name = ?", ("worker",))
+        if not worker:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not ready",
+                    "reason": "worker heartbeat missing",
+                    "checks": {
+                        "schema": "ok",
+                        "database": "ok",
+                        "worker_heartbeat": "missing",
+                    },
+                },
+            )
+        raw_updated = worker["updated_at"]
+        if isinstance(raw_updated, str):
+            updated_at = datetime.fromisoformat(raw_updated.replace(" ", "T"))
+        else:
+            updated_at = raw_updated
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - updated_at).total_seconds()
+        if age > settings.worker_heartbeat_ttl_seconds:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not ready",
+                    "reason": "worker heartbeat stale",
+                    "checks": {
+                        "schema": "ok",
+                        "database": "ok",
+                        "worker_heartbeat": "stale",
+                    },
+                },
+            )
+        return {
+            "status": "ready",
+            "checks": {
+                "schema": "ok",
+                "database": "ok",
+                "worker_heartbeat": "ok",
+            },
+        }
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not ready",
+                "reason": str(exc),
+                "checks": {
+                    "schema": "error",
+                    "database": "error",
+                    "worker_heartbeat": "unknown",
+                },
+            },
+        )
 
 
-# ---------------------------------------------------------------------------
-# Routers
-# ---------------------------------------------------------------------------
+@app.get("/metrics")
+async def metrics_endpoint():
+    return PlainTextResponse(metrics.render_prometheus())
+
+
 app.include_router(chat.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
+app.include_router(jobs_router.router, prefix="/api")

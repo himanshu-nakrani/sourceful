@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
 import aiosqlite
+import logging # Added logging
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from backend.migrations import migration_statements, schema_version
 from backend.settings import settings
 
+logger = logging.getLogger("ragapp.database") # Added logger
 _pg_pool: AsyncConnectionPool | None = None
 _sqlite: aiosqlite.Connection | None = None
+_init_lock = asyncio.Lock() # Added lock
 
 
 def _sql(query: str) -> str:
@@ -24,40 +28,65 @@ def _sql(query: str) -> str:
 
 async def init_db() -> None:
     global _pg_pool, _sqlite
-    if settings.using_postgres:
-        if _pg_pool is not None:
+    async with _init_lock:
+        if settings.using_postgres:
+            if _pg_pool is not None:
+                return
+            try:
+                logger.info("Initializing Postgres connection pool...")
+                _pg_pool = AsyncConnectionPool(
+                    conninfo=settings.database_url,
+                    min_size=1,
+                    max_size=8,
+                    kwargs={"row_factory": dict_row, "autocommit": True},
+                    open=False,
+                )
+                await _pg_pool.open()
+                await _pg_pool.wait()
+                
+                async with _pg_pool.connection() as conn:
+                    async with conn.cursor() as cur:
+                        logger.info("Running database migrations...")
+                        for statement in migration_statements():
+                            try:
+                                await cur.execute(statement)
+                            except Exception as e:
+                                logger.error(f"Migration statement failed: {statement[:100]}... Error: {e}")
+                                raise
+                        await _apply_postgres_v2_migration(cur)
+                        await _apply_postgres_v3_migration(cur)
+                logger.info("Postgres initialized.")
+                return
+            except Exception as e:
+                logger.exception("Database initialization failed (Postgres)")
+                if _pg_pool:
+                    await _pg_pool.close()
+                    _pg_pool = None
+                raise
+
+        if _sqlite is not None:
             return
-        _pg_pool = AsyncConnectionPool(
-            conninfo=settings.database_url,
-            min_size=1,
-            max_size=8,
-            kwargs={"row_factory": dict_row, "autocommit": True},
-            open=False,
-        )
-        await _pg_pool.open()
-        await _pg_pool.wait()
-        async with _pg_pool.connection() as conn:
-            async with conn.cursor() as cur:
-                for statement in migration_statements():
-                    await cur.execute(statement)
-                await _apply_postgres_v2_migration(cur)
-                await _apply_postgres_v3_migration(cur)
-        return
 
-    if _sqlite is not None:
-        return
-
-    path = Path(settings.database_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _sqlite = await aiosqlite.connect(str(path))
-    _sqlite.row_factory = aiosqlite.Row
-    await _sqlite.execute("PRAGMA journal_mode=WAL")
-    await _sqlite.execute("PRAGMA foreign_keys=ON")
-    for statement in migration_statements():
-        await _sqlite.execute(statement)
-    await _apply_sqlite_v2_migration(_sqlite)
-    await _apply_sqlite_v3_migration(_sqlite)
-    await _sqlite.commit()
+        try:
+            logger.info("Initializing SQLite database...")
+            path = Path(settings.database_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _sqlite = await aiosqlite.connect(str(path))
+            _sqlite.row_factory = aiosqlite.Row
+            await _sqlite.execute("PRAGMA journal_mode=WAL")
+            await _sqlite.execute("PRAGMA foreign_keys=ON")
+            for statement in migration_statements():
+                await _sqlite.execute(statement)
+            await _apply_sqlite_v2_migration(_sqlite)
+            await _apply_sqlite_v3_migration(_sqlite)
+            await _sqlite.commit()
+            logger.info("SQLite initialized.")
+        except Exception:
+            logger.exception("Database initialization failed (SQLite)")
+            if _sqlite:
+                await _sqlite.close()
+                _sqlite = None
+            raise
 
 
 async def _apply_postgres_v2_migration(cur) -> None:

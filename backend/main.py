@@ -22,13 +22,19 @@ logger = logging.getLogger("ragapp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
-    await require_current_schema()
-    await record_heartbeat("api")
-    logger.info("api_started")
-    yield
-    await close_db()
-    logger.info("api_stopped")
+    try:
+        logger.info("api_starting")
+        await init_db()
+        await require_current_schema()
+        await record_heartbeat("api")
+        logger.info("api_started")
+        yield
+    except Exception:
+        logger.exception("api_startup_failed")
+        raise
+    finally:
+        await close_db()
+        logger.info("api_stopped")
 
 
 app = FastAPI(title="Document RAG API", version="2.0.0", lifespan=lifespan)

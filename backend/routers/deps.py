@@ -69,20 +69,34 @@ def require_provider_api_key(x_provider_api_key: str | None = Header(default=Non
 
 
 async def require_authenticated_context(
-    context: RequestContext = Depends(get_request_context),
+    request: Request,
 ) -> RequestContext:
-    if not context.is_authenticated or not context.user_id:
+    session_token = request.cookies.get(settings.auth_cookie_name)
+    if not session_token:
         raise HTTPException(
             status_code=401,
             detail={"error": "Authentication required.", "code": "AUTH_REQUIRED"},
         )
-    return context
+    user = await get_user_from_session(session_token)
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Authentication required.", "code": "AUTH_REQUIRED"},
+        )
+    return RequestContext(
+        owner_id=f"user:{user['id']}",
+        request_id=getattr(request.state, "request_id", "unknown"),
+        client_ip=request.client.host if request.client else "unknown",
+        user_id=user["id"],
+        role=user.get("role", "user"),
+        is_authenticated=True,
+    )
 
 
 async def require_admin_context(
-    context: RequestContext = Depends(get_request_context),
+    context: RequestContext = Depends(require_authenticated_context),
 ) -> RequestContext:
-    if not context.is_authenticated or context.role != "admin":
+    if context.role != "admin":
         raise HTTPException(
             status_code=403,
             detail={"error": "Admin access required.", "code": "ADMIN_REQUIRED"},

@@ -17,16 +17,14 @@ A self-hostable document question-answering app with a Next.js frontend, FastAPI
 - SQLite remains available as a local-dev fallback when `DATABASE_URL` is not set.
 
 ## Auth Model
-The app supports two modes:
+The app uses two request headers:
 
-- Cookie-based optional login (`/api/auth/signup`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`).
-- Legacy anonymous mode with `X-Client-Session` for session-scoped data.
+- `X-Provider-Api-Key: <OpenAI or Gemini key>`
+  Required for ingest, reprocess, and chat because the app is BYOK.
+- `X-Client-Session: <stable client id>`
+  Used to isolate data between browser sessions in self-hosted deployments.
 
-For BYOK provider calls, `X-Provider-Api-Key: <OpenAI or Gemini key>` is still required for ingest, reprocess, and chat.
-
-Admin user management endpoints:
-- `GET /api/users`
-- `PATCH /api/users/{user_id}`
+The frontend now generates and stores the client session id automatically.
 
 ## Main API Endpoints
 - `POST /api/ingest`

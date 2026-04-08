@@ -46,7 +46,6 @@ def test_admin_user_list_and_update(client):
     member = second.json()
     client.post("/api/auth/logout")
 
-    # Promote admin directly for test setup.
     from backend.database import execute
     import asyncio
 

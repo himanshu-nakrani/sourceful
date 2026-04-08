@@ -100,12 +100,12 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 items-stretch">
                 <input
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="Email"
-                  className="rounded-lg px-3 py-2 text-sm outline-none"
+                  className="rounded-lg px-3 py-2 text-sm outline-none w-full min-w-0 h-11"
                   style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
                 />
                 <input
@@ -113,12 +113,12 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Password"
-                  className="rounded-lg px-3 py-2 text-sm outline-none"
+                  className="rounded-lg px-3 py-2 text-sm outline-none w-full min-w-0 h-11"
                   style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
                 />
                 <button
                   type="button"
-                  className="px-3 py-2 rounded-lg text-xs"
+                  className="px-4 py-2 rounded-lg text-sm h-11 whitespace-nowrap inline-flex items-center justify-center"
                   style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
                   onClick={async () => {
                     try {
@@ -134,7 +134,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 </button>
                 <button
                   type="button"
-                  className="px-3 py-2 rounded-lg text-xs"
+                  className="px-4 py-2 rounded-lg text-sm h-11 whitespace-nowrap inline-flex items-center justify-center"
                   style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
                   onClick={async () => {
                     try {

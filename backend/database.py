@@ -126,13 +126,10 @@ async def _repair_postgres_legacy_owner_columns(cur) -> None:
             continue
 
         await cur.execute(
-            f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS owner_id TEXT"
-        )
-        await cur.execute(
-            f"UPDATE {table_name} SET owner_id = 'anonymous:legacy' WHERE owner_id IS NULL"
-        )
-        await cur.execute(
-            f"ALTER TABLE {table_name} ALTER COLUMN owner_id SET NOT NULL"
+            f"""
+            ALTER TABLE {table_name} ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'anonymous:legacy';
+            ALTER TABLE {table_name} ALTER COLUMN owner_id DROP DEFAULT;
+            """
         )
         logger.warning("Applied legacy owner_id repair for table=%s", table_name)
 

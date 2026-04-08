@@ -11,11 +11,10 @@ from backend.services.llm import build_rag_prompt, SYSTEM_PROMPT
 
 class TestLLM(unittest.TestCase):
     def test_build_rag_prompt_basic(self):
-        class MockChunk:
-            def __init__(self, c):
-                self.excerpt = c
-                self.page_number = None
-        context_chunks = [MockChunk("Chunk 1 content"), MockChunk("Chunk 2 content")]
+        context_chunks = [
+            MagicMock(excerpt="Chunk 1 content", page_number=None),
+            MagicMock(excerpt="Chunk 2 content", page_number=None)
+        ]
         question = "What is the content?"
 
         messages = build_rag_prompt(context_chunks, question)

@@ -11,7 +11,10 @@ from backend.services.llm import build_rag_prompt, SYSTEM_PROMPT
 
 class TestLLM(unittest.TestCase):
     def test_build_rag_prompt_basic(self):
-        context_chunks = ["Chunk 1 content", "Chunk 2 content"]
+        context_chunks = [
+            MagicMock(excerpt="Chunk 1 content", page_number=None),
+            MagicMock(excerpt="Chunk 2 content", page_number=None)
+        ]
         question = "What is the content?"
 
         messages = build_rag_prompt(context_chunks, question)
@@ -19,12 +22,16 @@ class TestLLM(unittest.TestCase):
         self.assertEqual(len(messages), 3)
         self.assertEqual(messages[0], {"role": "system", "content": SYSTEM_PROMPT})
         self.assertEqual(messages[1]["role"], "user")
-        self.assertIn("[1] Chunk 1 content", messages[1]["content"])
-        self.assertIn("[2] Chunk 2 content", messages[1]["content"])
+        self.assertIn("[1]\nChunk 1 content", messages[1]["content"])
+        self.assertIn("[2]\nChunk 2 content", messages[1]["content"])
         self.assertEqual(messages[2], {"role": "user", "content": question})
 
     def test_build_rag_prompt_with_history(self):
-        context_chunks = ["Context"]
+        class MockChunk:
+            def __init__(self, c):
+                self.excerpt = c
+                self.page_number = None
+        context_chunks = [MockChunk("Context")]
         question = "Current question"
         history = [
             {"role": "user", "content": "Prev question"},
@@ -51,10 +58,10 @@ class TestLLM(unittest.TestCase):
 
         self.assertEqual(len(messages), 3)
         self.assertEqual(messages[1]["role"], "user")
-        self.assertIn("Context excerpts from the document:", messages[1]["content"])
+        self.assertIn("Document excerpts:", messages[1]["content"])
         # If context_chunks is empty, it should probably just have the header or be empty.
         # Current implementation: "\n\n---\n\n".join(...) will be ""
-        self.assertIn("Context excerpts from the document:\n\n", messages[1]["content"])
+        self.assertIn("Document excerpts:\n\n", messages[1]["content"])
 
 if __name__ == "__main__":
     unittest.main()

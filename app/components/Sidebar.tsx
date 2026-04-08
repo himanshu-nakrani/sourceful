@@ -137,12 +137,14 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
     }
   };
 
-  if (!sidebarOpen) return null;
+
 
   return (
     <aside
       style={{ width: "var(--sidebar-width)" }}
-      className="flex flex-col h-full border-r animate-slide-in-left flex-shrink-0"
+      className={`absolute md:relative z-40 bg-[var(--bg-primary)] flex flex-col h-full border-r transition-transform duration-300 flex-shrink-0 ${
+        sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden"
+      }`}
     >
       <div
         className="flex items-center justify-between px-4 flex-shrink-0"

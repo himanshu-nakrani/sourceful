@@ -1,5 +1,4 @@
 import asyncio
-import json
 from unittest.mock import AsyncMock, patch
 
 from backend.database import fetch_one
@@ -53,15 +52,10 @@ def test_full_ingest_chat_and_conversation_flow(client):
     assert status.json()["status"] == "ready"
 
     with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
-        "backend.routers.chat.create_openai_text_stream"
-    ) as mock_openai_stream:
+        "backend.routers.chat.create_openai_text", new_callable=AsyncMock
+    ) as mock_openai_text:
         mock_embed_query.return_value = [0.1] * 3
-
-        async def fake_stream(*args, **kwargs):
-            for token in ["Paris ", "is ", "the capital."]:
-                yield token
-
-        mock_openai_stream.return_value = fake_stream()
+        mock_openai_text.return_value = "Paris is the capital."
 
         chat_response = client.post(
             "/api/chat",
@@ -74,10 +68,11 @@ def test_full_ingest_chat_and_conversation_flow(client):
             },
         )
         assert chat_response.status_code == 200
-        body = chat_response.text
-        assert '"type": "sources"' in body
-        assert '"type": "message_saved"' in body
-        assert '"type": "done"' in body
+        body = chat_response.json()
+        assert body["content"] == "Paris is the capital."
+        assert body["conversation_id"]
+        assert body["message_id"]
+        assert len(body["sources"]) > 0
 
     conversations = client.get(
         "/api/conversations",

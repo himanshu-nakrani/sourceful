@@ -14,12 +14,12 @@ function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden relative w-full" style={{ background: "var(--bg-primary)" }}>
-      {state.sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity"
-          onClick={() => dispatch({ type: "SET_SIDEBAR", payload: false })}
-        />
-      )}
+      <div
+        className={`fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300 ${
+          state.sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+        onClick={() => dispatch({ type: "SET_SIDEBAR", payload: false })}
+      />
       <Sidebar onUploadClick={() => setUploadOpen(true)} />
       <ChatArea onUploadClick={() => setUploadOpen(true)} />
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />

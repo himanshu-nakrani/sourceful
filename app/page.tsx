@@ -13,7 +13,13 @@ function AppShell() {
   const [uploadOpen, setUploadOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-primary)" }}>
+    <div className="flex h-screen overflow-hidden relative w-full" style={{ background: "var(--bg-primary)" }}>
+      {state.sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity"
+          onClick={() => dispatch({ type: "SET_SIDEBAR", payload: false })}
+        />
+      )}
       <Sidebar onUploadClick={() => setUploadOpen(true)} />
       <ChatArea onUploadClick={() => setUploadOpen(true)} />
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />

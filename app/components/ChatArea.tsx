@@ -248,7 +248,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0">
+    <div className="flex-1 flex flex-col h-full w-full min-w-0">
       <div
         className="flex items-center gap-3 px-4 flex-shrink-0"
         style={{
@@ -257,16 +257,14 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           background: "var(--bg-secondary)",
         }}
       >
-        {!sidebarOpen ? (
-          <button
-            type="button"
-            onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
-            className="p-1.5 rounded-md"
-            style={{ color: "var(--text-tertiary)" }}
-          >
-            <PanelLeftOpen size={18} />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
+          className={`p-1.5 rounded-md ${sidebarOpen ? 'md:hidden' : ''}`}
+          style={{ color: "var(--text-tertiary)" }}
+        >
+          <PanelLeftOpen size={18} />
+        </button>
         {activeDocument ? (
           <div className="flex items-center gap-2 min-w-0">
             <FileText size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />

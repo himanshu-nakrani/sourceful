@@ -133,6 +133,64 @@ async def _repair_postgres_legacy_owner_columns(cur) -> None:
         )
         logger.warning("Applied legacy owner_id repair for table=%s", table_name)
 
+    await _repair_postgres_legacy_document_columns(cur)
+
+
+async def _repair_postgres_legacy_document_columns(cur) -> None:
+    """Backfill required columns for legacy documents table variants."""
+    await cur.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'documents'
+        ) AS table_exists
+        """
+    )
+    table_row = await cur.fetchone()
+    if not table_row or not table_row.get("table_exists"):
+        return
+
+    required_columns: list[tuple[str, str, str | None]] = [
+        ("provider", "TEXT", "'openai'"),
+        ("embedding_model", "TEXT", "'text-embedding-3-small'"),
+        ("mime_type", "TEXT", "'application/octet-stream'"),
+        ("checksum", "TEXT", "'legacy-unknown'"),
+        ("chunk_count", "INTEGER", "0"),
+        ("file_size", "INTEGER", "0"),
+        ("status", "TEXT", "'queued'"),
+    ]
+    for column_name, column_type, default_sql in required_columns:
+        await cur.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'documents'
+                  AND column_name = %s
+            ) AS has_column
+            """,
+            (column_name,),
+        )
+        row = await cur.fetchone()
+        has_column = bool(row and row.get("has_column"))
+        if has_column:
+            continue
+
+        await cur.execute(
+            f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
+        )
+        if default_sql is not None:
+            await cur.execute(
+                f"UPDATE documents SET {column_name} = {default_sql} WHERE {column_name} IS NULL"
+            )
+            await cur.execute(
+                f"ALTER TABLE documents ALTER COLUMN {column_name} SET NOT NULL"
+            )
+        logger.warning("Applied legacy documents column repair for column=%s", column_name)
+
 
 async def _apply_postgres_v2_migration(cur) -> None:
     await cur.execute(

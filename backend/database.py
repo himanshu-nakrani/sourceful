@@ -38,7 +38,11 @@ async def init_db() -> None:
                     conninfo=settings.database_url,
                     min_size=1,
                     max_size=8,
-                    kwargs={"row_factory": dict_row, "autocommit": True},
+                    kwargs={
+                        "row_factory": dict_row,
+                        "autocommit": True,
+                        "prepare_threshold": None,  # Compatibility with transaction poolers
+                    },
                     open=False,
                 )
                 await _pg_pool.open()

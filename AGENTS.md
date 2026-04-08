@@ -27,7 +27,7 @@
   - `npm ci`
 - Backend install for development and tests:
   - `python3 -m venv .venv`
-  - `.venv/bin/pip install -r backend/requirements-dev.txt`
+  - .venv/bin/pip install -r backend/requirements.txt
 - Copy values from `.env.example` when a task needs explicit local configuration.
 
 ## Run commands

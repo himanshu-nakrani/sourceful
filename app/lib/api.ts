@@ -1,7 +1,7 @@
 export type Provider = "openai" | "gemini";
 
 export interface ClientAuthContext {
-  clientSessionId: string;
+  clientSessionId?: string;
   providerApiKey?: string;
 }
 
@@ -121,6 +121,21 @@ export interface DocumentStatus {
   last_error?: string | null;
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: "admin" | "user";
+  is_active: boolean;
+  is_verified: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface UpdateUserPayload {
+  role?: "admin" | "user";
+  is_active?: boolean;
+}
+
 const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 function url(path: string): string {
@@ -131,9 +146,10 @@ function baseHeaders(
   auth: ClientAuthContext,
   options?: { includeJson?: boolean; includeProviderKey?: boolean }
 ): Record<string, string> {
-  const headers: Record<string, string> = {
-    "X-Client-Session": auth.clientSessionId,
-  };
+  const headers: Record<string, string> = {};
+  if (auth.clientSessionId?.trim()) {
+    headers["X-Client-Session"] = auth.clientSessionId.trim();
+  }
   if (options?.includeJson) {
     headers["Content-Type"] = "application/json";
   }
@@ -143,8 +159,15 @@ function baseHeaders(
   return headers;
 }
 
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(url(path), {
+    credentials: "include",
+    ...init,
+  });
+}
+
 export async function listDocuments(auth: ClientAuthContext): Promise<DocumentInfo[]> {
-  const res = await fetch(url("/api/documents"), { headers: baseHeaders(auth) });
+  const res = await apiFetch("/api/documents", { headers: baseHeaders(auth) });
   if (!res.ok) throw new Error(await errorMessage(res));
   const data = (await res.json()) as { documents?: DocumentInfo[] };
   return data.documents ?? [];
@@ -154,7 +177,7 @@ export async function getDocumentStatus(
   auth: ClientAuthContext,
   documentId: string
 ): Promise<DocumentStatus> {
-  const res = await fetch(url(`/api/documents/${documentId}/status`), {
+  const res = await apiFetch(`/api/documents/${documentId}/status`, {
     headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
@@ -165,7 +188,7 @@ export async function getDocumentChunks(
   auth: ClientAuthContext,
   documentId: string
 ): Promise<ChunkPreview[]> {
-  const res = await fetch(url(`/api/documents/${documentId}/chunks`), {
+  const res = await apiFetch(`/api/documents/${documentId}/chunks`, {
     headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
@@ -176,7 +199,7 @@ export async function deleteDocument(
   auth: ClientAuthContext,
   documentId: string
 ): Promise<void> {
-  const res = await fetch(url(`/api/documents/${documentId}`), {
+  const res = await apiFetch(`/api/documents/${documentId}`, {
     method: "DELETE",
     headers: baseHeaders(auth),
   });
@@ -194,7 +217,7 @@ export async function ingestDocument(
   formData.append("embedding_model", embeddingModel);
   formData.append("file", file);
 
-  const res = await fetch(url("/api/ingest"), {
+  const res = await apiFetch("/api/ingest", {
     method: "POST",
     headers: baseHeaders(auth, { includeProviderKey: true }),
     body: formData,
@@ -213,7 +236,7 @@ export async function reprocessDocument(
         embeddingModel.trim()
       )}`
     : `/api/documents/${documentId}/reprocess`;
-  const res = await fetch(url(endpoint), {
+  const res = await apiFetch(endpoint, {
     method: "POST",
     headers: baseHeaders(auth, { includeProviderKey: true }),
   });
@@ -225,7 +248,7 @@ export async function getJob(
   auth: ClientAuthContext,
   jobId: string
 ): Promise<JobInfo> {
-  const res = await fetch(url(`/api/jobs/${jobId}`), {
+  const res = await apiFetch(`/api/jobs/${jobId}`, {
     headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
@@ -237,7 +260,7 @@ export async function listConversations(
   documentId?: string
 ): Promise<ConversationListItem[]> {
   const query = documentId ? `?document_id=${encodeURIComponent(documentId)}` : "";
-  const res = await fetch(url(`/api/conversations${query}`), {
+  const res = await apiFetch(`/api/conversations${query}`, {
     headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
@@ -249,7 +272,7 @@ export async function getConversation(
   auth: ClientAuthContext,
   conversationId: string
 ): Promise<Conversation> {
-  const res = await fetch(url(`/api/conversations/${conversationId}`), {
+  const res = await apiFetch(`/api/conversations/${conversationId}`, {
     headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
@@ -261,7 +284,7 @@ export async function renameConversation(
   conversationId: string,
   title: string
 ): Promise<void> {
-  const res = await fetch(url(`/api/conversations/${conversationId}`), {
+  const res = await apiFetch(`/api/conversations/${conversationId}`, {
     method: "PATCH",
     headers: baseHeaders(auth, { includeJson: true }),
     body: JSON.stringify({ title }),
@@ -274,8 +297,8 @@ export async function exportConversation(
   conversationId: string,
   format: "markdown" | "json"
 ): Promise<Blob> {
-  const res = await fetch(
-    url(`/api/conversations/${conversationId}/export?format=${format}`),
+  const res = await apiFetch(
+    `/api/conversations/${conversationId}/export?format=${format}`,
     { headers: baseHeaders(auth) }
   );
   if (!res.ok) throw new Error(await errorMessage(res));
@@ -286,7 +309,7 @@ export async function deleteConversation(
   auth: ClientAuthContext,
   conversationId: string
 ): Promise<void> {
-  const res = await fetch(url(`/api/conversations/${conversationId}`), {
+  const res = await apiFetch(`/api/conversations/${conversationId}`, {
     method: "DELETE",
     headers: baseHeaders(auth),
   });
@@ -309,7 +332,7 @@ export async function sendChat(
   conversationId: string | null,
   signal?: AbortSignal
 ): Promise<ChatResponse> {
-  const res = await fetch(url("/api/chat"), {
+  const res = await apiFetch("/api/chat", {
     method: "POST",
     headers: baseHeaders(auth, { includeJson: true, includeProviderKey: true }),
     body: JSON.stringify({
@@ -343,4 +366,62 @@ async function errorMessage(res: Response): Promise<string> {
     return `Request failed (${res.status})`;
   }
   return `Request failed (${res.status})`;
+}
+
+export async function signup(email: string, password: string): Promise<AuthUser> {
+  const res = await apiFetch("/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function login(email: string, password: string): Promise<AuthUser> {
+  const res = await apiFetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function logout(): Promise<void> {
+  const res = await apiFetch("/api/auth/logout", { method: "POST" });
+  if (!res.ok) throw new Error(await errorMessage(res));
+}
+
+export async function me(): Promise<AuthUser | null> {
+  const res = await apiFetch("/api/auth/me");
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const res = await apiFetch("/api/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+}
+
+export async function listUsers(): Promise<AuthUser[]> {
+  const res = await apiFetch("/api/users");
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const data = (await res.json()) as { users?: AuthUser[] };
+  return data.users ?? [];
+}
+
+export async function updateUser(userId: string, payload: UpdateUserPayload): Promise<AuthUser> {
+  const res = await apiFetch(`/api/users/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
 }

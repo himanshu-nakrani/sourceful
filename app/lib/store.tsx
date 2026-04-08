@@ -8,7 +8,7 @@ import React, {
   type Dispatch,
   type ReactNode,
 } from "react";
-import type { Provider } from "./api";
+import { me, type AuthUser, type Provider } from "./api";
 
 export interface AppSettings {
   provider: Provider;
@@ -20,6 +20,8 @@ export interface AppSettings {
 
 export interface AppState {
   settings: AppSettings;
+  currentUser: AuthUser | null;
+  authLoading: boolean;
   activeDocumentId: string | null;
   activeConversationId: string | null;
   sidebarOpen: boolean;
@@ -101,6 +103,8 @@ function loadSettings(): AppSettings {
 
 const initialState: AppState = {
   settings: loadSettings(),
+  currentUser: null,
+  authLoading: true,
   activeDocumentId: null,
   activeConversationId: null,
   sidebarOpen: true,
@@ -109,6 +113,8 @@ const initialState: AppState = {
 
 type Action =
   | { type: "SET_SETTINGS"; payload: Partial<AppSettings> }
+  | { type: "SET_CURRENT_USER"; payload: AuthUser | null }
+  | { type: "SET_AUTH_LOADING"; payload: boolean }
   | { type: "SET_PROVIDER"; payload: Provider }
   | { type: "SET_ACTIVE_DOCUMENT"; payload: string | null }
   | { type: "SET_ACTIVE_CONVERSATION"; payload: string | null }
@@ -154,6 +160,10 @@ function reducer(state: AppState, action: Action): AppState {
       persistSettings(next);
       return { ...state, settings: next };
     }
+    case "SET_CURRENT_USER":
+      return { ...state, currentUser: action.payload };
+    case "SET_AUTH_LOADING":
+      return { ...state, authLoading: action.payload };
     case "SET_ACTIVE_DOCUMENT":
       return {
         ...state,
@@ -188,6 +198,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     dispatch({ type: "SET_SETTINGS", payload: loadSettings() });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMe = async () => {
+      dispatch({ type: "SET_AUTH_LOADING", payload: true });
+      try {
+        const user = await me();
+        if (!cancelled) {
+          dispatch({ type: "SET_CURRENT_USER", payload: user });
+        }
+      } catch {
+        if (!cancelled) {
+          dispatch({ type: "SET_CURRENT_USER", payload: null });
+        }
+      } finally {
+        if (!cancelled) {
+          dispatch({ type: "SET_AUTH_LOADING", payload: false });
+        }
+      }
+    };
+    void loadMe();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

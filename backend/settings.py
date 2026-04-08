@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     worker_poll_interval_seconds: float = Field(default=1.5, alias="WORKER_POLL_INTERVAL_SECONDS")
     worker_heartbeat_ttl_seconds: int = Field(default=60, alias="WORKER_HEARTBEAT_TTL_SECONDS")
     service_name: str = Field(default="document-rag", alias="SERVICE_NAME")
+    auth_cookie_name: str = Field(default="rag_session", alias="AUTH_COOKIE_NAME")
+    auth_cookie_ttl_hours: int = Field(default=168, alias="AUTH_COOKIE_TTL_HOURS")
+    auth_secure_cookies: bool = Field(default=False, alias="AUTH_SECURE_COOKIES")
 
     default_embedding_model_openai: str = Field(
         default="text-embedding-3-small",

@@ -2,7 +2,15 @@
 
 import React from "react";
 import { CheckCircle2, KeyRound, RotateCcw, X } from "lucide-react";
-import type { Provider } from "../lib/api";
+import {
+  listUsers,
+  login,
+  logout,
+  signup,
+  updateUser,
+  type AuthUser,
+  type Provider,
+} from "../lib/api";
 import { DEFAULT_CHAT, DEFAULT_EMBEDDING, useStore } from "../lib/store";
 
 interface SettingsPanelProps {
@@ -23,8 +31,14 @@ const EMBEDDING_MODEL_OPTIONS: Record<Provider, string[]> = {
 export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const { state, dispatch } = useStore();
   const { settings } = state;
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [authError, setAuthError] = React.useState<string | null>(null);
+  const [adminUsers, setAdminUsers] = React.useState<AuthUser[]>([]);
+  const [adminLoading, setAdminLoading] = React.useState(false);
 
   if (!open) return null;
+  const user = state.currentUser;
 
   const providers: { value: Provider; label: string; icon: string }[] = [
     { value: "openai", label: "OpenAI", icon: "O" },
@@ -62,6 +76,87 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </div>
 
         <div className="px-5 py-5 flex flex-col gap-5">
+          <div className="rounded-xl p-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+            {user ? (
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                    Signed in as {user.email}
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+                    Role: {user.role}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs"
+                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                  onClick={async () => {
+                    await logout();
+                    dispatch({ type: "SET_CURRENT_USER", payload: null });
+                  }}
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-2">
+                <input
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="Email"
+                  className="rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Password"
+                  className="rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                />
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg text-xs"
+                  style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+                  onClick={async () => {
+                    try {
+                      const next = await login(email.trim(), password);
+                      dispatch({ type: "SET_CURRENT_USER", payload: next });
+                      setAuthError(null);
+                    } catch (error) {
+                      setAuthError(error instanceof Error ? error.message : "Login failed.");
+                    }
+                  }}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg text-xs"
+                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                  onClick={async () => {
+                    try {
+                      const next = await signup(email.trim(), password);
+                      dispatch({ type: "SET_CURRENT_USER", payload: next });
+                      setAuthError(null);
+                    } catch (error) {
+                      setAuthError(error instanceof Error ? error.message : "Signup failed.");
+                    }
+                  }}
+                >
+                  Sign up
+                </button>
+              </div>
+            )}
+            {authError ? (
+              <p className="text-xs mt-2" style={{ color: "var(--error)" }}>
+                {authError}
+              </p>
+            ) : null}
+          </div>
+
           <div className="flex flex-col gap-2">
             <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
               Provider
@@ -138,6 +233,55 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               </p>
             </div>
           </div>
+
+          {user?.role === "admin" ? (
+            <div className="rounded-xl p-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+                  User Management
+                </p>
+                <button
+                  type="button"
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ border: "1px solid var(--border)" }}
+                  onClick={async () => {
+                    setAdminLoading(true);
+                    try {
+                      setAdminUsers(await listUsers());
+                    } finally {
+                      setAdminLoading(false);
+                    }
+                  }}
+                >
+                  {adminLoading ? "Loading..." : "Refresh"}
+                </button>
+              </div>
+              <div className="max-h-40 overflow-auto flex flex-col gap-2">
+                {adminUsers.map((managedUser) => (
+                  <div key={managedUser.id} className="flex items-center justify-between text-xs">
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      {managedUser.email} ({managedUser.role})
+                    </span>
+                    <button
+                      type="button"
+                      style={{ border: "1px solid var(--border)" }}
+                      className="px-2 py-0.5 rounded"
+                      onClick={async () => {
+                        const next = await updateUser(managedUser.id, {
+                          is_active: !managedUser.is_active,
+                        });
+                        setAdminUsers((current) =>
+                          current.map((item) => (item.id === next.id ? next : item))
+                        );
+                      }}
+                    >
+                      {managedUser.is_active ? "Disable" : "Enable"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div

@@ -12,7 +12,7 @@ from backend.errors import api_error_payload
 from backend.logging_utils import configure_logging
 from backend.metrics import metrics
 from backend.middleware import RateLimitMiddleware, RequestIdMiddleware, RequestLoggingMiddleware
-from backend.routers import chat, conversations, documents, ingest
+from backend.routers import auth, chat, conversations, documents, ingest, users
 from backend.routers import jobs as jobs_router
 from backend.settings import settings
 
@@ -170,7 +170,9 @@ async def metrics_endpoint():
 
 
 app.include_router(chat.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
 app.include_router(jobs_router.router, prefix="/api")
+app.include_router(users.router, prefix="/api")

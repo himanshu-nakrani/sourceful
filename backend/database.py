@@ -41,6 +41,7 @@ async def init_db() -> None:
                 for statement in migration_statements():
                     await cur.execute(statement)
                 await _apply_postgres_v2_migration(cur)
+                await _apply_postgres_v3_migration(cur)
         return
 
     if _sqlite is not None:
@@ -55,6 +56,7 @@ async def init_db() -> None:
     for statement in migration_statements():
         await _sqlite.execute(statement)
     await _apply_sqlite_v2_migration(_sqlite)
+    await _apply_sqlite_v3_migration(_sqlite)
     await _sqlite.commit()
 
 
@@ -93,6 +95,83 @@ async def _apply_sqlite_v2_migration(conn: aiosqlite.Connection) -> None:
             "ALTER TABLE document_jobs ADD COLUMN terminal INTEGER NOT NULL DEFAULT 0"
         )
     await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)")
+
+
+async def _apply_postgres_v3_migration(cur) -> None:
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await cur.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)")
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash TEXT NOT NULL UNIQUE,
+            user_agent TEXT,
+            ip_address TEXT,
+            expires_at TIMESTAMPTZ NOT NULL,
+            revoked BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions (user_id, revoked)")
+    await cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions (expires_at)")
+    await cur.execute(
+        """
+        INSERT INTO schema_migrations (version)
+        VALUES (3)
+        ON CONFLICT (version) DO NOTHING
+        """
+    )
+
+
+async def _apply_sqlite_v3_migration(conn: aiosqlite.Connection) -> None:
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_verified INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)")
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            user_agent TEXT,
+            ip_address TEXT,
+            expires_at TEXT NOT NULL,
+            revoked INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions (user_id, revoked)")
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions (expires_at)")
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)")
 
 
 async def close_db() -> None:

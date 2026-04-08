@@ -119,3 +119,37 @@ class DocumentStatusResponse(BaseModel):
     current_stage: str | None = None
     last_job_id: str | None = None
     last_error: str | None = None
+
+
+class SignupRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=256)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=8, max_length=256)
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    role: str
+    is_active: bool
+    is_verified: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class UserListResponse(BaseModel):
+    users: list[UserResponse]
+
+
+class UpdateUserRequest(BaseModel):
+    role: Literal["admin", "user"] | None = None
+    is_active: bool | None = None

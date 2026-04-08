@@ -47,6 +47,7 @@ async def init_db() -> None:
                 async with _pg_pool.connection() as conn:
                     async with conn.cursor() as cur:
                         logger.info("Running database migrations...")
+                        await _repair_postgres_legacy_owner_columns(cur)
                         for statement in migration_statements():
                             try:
                                 await cur.execute(statement)
@@ -87,6 +88,53 @@ async def init_db() -> None:
                 await _sqlite.close()
                 _sqlite = None
             raise
+
+
+async def _repair_postgres_legacy_owner_columns(cur) -> None:
+    """Backfill legacy PostgreSQL schemas created before owner scoping."""
+    owner_targets = [
+        "documents",
+        "document_jobs",
+        "document_chunks",
+        "conversations",
+        "messages",
+    ]
+    for table_name in owner_targets:
+        await cur.execute(
+            """
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_name = %s
+                ) AS table_exists,
+                EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = %s
+                  AND column_name = 'owner_id'
+                ) AS has_owner
+            """,
+            (table_name, table_name),
+        )
+        row = await cur.fetchone()
+        table_exists = bool(row and row.get("table_exists"))
+        has_owner = bool(row and row.get("has_owner"))
+        if not table_exists or has_owner:
+            continue
+
+        await cur.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS owner_id TEXT"
+        )
+        await cur.execute(
+            f"UPDATE {table_name} SET owner_id = 'anonymous:legacy' WHERE owner_id IS NULL"
+        )
+        await cur.execute(
+            f"ALTER TABLE {table_name} ALTER COLUMN owner_id SET NOT NULL"
+        )
+        logger.warning("Applied legacy owner_id repair for table=%s", table_name)
 
 
 async def _apply_postgres_v2_migration(cur) -> None:

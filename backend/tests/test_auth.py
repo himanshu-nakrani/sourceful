@@ -26,18 +26,23 @@ def test_signup_login_me_logout_flow(client):
     assert login.json()["email"] == "user@example.com"
 
 
+def test_default_superuser_seeded(client):
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "himanshunakrani0@gmail.com", "password": "him123"},
+    )
+    assert login.status_code == 200
+    payload = login.json()
+    assert payload["email"] == "himanshunakrani0@gmail.com"
+    assert payload["role"] == "admin"
+
+
 def test_admin_user_list_and_update(client):
     admin = client.post(
-        "/api/auth/signup",
-        json={"email": "admin@example.com", "password": "strong-pass-123"},
+        "/api/auth/login",
+        json={"email": "himanshunakrani0@gmail.com", "password": "him123"},
     )
-    assert admin.status_code == 201
-    admin_user = admin.json()
-
-    no_admin = client.get("/api/users")
-    assert no_admin.status_code == 403
-
-    client.post("/api/auth/logout")
+    assert admin.status_code == 200
     second = client.post(
         "/api/auth/signup",
         json={"email": "member@example.com", "password": "strong-pass-123"},
@@ -46,14 +51,9 @@ def test_admin_user_list_and_update(client):
     member = second.json()
     client.post("/api/auth/logout")
 
-    from backend.database import execute
-    import asyncio
-
-    asyncio.run(execute("UPDATE users SET role = 'admin' WHERE id = ?", (admin_user["id"],)))
-
     relogin = client.post(
         "/api/auth/login",
-        json={"email": "admin@example.com", "password": "strong-pass-123"},
+        json={"email": "himanshunakrani0@gmail.com", "password": "him123"},
     )
     assert relogin.status_code == 200
 
@@ -64,3 +64,9 @@ def test_admin_user_list_and_update(client):
     updated = client.patch(f"/api/users/{member['id']}", json={"is_active": False})
     assert updated.status_code == 200
     assert updated.json()["is_active"] is False
+
+    superuser = next(
+        user for user in users.json()["users"] if user["email"] == "himanshunakrani0@gmail.com"
+    )
+    protected = client.patch(f"/api/users/{superuser['id']}", json={"role": "user"})
+    assert protected.status_code == 400

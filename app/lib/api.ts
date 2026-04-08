@@ -95,6 +95,31 @@ export interface Message {
   created_at: string;
 }
 
+export interface AnalyticsProviderBreakdown {
+  provider: string;
+  documents: number;
+  ready_documents: number;
+}
+
+export interface AnalyticsOverview {
+  totals: {
+    users: number;
+    active_users_7d: number;
+    documents: number;
+    ready_documents: number;
+    conversations: number;
+    messages: number;
+    chunks: number;
+  };
+  recent: {
+    signups_7d: number;
+    uploads_7d: number;
+    questions_24h: number;
+    sessions_24h: number;
+  };
+  provider_breakdown: AnalyticsProviderBreakdown[];
+}
+
 export interface Conversation {
   id: string;
   document_id: string;
@@ -129,6 +154,7 @@ export interface AuthUser {
   is_verified: boolean;
   created_at?: string | null;
   updated_at?: string | null;
+  session_token?: string;
 }
 
 export interface UpdateUserPayload {
@@ -147,6 +173,10 @@ function baseHeaders(
   options?: { includeJson?: boolean; includeProviderKey?: boolean }
 ): Record<string, string> {
   const headers: Record<string, string> = {};
+  const storedAuthToken = getStoredAuthToken();
+  if (storedAuthToken) {
+    headers.Authorization = `Bearer ${storedAuthToken}`;
+  }
   if (auth.clientSessionId?.trim()) {
     headers["X-Client-Session"] = auth.clientSessionId.trim();
   }
@@ -157,6 +187,35 @@ function baseHeaders(
     headers["X-Provider-Api-Key"] = auth.providerApiKey.trim();
   }
   return headers;
+}
+
+function getStoredAuthToken(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const rawSecrets = sessionStorage.getItem("rag-session");
+    if (!rawSecrets) return "";
+    const parsed = JSON.parse(rawSecrets) as { authToken?: string };
+    return parsed.authToken?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function updateStoredSession(partial: { authToken?: string | null }): void {
+  if (typeof window === "undefined") return;
+  try {
+    const rawSecrets = sessionStorage.getItem("rag-session");
+    const parsed = rawSecrets ? (JSON.parse(rawSecrets) as Record<string, unknown>) : {};
+    const next = { ...parsed };
+    if (partial.authToken === null || partial.authToken === undefined || !partial.authToken) {
+      delete next.authToken;
+    } else {
+      next.authToken = partial.authToken;
+    }
+    sessionStorage.setItem("rag-session", JSON.stringify(next));
+  } catch {
+    // Ignore storage persistence errors.
+  }
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -352,6 +411,29 @@ export async function sendChat(
   return res.json();
 }
 
+export async function rerunMessage(
+  auth: ClientAuthContext,
+  provider: Provider,
+  model: string,
+  documentId: string,
+  conversationId: string,
+  messageId: string
+): Promise<ChatResponse> {
+  const res = await apiFetch("/api/chat/rerun", {
+    method: "POST",
+    headers: baseHeaders(auth, { includeJson: true, includeProviderKey: true }),
+    body: JSON.stringify({
+      provider,
+      model: model.trim(),
+      document_id: documentId,
+      conversation_id: conversationId,
+      message_id: messageId,
+    }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
 async function errorMessage(res: Response): Promise<string> {
   try {
     const ct = res.headers.get("content-type") ?? "";
@@ -375,7 +457,9 @@ export async function signup(email: string, password: string): Promise<AuthUser>
     body: JSON.stringify({ email, password }),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
-  return res.json();
+  const user = (await res.json()) as AuthUser;
+  updateStoredSession({ authToken: user.session_token ?? null });
+  return user;
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {
@@ -385,16 +469,22 @@ export async function login(email: string, password: string): Promise<AuthUser> 
     body: JSON.stringify({ email, password }),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
-  return res.json();
+  const user = (await res.json()) as AuthUser;
+  updateStoredSession({ authToken: user.session_token ?? null });
+  return user;
 }
 
 export async function logout(): Promise<void> {
-  const res = await apiFetch("/api/auth/logout", { method: "POST" });
+  const res = await apiFetch("/api/auth/logout", {
+    method: "POST",
+    headers: baseHeaders({}),
+  });
   if (!res.ok) throw new Error(await errorMessage(res));
+  updateStoredSession({ authToken: null });
 }
 
 export async function me(): Promise<AuthUser | null> {
-  const res = await apiFetch("/api/auth/me");
+  const res = await apiFetch("/api/auth/me", { headers: baseHeaders({}) });
   if (res.status === 401) return null;
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
@@ -403,14 +493,14 @@ export async function me(): Promise<AuthUser | null> {
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   const res = await apiFetch("/api/auth/change-password", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...baseHeaders({}, { includeJson: true }), "Content-Type": "application/json" },
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
 }
 
 export async function listUsers(): Promise<AuthUser[]> {
-  const res = await apiFetch("/api/users");
+  const res = await apiFetch("/api/users", { headers: baseHeaders({}) });
   if (!res.ok) throw new Error(await errorMessage(res));
   const data = (await res.json()) as { users?: AuthUser[] };
   return data.users ?? [];
@@ -419,9 +509,15 @@ export async function listUsers(): Promise<AuthUser[]> {
 export async function updateUser(userId: string, payload: UpdateUserPayload): Promise<AuthUser> {
   const res = await apiFetch(`/api/users/${userId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...baseHeaders({}, { includeJson: true }), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
+  const res = await apiFetch("/api/analytics/overview", { headers: baseHeaders({}) });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { reprocessDocument, sendChat, type Citation, type Message } from "../lib/api";
+import { reprocessDocument, rerunMessage, sendChat, type Citation, type Message } from "../lib/api";
 import { useServerState } from "../lib/server-state";
 import { useStore } from "../lib/store";
 
@@ -31,6 +31,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     addMessage,
     appendToLastAssistant,
     refreshConversations,
+    selectConversation,
     updateLastAssistantSources,
     setMessages,
   } = useServerState();
@@ -43,6 +44,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const [streaming, setStreaming] = useState(false);
   const [currentSources, setCurrentSources] = useState<Citation[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [rerunningMessageId, setRerunningMessageId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -156,6 +158,54 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       settings.chatModel,
       settings.provider,
       updateLastAssistantSources,
+    ]
+  );
+
+  const handleRerun = useCallback(
+    async (message: Message) => {
+      if (
+        streaming ||
+        !activeDocumentId ||
+        !activeConversationId ||
+        !settings.providerApiKey.trim() ||
+        !settings.chatModel.trim()
+      ) {
+        return;
+      }
+      setError(null);
+      setCurrentSources([]);
+      setStreaming(true);
+      setRerunningMessageId(message.id);
+      try {
+        const response = await rerunMessage(
+          auth,
+          settings.provider,
+          settings.chatModel,
+          activeDocumentId,
+          activeConversationId,
+          message.id
+        );
+        dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: response.conversation_id });
+        await refreshConversations(activeDocumentId);
+        await selectConversation(response.conversation_id);
+      } catch (rerunError) {
+        setError(rerunError instanceof Error ? rerunError.message : "Unable to rerun message.");
+      } finally {
+        setStreaming(false);
+        setRerunningMessageId(null);
+      }
+    },
+    [
+      activeConversationId,
+      activeDocumentId,
+      auth,
+      dispatch,
+      refreshConversations,
+      selectConversation,
+      settings.chatModel,
+      settings.provider,
+      settings.providerApiKey,
+      streaming,
     ]
   );
 
@@ -299,7 +349,13 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
             <>
               {messages.map((message) => (
                 <React.Fragment key={message.id}>
-                  <MessageBubble message={message} />
+                  <MessageBubble
+                    message={message}
+                    onRerun={
+                      message.role === "user" && activeConversationId ? handleRerun : undefined
+                    }
+                    rerunDisabled={streaming || rerunningMessageId === message.id}
+                  />
                   {message.role === "assistant" && message.sources?.length ? (
                     <SourceCard sources={message.sources} />
                   ) : null}

@@ -55,6 +55,7 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
     }),
     [state.settings.clientSessionId]
   );
+  const isAuthenticated = Boolean(state.currentUser);
 
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
@@ -69,7 +70,7 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
   const [chunkPreviewLoading, setChunkPreviewLoading] = useState(false);
 
   const refreshDocuments = useCallback(async () => {
-    if (!auth.clientSessionId) return;
+    if (!auth.clientSessionId || !isAuthenticated) return;
     setDocumentsLoading(true);
     try {
       const nextDocuments = await listDocuments(auth);
@@ -91,12 +92,12 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
     } finally {
       setDocumentsLoading(false);
     }
-  }, [auth, dispatch, state.activeDocumentId]);
+  }, [auth, dispatch, isAuthenticated, state.activeDocumentId]);
 
   const refreshConversations = useCallback(
     async (documentId?: string | null) => {
       const target = documentId ?? state.activeDocumentId;
-      if (!auth.clientSessionId || !target) {
+      if (!auth.clientSessionId || !target || !isAuthenticated) {
         setConversations([]);
         return;
       }
@@ -115,13 +116,13 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
         setConversationsLoading(false);
       }
     },
-    [auth, state.activeDocumentId]
+    [auth, isAuthenticated, state.activeDocumentId]
   );
 
   const refreshChunkPreview = useCallback(
     async (documentId?: string | null) => {
       const target = documentId ?? state.activeDocumentId;
-      if (!auth.clientSessionId || !target) {
+      if (!auth.clientSessionId || !target || !isAuthenticated) {
         setChunkPreview([]);
         return;
       }
@@ -135,7 +136,7 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
         setChunkPreviewLoading(false);
       }
     },
-    [auth, state.activeDocumentId]
+    [auth, isAuthenticated, state.activeDocumentId]
   );
 
   const selectDocument = useCallback(
@@ -206,9 +207,9 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!auth.clientSessionId) return;
+    if (!auth.clientSessionId || !isAuthenticated) return;
     void refreshDocuments();
-  }, [auth.clientSessionId, refreshDocuments]);
+  }, [auth.clientSessionId, isAuthenticated, refreshDocuments]);
 
   useEffect(() => {
     if (!documents.some((document) => ["queued", "processing"].includes(document.status))) {

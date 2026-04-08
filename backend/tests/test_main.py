@@ -16,8 +16,8 @@ def test_ready_endpoint(client):
 
 def test_missing_client_session_is_rejected(client):
     response = client.get("/api/documents")
-    assert response.status_code == 400
+    assert response.status_code == 401
     payload = response.json()
-    assert "X-Client-Session" in payload["error"]
-    assert payload["code"] == "INVALID_CLIENT_SESSION"
+    assert payload["error"] == "Authentication required."
+    assert payload["code"] == "AUTH_REQUIRED"
     assert payload["request_id"]

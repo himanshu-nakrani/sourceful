@@ -70,6 +70,14 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class RerunMessageRequest(BaseModel):
+    provider: Literal["openai", "gemini"]
+    model: str = Field(max_length=128)
+    document_id: str
+    conversation_id: str = Field(min_length=1)
+    message_id: str = Field(min_length=1)
+
+
 class MessageResponse(BaseModel):
     id: str
     role: str
@@ -146,6 +154,10 @@ class UserResponse(BaseModel):
     updated_at: datetime | None = None
 
 
+class AuthResponse(UserResponse):
+    session_token: str
+
+
 class UserListResponse(BaseModel):
     users: list[UserResponse]
 
@@ -153,3 +165,32 @@ class UserListResponse(BaseModel):
 class UpdateUserRequest(BaseModel):
     role: Literal["admin", "user"] | None = None
     is_active: bool | None = None
+
+
+class AnalyticsProviderBreakdown(BaseModel):
+    provider: str
+    documents: int
+    ready_documents: int
+
+
+class AnalyticsTotals(BaseModel):
+    users: int
+    active_users_7d: int
+    documents: int
+    ready_documents: int
+    conversations: int
+    messages: int
+    chunks: int
+
+
+class AnalyticsRecent(BaseModel):
+    signups_7d: int
+    uploads_7d: int
+    questions_24h: int
+    sessions_24h: int
+
+
+class AnalyticsOverviewResponse(BaseModel):
+    totals: AnalyticsTotals
+    recent: AnalyticsRecent
+    provider_breakdown: list[AnalyticsProviderBreakdown]

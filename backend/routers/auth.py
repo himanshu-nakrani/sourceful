@@ -12,6 +12,7 @@ from backend.auth import (
     revoke_session,
 )
 from backend.models import (
+    AuthResponse,
     ChangePasswordRequest,
     LoginRequest,
     SignupRequest,
@@ -21,6 +22,14 @@ from backend.routers.deps import RequestContext, require_authenticated_context
 from backend.settings import settings
 
 router = APIRouter()
+
+
+def _read_bearer_token(request: Request) -> str | None:
+    authorization = request.headers.get("authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization[7:].strip()
+    return token or None
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -35,7 +44,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     )
 
 
-@router.post("/auth/signup", response_model=UserResponse, status_code=201)
+@router.post("/auth/signup", response_model=AuthResponse, status_code=201)
 async def signup(payload: SignupRequest, request: Request, response: Response):
     if len(payload.password) < 8:
         raise HTTPException(status_code=422, detail={"error": "Password too short.", "code": "WEAK_PASSWORD"})
@@ -50,10 +59,10 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
         ttl_hours=settings.auth_cookie_ttl_hours,
     )
     _set_auth_cookie(response, token)
-    return UserResponse(**user)
+    return AuthResponse(**user, session_token=token)
 
 
-@router.post("/auth/login", response_model=UserResponse)
+@router.post("/auth/login", response_model=AuthResponse)
 async def login(payload: LoginRequest, request: Request, response: Response):
     user = await authenticate_user(payload.email, payload.password)
     if not user:
@@ -65,12 +74,12 @@ async def login(payload: LoginRequest, request: Request, response: Response):
         ttl_hours=settings.auth_cookie_ttl_hours,
     )
     _set_auth_cookie(response, token)
-    return UserResponse(**user)
+    return AuthResponse(**user, session_token=token)
 
 
 @router.post("/auth/logout")
 async def logout(request: Request, response: Response):
-    session_token = request.cookies.get(settings.auth_cookie_name)
+    session_token = request.cookies.get(settings.auth_cookie_name) or _read_bearer_token(request)
     if session_token:
         await revoke_session(session_token)
     response.delete_cookie(key=settings.auth_cookie_name, path="/")

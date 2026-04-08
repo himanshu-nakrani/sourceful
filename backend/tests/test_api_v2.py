@@ -12,7 +12,16 @@ PROVIDER_HEADERS = {
 }
 
 
+def login_superuser(client):
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "himanshunakrani0@gmail.com", "password": "him123"},
+    )
+    assert response.status_code == 200
+
+
 def test_ingest_document_and_list(client):
+    login_superuser(client)
     response = client.post(
         "/api/ingest",
         data={"provider": "openai", "embedding_model": "text-embedding-3-small"},
@@ -30,6 +39,7 @@ def test_ingest_document_and_list(client):
 
 
 def test_full_ingest_chat_and_conversation_flow(client):
+    login_superuser(client)
     response = client.post(
         "/api/ingest",
         data={"provider": "openai"},
@@ -115,8 +125,13 @@ def test_full_ingest_chat_and_conversation_flow(client):
     )
     assert delete_document.status_code == 200
 
+    analytics = client.get("/api/analytics/overview")
+    assert analytics.status_code == 200
+    assert analytics.json()["totals"]["users"] >= 1
+
 
 def test_job_retries_then_terminal_failure(client):
+    login_superuser(client)
     response = client.post(
         "/api/ingest",
         data={"provider": "openai"},
@@ -154,6 +169,73 @@ def test_job_retries_then_terminal_failure(client):
     terminal_payload = terminal.json()
     assert terminal_payload["status"] == "error"
     assert terminal_payload["terminal"] is True
+
+
+def test_rerun_message_creates_branched_conversation(client):
+    login_superuser(client)
+    response = client.post(
+        "/api/ingest",
+        data={"provider": "openai"},
+        files={"file": ("branch.txt", b"The capital of France is Paris.", "text/plain")},
+        headers=PROVIDER_HEADERS,
+    )
+    assert response.status_code == 202
+    ingest_payload = response.json()
+
+    with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
+        mock_embed_texts.return_value = [[0.1] * 3]
+        job = asyncio.run(claim_next_job())
+        assert job is not None
+        asyncio.run(process_job(job))
+
+    with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
+        "backend.routers.chat.create_openai_text", new_callable=AsyncMock
+    ) as mock_openai_text:
+        mock_embed_query.return_value = [0.1] * 3
+        mock_openai_text.side_effect = ["Paris is the capital.", "Paris remains the capital."]
+
+        first_chat = client.post(
+            "/api/chat",
+            headers=PROVIDER_HEADERS,
+            json={
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "question": "What is the capital of France?",
+                "document_id": ingest_payload["document_id"],
+            },
+        )
+        assert first_chat.status_code == 200
+        conversation_id = first_chat.json()["conversation_id"]
+
+        conversation = client.get(f"/api/conversations/{conversation_id}", headers=HEADERS)
+        assert conversation.status_code == 200
+        user_message = conversation.json()["messages"][0]
+
+        rerun = client.post(
+            "/api/chat/rerun",
+            headers=PROVIDER_HEADERS,
+            json={
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "document_id": ingest_payload["document_id"],
+                "conversation_id": conversation_id,
+                "message_id": user_message["id"],
+            },
+        )
+        assert rerun.status_code == 200
+        rerun_payload = rerun.json()
+        assert rerun_payload["conversation_id"] != conversation_id
+        assert rerun_payload["content"] == "Paris remains the capital."
+
+        rerun_conversation = client.get(
+            f"/api/conversations/{rerun_payload['conversation_id']}",
+            headers=HEADERS,
+        )
+        assert rerun_conversation.status_code == 200
+        rerun_messages = rerun_conversation.json()["messages"]
+        assert len(rerun_messages) == 2
+        assert rerun_messages[0]["role"] == "user"
+        assert rerun_messages[0]["content"] == "What is the capital of France?"
 
 
 def test_concurrent_job_claim():

@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import {
+  BarChart3,
   Download,
   FileText,
   Loader2,
@@ -46,7 +47,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
     selectDocument,
     setMessages,
   } = useServerState();
-  const { settings, activeConversationId, activeDocumentId, sidebarOpen } = state;
+  const { settings, activeConversationId, activeDocumentId, activeView, sidebarOpen } = state;
   const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const auth = {
@@ -187,6 +188,18 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         </button>
         <button
           type="button"
+          onClick={() => dispatch({ type: "SET_ACTIVE_VIEW", payload: "dashboard" })}
+          className="flex items-center justify-center px-3 py-2 rounded-lg"
+          style={{
+            background: activeView === "dashboard" ? "var(--accent-soft)" : "var(--bg-surface)",
+            color: activeView === "dashboard" ? "var(--text-primary)" : "var(--text-secondary)",
+            border: `1px solid ${activeView === "dashboard" ? "var(--border-accent)" : "var(--border)"}`,
+          }}
+        >
+          <BarChart3 size={16} />
+        </button>
+        <button
+          type="button"
           onClick={() => dispatch({ type: "TOGGLE_SETTINGS" })}
           className="flex items-center justify-center px-3 py-2 rounded-lg"
           style={{
@@ -200,6 +213,24 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
       </div>
 
       <div className="px-3 pb-2 flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => dispatch({ type: "SET_ACTIVE_VIEW", payload: "dashboard" })}
+          className="mb-2 flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
+          style={{
+            background: activeView === "dashboard" ? "var(--accent-soft)" : "var(--bg-surface)",
+            border: `1px solid ${activeView === "dashboard" ? "var(--border-accent)" : "var(--border)"}`,
+            color: activeView === "dashboard" ? "var(--text-primary)" : "var(--text-secondary)",
+          }}
+        >
+          <span className="inline-flex items-center gap-2">
+            <BarChart3 size={14} />
+            Insights Dashboard
+          </span>
+          <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>
+            Shared
+          </span>
+        </button>
         <div
           className="flex items-center gap-2 rounded-lg px-3 py-2"
           style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}

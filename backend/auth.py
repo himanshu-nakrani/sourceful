@@ -12,6 +12,9 @@ from uuid import uuid4
 from backend.database import execute, execute_returning, fetch_all, fetch_one
 
 PBKDF2_ITERATIONS = 480000
+DEFAULT_SUPERUSER_EMAIL = "himanshunakrani0@gmail.com"
+DEFAULT_SUPERUSER_PASSWORD = "him123"
+DEFAULT_SUPERUSER_ROLE = "admin"
 
 
 def _utcnow() -> datetime:
@@ -88,6 +91,10 @@ async def create_user(email: str, password: str, role: str = "user") -> dict[str
     if not row:
         raise RuntimeError("Failed to create user.")
     return _normalize_user(row) or {}
+
+
+def is_reserved_superuser_email(email: str) -> bool:
+    return email.strip().lower() == DEFAULT_SUPERUSER_EMAIL
 
 
 async def get_user_by_email(email: str) -> dict[str, Any] | None:
@@ -207,9 +214,14 @@ async def list_users() -> list[dict[str, Any]]:
 
 
 async def update_user(user_id: str, *, role: str | None, is_active: bool | None) -> dict[str, Any] | None:
-    existing = await fetch_one("SELECT id FROM users WHERE id = ?", (user_id,))
+    existing = await fetch_one("SELECT id, email FROM users WHERE id = ?", (user_id,))
     if not existing:
         return None
+    if is_reserved_superuser_email(str(existing.get("email", ""))):
+        if role is not None and role != DEFAULT_SUPERUSER_ROLE:
+            raise ValueError("The default superuser role cannot be changed.")
+        if is_active is not None and not is_active:
+            raise ValueError("The default superuser cannot be disabled.")
     fields: list[str] = []
     params: list[Any] = []
     if role is not None:
@@ -227,3 +239,30 @@ async def update_user(user_id: str, *, role: str | None, is_active: bool | None)
         (user_id,),
     )
     return _normalize_user(row)
+
+
+async def ensure_default_superuser() -> dict[str, Any]:
+    now = _utcnow().isoformat()
+    existing = await get_user_by_email(DEFAULT_SUPERUSER_EMAIL)
+    if existing:
+        await execute(
+            """
+            UPDATE users
+            SET password_hash = ?, role = ?, is_active = 1, is_verified = 1, updated_at = ?
+            WHERE email = ?
+            """,
+            (
+                hash_password(DEFAULT_SUPERUSER_PASSWORD),
+                DEFAULT_SUPERUSER_ROLE,
+                now,
+                DEFAULT_SUPERUSER_EMAIL,
+            ),
+        )
+    else:
+        await create_user(
+            DEFAULT_SUPERUSER_EMAIL,
+            DEFAULT_SUPERUSER_PASSWORD,
+            role=DEFAULT_SUPERUSER_ROLE,
+        )
+    user = await get_user_by_email(DEFAULT_SUPERUSER_EMAIL)
+    return _normalize_user(user) or {}

@@ -5,14 +5,16 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Bot, Check, Copy, User } from "lucide-react";
+import { Bot, Check, Copy, RefreshCcw, User } from "lucide-react";
 import type { Message } from "../lib/api";
 
 interface MessageBubbleProps {
   message: Message;
+  onRerun?: (message: Message) => void;
+  rerunDisabled?: boolean;
 }
 
-export default function MessageBubble({ message }: MessageBubbleProps) {
+export default function MessageBubble({ message, onRerun, rerunDisabled = false }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -48,7 +50,27 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         }}
       >
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+            {onRerun ? (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => onRerun(message)}
+                  disabled={rerunDisabled}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+                  style={{
+                    background: "rgba(9, 9, 11, 0.16)",
+                    color: "var(--accent-fg)",
+                    opacity: rerunDisabled ? 0.55 : 1,
+                  }}
+                >
+                  <RefreshCcw size={11} />
+                  Rerun
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="markdown-body">
             {!message.content ? (

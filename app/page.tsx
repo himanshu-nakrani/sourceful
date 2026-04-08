@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import AuthScreen from "./components/AuthScreen";
+import InsightsDashboard from "./components/InsightsDashboard";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import SettingsPanel from "./components/SettingsPanel";
@@ -12,6 +14,18 @@ function AppShell() {
   const { state, dispatch } = useStore();
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  if (state.authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)", color: "var(--text-secondary)" }}>
+        Loading workspace...
+      </div>
+    );
+  }
+
+  if (!state.currentUser) {
+    return <AuthScreen />;
+  }
+
   return (
     <div className="flex h-screen overflow-hidden relative w-full" style={{ background: "var(--bg-primary)" }}>
       {state.sidebarOpen && (
@@ -21,7 +35,11 @@ function AppShell() {
         />
       )}
       <Sidebar onUploadClick={() => setUploadOpen(true)} />
-      <ChatArea onUploadClick={() => setUploadOpen(true)} />
+      {state.activeView === "dashboard" ? (
+        <InsightsDashboard />
+      ) : (
+        <ChatArea onUploadClick={() => setUploadOpen(true)} />
+      )}
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
       <SettingsPanel
         open={state.settingsOpen}

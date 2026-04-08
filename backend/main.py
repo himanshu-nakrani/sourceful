@@ -7,12 +7,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from backend.auth import ensure_default_superuser
 from backend.database import close_db, fetch_one, init_db, record_heartbeat, require_current_schema
 from backend.errors import api_error_payload
 from backend.logging_utils import configure_logging
 from backend.metrics import metrics
 from backend.middleware import RateLimitMiddleware, RequestIdMiddleware, RequestLoggingMiddleware
-from backend.routers import auth, chat, conversations, documents, ingest, users
+from backend.routers import analytics, auth, chat, conversations, documents, ingest, users
 from backend.routers import jobs as jobs_router
 from backend.settings import settings
 
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
         logger.info("api_starting")
         await init_db()
         await require_current_schema()
+        await ensure_default_superuser()
         await record_heartbeat("api")
         logger.info("api_started")
         yield
@@ -177,6 +179,7 @@ async def metrics_endpoint():
 
 app.include_router(chat.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")

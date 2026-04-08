@@ -18,12 +18,19 @@ export interface AppSettings {
   clientSessionId: string;
 }
 
+interface SessionSecrets {
+  providerApiKey?: string;
+  clientSessionId?: string;
+  authToken?: string;
+}
+
 export interface AppState {
   settings: AppSettings;
   currentUser: AuthUser | null;
   authLoading: boolean;
   activeDocumentId: string | null;
   activeConversationId: string | null;
+  activeView: "chat" | "dashboard";
   sidebarOpen: boolean;
   settingsOpen: boolean;
 }
@@ -76,7 +83,7 @@ function loadSettings(): AppSettings {
   try {
     const rawSecrets = sessionStorage.getItem("rag-session");
     if (rawSecrets) {
-      const parsed = JSON.parse(rawSecrets) as Partial<AppSettings>;
+      const parsed = JSON.parse(rawSecrets) as SessionSecrets;
       providerApiKey = parsed.providerApiKey ?? "";
       clientSessionId = parsed.clientSessionId ?? "";
     }
@@ -101,12 +108,25 @@ function loadSettings(): AppSettings {
   };
 }
 
+function hasStoredAuthToken(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const rawSecrets = sessionStorage.getItem("rag-session");
+    if (!rawSecrets) return false;
+    const parsed = JSON.parse(rawSecrets) as SessionSecrets;
+    return Boolean(parsed.authToken?.trim());
+  } catch {
+    return false;
+  }
+}
+
 const initialState: AppState = {
   settings: loadSettings(),
   currentUser: null,
   authLoading: true,
   activeDocumentId: null,
   activeConversationId: null,
+  activeView: "chat",
   sidebarOpen: true,
   settingsOpen: false,
 };
@@ -118,6 +138,7 @@ type Action =
   | { type: "SET_PROVIDER"; payload: Provider }
   | { type: "SET_ACTIVE_DOCUMENT"; payload: string | null }
   | { type: "SET_ACTIVE_CONVERSATION"; payload: string | null }
+  | { type: "SET_ACTIVE_VIEW"; payload: "chat" | "dashboard" }
   | { type: "TOGGLE_SIDEBAR" }
   | { type: "SET_SIDEBAR"; payload: boolean }
   | { type: "TOGGLE_SETTINGS" }
@@ -133,9 +154,17 @@ function persistSettings(next: AppSettings): void {
       embeddingModel: next.embeddingModel,
     })
   );
+  let existing: SessionSecrets = {};
+  try {
+    const rawSecrets = sessionStorage.getItem("rag-session");
+    existing = rawSecrets ? (JSON.parse(rawSecrets) as SessionSecrets) : {};
+  } catch {
+    existing = {};
+  }
   sessionStorage.setItem(
     "rag-session",
     JSON.stringify({
+      ...existing,
       providerApiKey: next.providerApiKey,
       clientSessionId: next.clientSessionId || generateClientSessionId(),
     })
@@ -169,9 +198,12 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         activeDocumentId: action.payload,
         activeConversationId: null,
+        activeView: "chat",
       };
     case "SET_ACTIVE_CONVERSATION":
-      return { ...state, activeConversationId: action.payload };
+      return { ...state, activeConversationId: action.payload, activeView: "chat" };
+    case "SET_ACTIVE_VIEW":
+      return { ...state, activeView: action.payload };
     case "TOGGLE_SIDEBAR":
       return { ...state, sidebarOpen: !state.sidebarOpen };
     case "SET_SIDEBAR":
@@ -203,6 +235,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     const loadMe = async () => {
+      if (!hasStoredAuthToken()) {
+        dispatch({ type: "SET_CURRENT_USER", payload: null });
+        dispatch({ type: "SET_AUTH_LOADING", payload: false });
+        return;
+      }
       dispatch({ type: "SET_AUTH_LOADING", payload: true });
       try {
         const user = await me();

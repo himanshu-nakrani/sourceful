@@ -6,6 +6,7 @@ import json
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
+from pydantic import TypeAdapter
 
 from backend.database import execute, fetch_all, fetch_one
 from backend.errors import api_error_response
@@ -13,6 +14,13 @@ from backend.models import Citation, ConversationListItem, ConversationListRespo
 from backend.routers.deps import RequestContext, get_request_context
 
 router = APIRouter()
+
+# ⚡ BOLT OPTIMIZATION:
+# Pre-compile the TypeAdapter for list[Citation] to avoid runtime overhead.
+# This uses Pydantic's underlying Rust-based JSON parser (pydantic-core) directly via
+# validate_json(), skipping the standard library's json.loads() and iterative dict instantiation.
+# This yields a measurable performance improvement when parsing message histories with many sources.
+_citation_list_adapter = TypeAdapter(list[Citation])
 
 
 @router.get("/conversations", response_model=ConversationListResponse)
@@ -65,7 +73,8 @@ async def get_conversation(
     for row in rows:
         sources = None
         if row.get("sources_json"):
-            sources = [Citation(**item) for item in json.loads(row["sources_json"])]
+            # ⚡ BOLT OPTIMIZATION: Parse and validate in a single Rust-backed pass
+            sources = _citation_list_adapter.validate_json(row["sources_json"])
         messages.append(
             MessageResponse(
                 id=row["id"],

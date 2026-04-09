@@ -171,6 +171,8 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
           className="p-1.5 rounded-md"
           style={{ color: "var(--text-tertiary)" }}
+          aria-label="Toggle sidebar"
+          title="Toggle sidebar"
         >
           <PanelLeftClose size={18} />
         </button>
@@ -195,6 +197,8 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
             color: activeView === "dashboard" ? "var(--text-primary)" : "var(--text-secondary)",
             border: `1px solid ${activeView === "dashboard" ? "var(--border-accent)" : "var(--border)"}`,
           }}
+          aria-label="Dashboard view"
+          title="Dashboard view"
         >
           <BarChart3 size={16} />
         </button>
@@ -207,6 +211,8 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
             color: "var(--text-secondary)",
             border: "1px solid var(--border)",
           }}
+          aria-label="Open settings"
+          title="Open settings"
         >
           <Settings size={16} />
         </button>
@@ -253,7 +259,13 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           </span>
           <div className="flex items-center gap-2">
             {(documentsLoading || conversationsLoading) && <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-tertiary)" }} />}
-            <button type="button" onClick={() => void refreshDocuments()} style={{ color: "var(--text-tertiary)" }}>
+            <button
+              type="button"
+              onClick={() => void refreshDocuments()}
+              style={{ color: "var(--text-tertiary)" }}
+              aria-label="Refresh documents"
+              title="Refresh documents"
+            >
               <RefreshCcw size={12} />
             </button>
           </div>
@@ -328,6 +340,8 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                           void handleReprocess(document.id);
                         }}
                         style={{ color: "var(--text-tertiary)" }}
+                        aria-label="Reprocess document"
+                        title="Reprocess document"
                       >
                         <RefreshCcw size={14} />
                       </button>
@@ -339,6 +353,8 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                         void handleDeleteDocument(document.id);
                       }}
                       style={{ color: "var(--text-tertiary)" }}
+                      aria-label="Delete document"
+                      title="Delete document"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -360,10 +376,22 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                     </button>
                     {activeConversation ? (
                       <>
-                        <button type="button" onClick={() => void handleRenameConversation()} style={{ color: "var(--text-tertiary)" }}>
+                        <button
+                          type="button"
+                          onClick={() => void handleRenameConversation()}
+                          style={{ color: "var(--text-tertiary)" }}
+                          aria-label="Rename conversation"
+                          title="Rename conversation"
+                        >
                           <Pencil size={12} />
                         </button>
-                        <button type="button" onClick={() => void handleExportConversation("markdown")} style={{ color: "var(--text-tertiary)" }}>
+                        <button
+                          type="button"
+                          onClick={() => void handleExportConversation("markdown")}
+                          style={{ color: "var(--text-tertiary)" }}
+                          aria-label="Export conversation"
+                          title="Export conversation"
+                        >
                           <Download size={12} />
                         </button>
                       </>
@@ -392,6 +420,8 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                         }}
                         className="opacity-0 group-hover:opacity-100 transition-opacity"
                         style={{ color: "var(--text-tertiary)" }}
+                        aria-label="Delete conversation"
+                        title="Delete conversation"
                       >
                         <Trash2 size={11} />
                       </button>

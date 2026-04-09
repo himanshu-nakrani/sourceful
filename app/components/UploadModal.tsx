@@ -124,7 +124,14 @@ export default function UploadModal({ open, onClose }: UploadModalProps) {
               Files are queued for durable background indexing.
             </p>
           </div>
-          <button type="button" onClick={handleClose} className="p-1 rounded-md" style={{ color: "var(--text-tertiary)" }}>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="p-1 rounded-md"
+            style={{ color: "var(--text-tertiary)" }}
+            aria-label="Close modal"
+            title="Close modal"
+          >
             <X size={18} />
           </button>
         </div>

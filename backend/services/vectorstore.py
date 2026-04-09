@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 
@@ -10,6 +11,11 @@ import numpy as np
 from backend.database import execute, fetch_all
 from backend.services.chunking import ChunkPayload
 from backend.settings import settings
+
+try:
+    import orjson
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    orjson = None
 
 
 @dataclass(slots=True)
@@ -81,6 +87,36 @@ async def preview_chunks(document_id: str, owner_id: str, limit: int = 8) -> lis
     )
 
 
+def _load_embedding_json(payload: str) -> list[float]:
+    if orjson is not None:
+        if isinstance(payload, str):
+            payload = payload.encode("utf-8")
+        return orjson.loads(payload)
+    return json.loads(payload)
+
+
+def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
+    matrix = np.asarray([_load_embedding_json(row["embedding_json"]) for row in rows], dtype=np.float32)
+    query = np.asarray(query_embedding, dtype=np.float32)
+    query = query / (np.linalg.norm(query) + 1e-9)
+    matrix = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9)
+    scores = matrix @ query
+    indices = np.argsort(-scores)[:top_k]
+    result: list[RetrievedChunk] = []
+    for index in indices:
+        row = rows[int(index)]
+        result.append(
+            RetrievedChunk(
+                chunk_id=row["id"],
+                document_id=row["document_id"],
+                excerpt=row["content"],
+                score=float(scores[int(index)]),
+                page_number=row.get("page_number"),
+            )
+        )
+    return result
+
+
 async def query_similar(document_id: str, owner_id: str, query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
     if settings.using_postgres:
         rows = await fetch_all(
@@ -112,22 +148,4 @@ async def query_similar(document_id: str, owner_id: str, query_embedding: list[f
     if not rows:
         return []
 
-    matrix = np.asarray([json.loads(row["embedding_json"]) for row in rows], dtype=np.float32)
-    query = np.asarray(query_embedding, dtype=np.float32)
-    query = query / (np.linalg.norm(query) + 1e-9)
-    matrix = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9)
-    scores = matrix @ query
-    indices = np.argsort(-scores)[:top_k]
-    result: list[RetrievedChunk] = []
-    for index in indices:
-        row = rows[int(index)]
-        result.append(
-            RetrievedChunk(
-                chunk_id=row["id"],
-                document_id=row["document_id"],
-                excerpt=row["content"],
-                score=float(scores[int(index)]),
-                page_number=row.get("page_number"),
-            )
-        )
-    return result
+    return await asyncio.to_thread(_compute_similarities_sqlite, rows, query_embedding, top_k)

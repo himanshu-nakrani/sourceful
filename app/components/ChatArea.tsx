@@ -440,8 +440,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   background: canAsk ? "var(--accent)" : "transparent",
                   color: canAsk ? "var(--accent-fg)" : "var(--text-muted)",
                 }}
-                aria-label="Send message"
-                title="Send message"
+                aria-label={streaming ? "Generating response" : "Send message"}
+                title={streaming ? "Generating response" : "Send message"}
               >
                 {streaming ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>

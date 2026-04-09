@@ -29,18 +29,18 @@ def test_signup_login_me_logout_flow(client):
 def test_default_superuser_seeded(client):
     login = client.post(
         "/api/auth/login",
-        json={"email": "himanshunakrani0@gmail.com", "password": "him123"},
+        json={"email": "admin@example.com", "password": "admin123"},
     )
     assert login.status_code == 200
     payload = login.json()
-    assert payload["email"] == "himanshunakrani0@gmail.com"
+    assert payload["email"] == "admin@example.com"
     assert payload["role"] == "admin"
 
 
 def test_admin_user_list_and_update(client):
     admin = client.post(
         "/api/auth/login",
-        json={"email": "himanshunakrani0@gmail.com", "password": "him123"},
+        json={"email": "admin@example.com", "password": "admin123"},
     )
     assert admin.status_code == 200
     second = client.post(
@@ -53,7 +53,7 @@ def test_admin_user_list_and_update(client):
 
     relogin = client.post(
         "/api/auth/login",
-        json={"email": "himanshunakrani0@gmail.com", "password": "him123"},
+        json={"email": "admin@example.com", "password": "admin123"},
     )
     assert relogin.status_code == 200
 
@@ -66,7 +66,7 @@ def test_admin_user_list_and_update(client):
     assert updated.json()["is_active"] is False
 
     superuser = next(
-        user for user in users.json()["users"] if user["email"] == "himanshunakrani0@gmail.com"
+        user for user in users.json()["users"] if user["email"] == "admin@example.com"
     )
     protected = client.patch(f"/api/users/{superuser['id']}", json={"role": "user"})
     assert protected.status_code == 400

@@ -15,7 +15,7 @@ PROVIDER_HEADERS = {
 def login_superuser(client):
     response = client.post(
         "/api/auth/login",
-        json={"email": "himanshunakrani0@gmail.com", "password": "him123"},
+        json={"email": "admin@example.com", "password": "admin123"},
     )
     assert response.status_code == 200
 

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     auth_cookie_ttl_hours: int = Field(default=168, alias="AUTH_COOKIE_TTL_HOURS")
     auth_secure_cookies: bool = Field(default=False, alias="AUTH_SECURE_COOKIES")
 
+    default_superuser_email: str = Field(default="admin@example.com", alias="DEFAULT_SUPERUSER_EMAIL")
+    default_superuser_password: str = Field(default="admin123", alias="DEFAULT_SUPERUSER_PASSWORD")
+
     default_embedding_model_openai: str = Field(
         default="text-embedding-3-small",
         alias="DEFAULT_EMBEDDING_MODEL_OPENAI",

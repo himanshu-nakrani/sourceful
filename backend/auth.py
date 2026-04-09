@@ -10,10 +10,9 @@ from typing import Any
 from uuid import uuid4
 
 from backend.database import execute, execute_returning, fetch_all, fetch_one
+from backend.settings import settings
 
 PBKDF2_ITERATIONS = 480000
-DEFAULT_SUPERUSER_EMAIL = "himanshunakrani0@gmail.com"
-DEFAULT_SUPERUSER_PASSWORD = "him123"
 DEFAULT_SUPERUSER_ROLE = "admin"
 
 
@@ -94,7 +93,7 @@ async def create_user(email: str, password: str, role: str = "user") -> dict[str
 
 
 def is_reserved_superuser_email(email: str) -> bool:
-    return email.strip().lower() == DEFAULT_SUPERUSER_EMAIL
+    return email.strip().lower() == settings.default_superuser_email
 
 
 async def get_user_by_email(email: str) -> dict[str, Any] | None:
@@ -243,7 +242,7 @@ async def update_user(user_id: str, *, role: str | None, is_active: bool | None)
 
 async def ensure_default_superuser() -> dict[str, Any]:
     now = _utcnow().isoformat()
-    existing = await get_user_by_email(DEFAULT_SUPERUSER_EMAIL)
+    existing = await get_user_by_email(settings.default_superuser_email)
     if existing:
         await execute(
             """
@@ -252,17 +251,17 @@ async def ensure_default_superuser() -> dict[str, Any]:
             WHERE email = ?
             """,
             (
-                hash_password(DEFAULT_SUPERUSER_PASSWORD),
+                hash_password(settings.default_superuser_password),
                 DEFAULT_SUPERUSER_ROLE,
                 now,
-                DEFAULT_SUPERUSER_EMAIL,
+                settings.default_superuser_email,
             ),
         )
     else:
         await create_user(
-            DEFAULT_SUPERUSER_EMAIL,
-            DEFAULT_SUPERUSER_PASSWORD,
+            settings.default_superuser_email,
+            settings.default_superuser_password,
             role=DEFAULT_SUPERUSER_ROLE,
         )
-    user = await get_user_by_email(DEFAULT_SUPERUSER_EMAIL)
+    user = await get_user_by_email(settings.default_superuser_email)
     return _normalize_user(user) or {}

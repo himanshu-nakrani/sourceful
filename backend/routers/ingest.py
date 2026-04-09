@@ -38,9 +38,10 @@ async def _process_document(
 ) -> None:
     """Background task: extract, chunk, embed, store."""
     try:
-        text = extract_text(filename=filename, raw=raw)
+        text = await asyncio.to_thread(extract_text, filename=filename, raw=raw)
 
-        chunks = chunk_text(
+        chunks = await asyncio.to_thread(
+            chunk_text,
             text,
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
@@ -103,7 +104,9 @@ async def ingest(
     if not authorization or not authorization.startswith("Bearer "):
         return JSONResponse(
             status_code=401,
-            content={"error": "Missing or invalid Authorization header (use Bearer token)."},
+            content={
+                "error": "Missing or invalid Authorization header (use Bearer token)."
+            },
         )
     api_key = authorization.removeprefix("Bearer ").strip()
     if not api_key:
@@ -114,18 +117,24 @@ async def ingest(
     if not p:
         return JSONResponse(
             status_code=400,
-            content={"error": 'Invalid or missing provider (use "openai" or "gemini").'},
+            content={
+                "error": 'Invalid or missing provider (use "openai" or "gemini").'
+            },
         )
 
     # ---- Validate file ----
     if not file.filename:
-        return JSONResponse(status_code=400, content={"error": "A document file is required."})
+        return JSONResponse(
+            status_code=400, content={"error": "A document file is required."}
+        )
 
     suffix = PurePath(file.filename.lower()).suffix
     if suffix not in settings.allowed_extensions:
         return JSONResponse(
             status_code=400,
-            content={"error": f"Unsupported file type: {suffix}. Allowed: {settings.allowed_file_types}"},
+            content={
+                "error": f"Unsupported file type: {suffix}. Allowed: {settings.allowed_file_types}"
+            },
         )
 
     # ---- Validate embedding model ----
@@ -133,7 +142,9 @@ async def ingest(
     if len(emb) > MAX_MODEL_LEN:
         return JSONResponse(
             status_code=400,
-            content={"error": f"Embedding model id is too long (max {MAX_MODEL_LEN} characters)."},
+            content={
+                "error": f"Embedding model id is too long (max {MAX_MODEL_LEN} characters)."
+            },
         )
     if not emb:
         emb = (

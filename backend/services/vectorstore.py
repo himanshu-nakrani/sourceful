@@ -12,6 +12,11 @@ from backend.database import execute, fetch_all
 from backend.services.chunking import ChunkPayload
 from backend.settings import settings
 
+try:
+    import orjson
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    orjson = None
+
 
 @dataclass(slots=True)
 class RetrievedChunk:
@@ -82,8 +87,16 @@ async def preview_chunks(document_id: str, owner_id: str, limit: int = 8) -> lis
     )
 
 
+def _load_embedding_json(payload: str) -> list[float]:
+    if orjson is not None:
+        if isinstance(payload, str):
+            payload = payload.encode("utf-8")
+        return orjson.loads(payload)
+    return json.loads(payload)
+
+
 def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
-    matrix = np.asarray([json.loads(row["embedding_json"]) for row in rows], dtype=np.float32)
+    matrix = np.asarray([_load_embedding_json(row["embedding_json"]) for row in rows], dtype=np.float32)
     query = np.asarray(query_embedding, dtype=np.float32)
     query = query / (np.linalg.norm(query) + 1e-9)
     matrix = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9)

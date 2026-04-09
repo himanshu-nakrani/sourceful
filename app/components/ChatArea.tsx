@@ -312,6 +312,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
           className={`p-1.5 rounded-md ${sidebarOpen ? 'md:hidden' : ''}`}
           style={{ color: "var(--text-tertiary)" }}
+          aria-label="Toggle sidebar"
+          title="Toggle sidebar"
         >
           <PanelLeftOpen size={18} />
         </button>
@@ -335,7 +337,13 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         )}
         <div className="flex-1" />
         {activeDocument && activeDocument.status !== "ready" ? (
-          <button type="button" onClick={handleRetryDocument} style={{ color: "var(--text-tertiary)" }}>
+          <button
+            type="button"
+            onClick={handleRetryDocument}
+            style={{ color: "var(--text-tertiary)" }}
+            aria-label="Retry processing document"
+            title="Retry processing document"
+          >
             <RefreshCcw size={16} />
           </button>
         ) : null}
@@ -419,6 +427,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                 disabled={!streaming}
                 className="flex items-center justify-center p-2 m-1.5 rounded-lg"
                 style={{ color: streaming ? "var(--warning)" : "var(--text-muted)" }}
+                aria-label="Stop generating response"
+                title="Stop generating response"
               >
                 <StopCircle size={18} />
               </button>
@@ -430,6 +440,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   background: canAsk ? "var(--accent)" : "transparent",
                   color: canAsk ? "var(--accent-fg)" : "var(--text-muted)",
                 }}
+                aria-label="Send message"
+                title="Send message"
               >
                 {streaming ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>

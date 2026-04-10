@@ -14,6 +14,8 @@ os.environ["DOCUMENT_REGISTRY_PATH"] = str(TEST_DATA_DIR / "test_documents.json"
 os.environ["LOG_LEVEL"] = "DEBUG"
 os.environ["RATE_LIMIT_RPM"] = "1000"
 os.environ["WORKER_HEARTBEAT_TTL_SECONDS"] = "600"
+os.environ["DEFAULT_SUPERUSER_EMAIL"] = "admin@example.com"
+os.environ["DEFAULT_SUPERUSER_PASSWORD"] = "admin123"
 
 from backend.database import close_db, init_db, record_heartbeat
 from backend.main import app

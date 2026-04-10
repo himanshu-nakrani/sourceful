@@ -49,7 +49,8 @@ export default function InsightsDashboard() {
         >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--text-tertiary)" }}>
+              {/* [typography] Standardized tracking to tracking-wider for consistency */}
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
                 Shared Insights
               </p>
               <h2 className="mt-2 text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -167,7 +168,8 @@ export default function InsightsDashboard() {
 function MetricMini({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl px-4 py-3" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
-      <p className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+      {/* [typography] Changed text-[11px] to text-xs for minimum readable size */}
+      <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
         {label}
       </p>
       <p className="mt-2 text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>

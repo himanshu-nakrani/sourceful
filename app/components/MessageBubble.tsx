@@ -58,7 +58,8 @@ export default function MessageBubble({ message, onRerun, rerunDisabled = false 
                   type="button"
                   onClick={() => onRerun(message)}
                   disabled={rerunDisabled}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+                  aria-label="Rerun this message"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
                   style={{
                     background: "rgba(9, 9, 11, 0.16)",
                     color: "var(--accent-fg)",
@@ -145,11 +146,13 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         }}
       >
         <span>{language}</span>
+        {/* [a11y] Added aria-label — icon-only button needs accessible name */}
         <button
           type="button"
           onClick={handleCopy}
           className="flex items-center gap-1 transition-colors"
           style={{ color: copied ? "var(--success)" : "var(--text-tertiary)" }}
+          aria-label={copied ? "Code copied" : "Copy code to clipboard"}
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? "Copied" : "Copy"}

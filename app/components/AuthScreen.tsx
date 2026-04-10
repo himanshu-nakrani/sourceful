@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { LockKeyhole, ShieldCheck } from "lucide-react";
+import { LockKeyhole, Users } from "lucide-react";
 
 import { login, signup } from "../lib/api";
 import { useStore } from "../lib/store";
@@ -44,7 +44,8 @@ export default function AuthScreen() {
           className="rounded-[32px] border px-7 py-8"
           style={{ borderColor: "var(--border)", background: "rgba(14,14,17,0.9)" }}
         >
-          <p className="text-xs font-semibold uppercase tracking-[0.28em]" style={{ color: "var(--text-tertiary)" }}>
+          {/* [typography] Standardized tracking to tracking-wider for consistency */}
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
             Secure Workspace
           </p>
           <h1 className="mt-3 text-4xl font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
@@ -60,10 +61,11 @@ export default function AuthScreen() {
               title="Private document access"
               description="Uploads, conversations, and reruns stay scoped to the authenticated user."
             />
+            {/* [flow] Removed hardcoded admin credentials — replaced with safe description */}
             <FeatureCard
-              icon={<ShieldCheck size={16} />}
-              title="Built-in superuser"
-              description="Default admin login: himanshunakrani0@gmail.com / him123."
+              icon={<Users size={16} />}
+              title="Multi-user workspace"
+              description="Admins can manage users, roles, and permissions from the settings panel."
             />
           </div>
         </section>
@@ -72,11 +74,14 @@ export default function AuthScreen() {
           className="rounded-[32px] border px-6 py-7"
           style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
         >
-          <div className="inline-flex rounded-full p-1" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+          {/* [a11y] Added role="tablist" and role="tab" with aria-selected for screen reader support */}
+          <div className="inline-flex rounded-full p-1" role="tablist" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
             {(["login", "signup"] as const).map((item) => (
               <button
                 key={item}
                 type="button"
+                role="tab"
+                aria-selected={mode === item}
                 onClick={() => setMode(item)}
                 className="rounded-full px-4 py-2 text-sm"
                 style={{

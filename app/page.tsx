@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { Loader2 } from "lucide-react";
 import AuthScreen from "./components/AuthScreen";
 import InsightsDashboard from "./components/InsightsDashboard";
 import Sidebar from "./components/Sidebar";
@@ -16,7 +17,9 @@ function AppShell() {
 
   if (state.authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)", color: "var(--text-secondary)" }}>
+      <div className="flex min-h-screen items-center justify-center gap-3" style={{ background: "var(--bg-primary)", color: "var(--text-secondary)" }}>
+        {/* [layout] Added spinner to loading state for visual feedback */}
+        <Loader2 size={20} className="animate-spin" />
         Loading workspace...
       </div>
     );

@@ -111,7 +111,11 @@ export default function UploadModal({ open, onClose }: UploadModalProps) {
         if (event.target === event.currentTarget) handleClose();
       }}
     >
+      {/* [a11y] Added role="dialog" and aria-modal for assistive technology support */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Upload document"
         className="rounded-2xl shadow-2xl animate-scale-in"
         style={{ width: "min(520px, 92vw)", background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
       >
@@ -137,7 +141,10 @@ export default function UploadModal({ open, onClose }: UploadModalProps) {
         </div>
 
         <div className="px-5 py-5">
+          {/* [a11y] Added role, tabIndex, and onKeyDown for keyboard accessibility on drop zone */}
           <div
+            role="button"
+            tabIndex={0}
             className="rounded-xl transition-all cursor-pointer"
             style={{
               border: `2px dashed ${dragOver ? "var(--accent)" : "var(--border-hover)"}`,
@@ -152,6 +159,13 @@ export default function UploadModal({ open, onClose }: UploadModalProps) {
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            aria-label="Drop a file here or click to browse"
           >
             <input
               ref={fileInputRef}

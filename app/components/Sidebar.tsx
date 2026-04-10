@@ -146,6 +146,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
       className={`absolute md:relative z-40 bg-[var(--bg-primary)] flex flex-col h-full border-r transition-transform duration-300 flex-shrink-0 ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden"
       }`}
+      aria-label="Document navigation"
     >
       <div
         className="flex items-center justify-between px-4 flex-shrink-0"
@@ -178,6 +179,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         </button>
       </div>
 
+      {/* [layout] Removed duplicate dashboard icon button — kept full-width one below */}
       <div className="px-3 py-3 flex gap-2 flex-shrink-0">
         <button
           type="button"
@@ -187,20 +189,6 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         >
           <Upload size={15} />
           Upload
-        </button>
-        <button
-          type="button"
-          onClick={() => dispatch({ type: "SET_ACTIVE_VIEW", payload: "dashboard" })}
-          className="flex items-center justify-center px-3 py-2 rounded-lg"
-          style={{
-            background: activeView === "dashboard" ? "var(--accent-soft)" : "var(--bg-surface)",
-            color: activeView === "dashboard" ? "var(--text-primary)" : "var(--text-secondary)",
-            border: `1px solid ${activeView === "dashboard" ? "var(--border-accent)" : "var(--border)"}`,
-          }}
-          aria-label="Dashboard view"
-          title="Dashboard view"
-        >
-          <BarChart3 size={16} />
         </button>
         <button
           type="button"
@@ -242,10 +230,12 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
         >
           <Search size={14} style={{ color: "var(--text-muted)" }} />
+          {/* [a11y] Added aria-label — input had no associated label element */}
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search documents"
+            aria-label="Search documents"
             className="w-full bg-transparent text-sm outline-none"
             style={{ color: "var(--text-primary)" }}
           />
@@ -301,8 +291,10 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
               : "var(--warning)";
           return (
             <div key={document.id} className="mb-2">
-              <div
-                className="group rounded-xl px-3 py-3 cursor-pointer"
+              {/* [a11y] Changed clickable div to button for keyboard accessibility */}
+              <button
+                type="button"
+                className="group rounded-xl px-3 py-3 cursor-pointer w-full text-left"
                 style={{
                   background: isActive ? "var(--accent-soft)" : "transparent",
                   border: `1px solid ${isActive ? "var(--border-accent)" : "transparent"}`,
@@ -331,10 +323,13 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* [a11y] Added focus-within:opacity-100 so keyboard users can reach these actions */}
+                  {/* [mobile] Added p-2 for minimum 44px touch targets */}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                     {document.status === "error" || document.status === "ready" ? (
                       <button
                         type="button"
+                        className="p-2 rounded-md"
                         onClick={(event) => {
                           event.stopPropagation();
                           void handleReprocess(document.id);
@@ -346,11 +341,15 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                         <RefreshCcw size={14} />
                       </button>
                     ) : null}
+                    {/* [flow] Added confirmation before destructive delete action */}
                     <button
                       type="button"
+                      className="p-2 rounded-md"
                       onClick={(event) => {
                         event.stopPropagation();
-                        void handleDeleteDocument(document.id);
+                        if (window.confirm(`Delete "${document.filename}"? This cannot be undone.`)) {
+                          void handleDeleteDocument(document.id);
+                        }
                       }}
                       style={{ color: "var(--text-tertiary)" }}
                       aria-label="Delete document"
@@ -360,7 +359,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                     </button>
                   </div>
                 </div>
-              </div>
+              </button>
 
               {isActive ? (
                 <div className="ml-6 mt-2 pl-3" style={{ borderLeft: "2px solid var(--border)" }}>
@@ -398,10 +397,13 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                     ) : null}
                   </div>
 
+                  {/* [a11y] Changed clickable div to button for keyboard accessibility */}
+                  {/* [mobile] Increased padding for better touch targets */}
                   {conversations.map((conversation) => (
-                    <div
+                    <button
+                      type="button"
                       key={conversation.id}
-                      className="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer"
+                      className="group flex items-center gap-2 px-2 py-2.5 rounded-md cursor-pointer w-full text-left"
                       style={{
                         background:
                           activeConversationId === conversation.id ? "var(--bg-surface)" : "transparent",
@@ -412,26 +414,41 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                       <span className="text-xs truncate flex-1" style={{ color: "var(--text-secondary)" }}>
                         {conversation.title}
                       </span>
-                      <button
-                        type="button"
+                      {/* [flow] Added confirmation before destructive delete */}
+                      {/* [a11y] Added focus-within visibility for keyboard access */}
+                      <span
+                        role="button"
+                        tabIndex={0}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void handleDeleteConversation(conversation.id);
+                          if (window.confirm(`Delete conversation "${conversation.title}"?`)) {
+                            void handleDeleteConversation(conversation.id);
+                          }
                         }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            if (window.confirm(`Delete conversation "${conversation.title}"?`)) {
+                              void handleDeleteConversation(conversation.id);
+                            }
+                          }
+                        }}
+                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-md transition-opacity"
                         style={{ color: "var(--text-tertiary)" }}
                         aria-label="Delete conversation"
                         title="Delete conversation"
                       >
                         <Trash2 size={11} />
-                      </button>
-                    </div>
+                      </span>
+                    </button>
                   ))}
 
                   {document.status === "ready" ? (
                     <div className="mt-3">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+                        {/* [typography] Changed text-[11px] to text-xs for minimum readable size */}
+                        <span className="text-xs uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
                           Chunk Preview
                         </span>
                         {chunkPreviewLoading ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-tertiary)" }} /> : null}
@@ -442,8 +459,9 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                           className="rounded-lg px-3 py-2 mb-2"
                           style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
                         >
-                          <div className="flex items-center gap-2 text-[11px] mb-1" style={{ color: "var(--text-tertiary)" }}>
-                            <span>Chunk {chunk.chunk_index + 1}</span>
+                              {/* [typography] Changed text-[11px] to text-xs for minimum readable size */}
+                          <div className="flex items-center gap-2 text-xs mb-1" style={{ color: "var(--text-tertiary)" }}>
+                                <span>Chunk {chunk.chunk_index + 1}</span>
                             {chunk.page_number ? <span>Page {chunk.page_number}</span> : null}
                           </div>
                           <p className="text-xs line-clamp-4" style={{ color: "var(--text-secondary)" }}>

@@ -22,9 +22,11 @@ export default function SourceCard({ sources }: SourceCardProps) {
         overflow: "hidden",
       }}
     >
+      {/* [a11y] Added aria-expanded to communicate toggle state to assistive technology */}
       <button
         type="button"
         onClick={() => setExpanded((current) => !current)}
+        aria-expanded={expanded}
         className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
         style={{ background: expanded ? "var(--bg-tertiary)" : "transparent" }}
       >
@@ -51,7 +53,8 @@ export default function SourceCard({ sources }: SourceCardProps) {
                 border: "1px solid var(--border)",
               }}
             >
-              <div className="flex items-center gap-2 mb-2 text-[11px] uppercase tracking-wider">
+              {/* [typography] Changed text-[11px] to text-xs for minimum readable size */}
+              <div className="flex items-center gap-2 mb-2 text-xs uppercase tracking-wider">
                 <span
                   className="px-1.5 py-0.5 rounded"
                   style={{ background: "var(--accent)", color: "var(--accent-fg)" }}

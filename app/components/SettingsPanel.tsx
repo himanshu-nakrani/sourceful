@@ -53,7 +53,11 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
+      {/* [a11y] Added role="dialog" and aria-modal for assistive technology support */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
         className="rounded-2xl shadow-2xl animate-scale-in"
         style={{
           width: "min(520px, 92vw)",
@@ -70,7 +74,8 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               Provider credentials are stored in this browser session only.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="p-1 rounded-md" style={{ color: "var(--text-tertiary)" }}>
+          {/* [a11y] Added aria-label — icon-only button needs accessible name */}
+          <button type="button" onClick={onClose} className="p-1 rounded-md" style={{ color: "var(--text-tertiary)" }} aria-label="Close settings">
             <X size={18} />
           </button>
         </div>
@@ -167,6 +172,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   key={provider.value}
                   type="button"
                   onClick={() => dispatch({ type: "SET_PROVIDER", payload: provider.value })}
+                  aria-pressed={settings.provider === provider.value}
                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
                   style={{
                     background:

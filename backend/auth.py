@@ -85,7 +85,7 @@ async def create_user(email: str, password: str, role: str = "user") -> dict[str
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING id, email, role, is_active, is_verified, created_at, updated_at
         """,
-        (str(uuid4()), normalized_email, hash_password(password), role, 1, 1, now, now),
+        (str(uuid4()), normalized_email, hash_password(password), role, True, True, now, now),
     )
     if not row:
         raise RuntimeError("Failed to create user.")
@@ -228,7 +228,7 @@ async def update_user(user_id: str, *, role: str | None, is_active: bool | None)
         params.append(role)
     if is_active is not None:
         fields.append("is_active = ?")
-        params.append(1 if is_active else 0)
+        params.append(is_active)
     fields.append("updated_at = ?")
     params.append(_utcnow().isoformat())
     params.append(user_id)
@@ -247,12 +247,14 @@ async def ensure_default_superuser() -> dict[str, Any]:
         await execute(
             """
             UPDATE users
-            SET password_hash = ?, role = ?, is_active = 1, is_verified = 1, updated_at = ?
+            SET password_hash = ?, role = ?, is_active = ?, is_verified = ?, updated_at = ?
             WHERE email = ?
             """,
             (
                 hash_password(settings.default_superuser_password),
                 DEFAULT_SUPERUSER_ROLE,
+                True,
+                True,
                 now,
                 settings.default_superuser_email,
             ),

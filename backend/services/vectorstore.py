@@ -6,8 +6,6 @@ import asyncio
 import json
 from dataclasses import dataclass
 
-import numpy as np
-
 from backend.database import execute, fetch_all
 from backend.services.chunking import ChunkPayload
 from backend.settings import settings
@@ -96,6 +94,8 @@ def _load_embedding_json(payload: str) -> list[float]:
 
 
 def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
+    import numpy as np
+
     matrix = np.asarray([_load_embedding_json(row["embedding_json"]) for row in rows], dtype=np.float32)
     query = np.asarray(query_embedding, dtype=np.float32)
     query = query / (np.linalg.norm(query) + 1e-9)

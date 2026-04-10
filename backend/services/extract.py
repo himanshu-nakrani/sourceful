@@ -8,8 +8,6 @@ import io
 from dataclasses import dataclass
 from pathlib import PurePath
 
-from pypdf import PdfReader
-
 
 @dataclass(slots=True)
 class ExtractedSection:
@@ -94,6 +92,8 @@ def extract_document(*, filename: str, raw: bytes) -> ExtractedDocument:
     suffix = PurePath(filename.lower()).suffix
 
     if suffix == ".pdf":
+        from pypdf import PdfReader
+
         reader = PdfReader(io.BytesIO(raw))
         sections: list[ExtractedSection] = []
         for index, page in enumerate(reader.pages, start=1):

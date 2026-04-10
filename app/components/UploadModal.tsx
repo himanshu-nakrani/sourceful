@@ -47,7 +47,15 @@ export default function UploadModal({ open, onClose }: UploadModalProps) {
     while (true) {
       const nextJob = await getJob(auth, jobId);
       setJob(nextJob);
-      setStatus(nextJob.status === "ready" ? "done" : nextJob.status === "error" ? "error" : "processing");
+      setStatus(
+        nextJob.status === "ready"
+          ? "done"
+          : nextJob.status === "error"
+            ? "error"
+            : nextJob.status === "queued"
+              ? "queued"
+              : "processing"
+      );
       if (nextJob.status === "ready") {
         await refreshDocuments();
         await selectDocument(documentId);

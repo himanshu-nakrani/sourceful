@@ -165,6 +165,11 @@ async def claim_next_job() -> dict | None:
         """,
         (row["id"],),
     )
+    if updated:
+        await execute(
+            "UPDATE documents SET status = 'processing' WHERE id = ? AND owner_id = ?",
+            (updated["document_id"], updated["owner_id"]),
+        )
     remaining = await fetch_one("SELECT COUNT(*) AS count FROM document_jobs WHERE status = 'queued'")
     metrics.set_gauge("ingest_queue_depth", float((remaining or {}).get("count", 0)))
     return updated

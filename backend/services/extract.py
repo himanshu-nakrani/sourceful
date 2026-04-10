@@ -92,7 +92,10 @@ def extract_document(*, filename: str, raw: bytes) -> ExtractedDocument:
     suffix = PurePath(filename.lower()).suffix
 
     if suffix == ".pdf":
-        from pypdf import PdfReader
+        try:
+            from pypdf import PdfReader
+        except ImportError as exc:
+            raise ValueError("pypdf is required to parse PDF files.") from exc
 
         reader = PdfReader(io.BytesIO(raw))
         sections: list[ExtractedSection] = []

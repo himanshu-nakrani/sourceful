@@ -377,8 +377,9 @@ async def execute_many(query: str, params_list: list[tuple[Any, ...]]) -> None:
     if settings.using_postgres:
         assert _pg_pool is not None
         async with _pg_pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.executemany(_sql(query), params_list)
+            async with conn.transaction():
+                async with conn.cursor() as cur:
+                    await cur.executemany(_sql(query), params_list)
         return
 
     assert _sqlite is not None

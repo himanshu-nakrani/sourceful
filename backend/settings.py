@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     auth_secure_cookies: bool = Field(default=False, alias="AUTH_SECURE_COOKIES")
 
     default_superuser_email: str = Field(default="admin@example.com", alias="DEFAULT_SUPERUSER_EMAIL")
-    default_superuser_password: str = Field(..., alias="DEFAULT_SUPERUSER_PASSWORD")
+    default_superuser_password: str = Field(default="admin123", alias="DEFAULT_SUPERUSER_PASSWORD")
 
     default_embedding_model_openai: str = Field(
         default="text-embedding-3-small",

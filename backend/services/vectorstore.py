@@ -94,10 +94,12 @@ def _load_embedding_json(payload: str) -> list[float]:
 
 
 def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
+
     try:
         import numpy as np
     except ImportError as exc:
         raise ValueError("numpy is required for SQLite vector similarity search.") from exc
+
 
     matrix = np.asarray([_load_embedding_json(row["embedding_json"]) for row in rows], dtype=np.float32)
     query = np.asarray(query_embedding, dtype=np.float32)

@@ -368,6 +368,24 @@ async def execute(query: str, params: tuple[Any, ...] = ()) -> None:
     await _sqlite.commit()
 
 
+async def execute_many(query: str, params_list: list[tuple[Any, ...]]) -> None:
+    """Executes a database query for high-performance bulk operations."""
+    await init_db()
+    if not params_list:
+        return
+
+    if settings.using_postgres:
+        assert _pg_pool is not None
+        async with _pg_pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.executemany(_sql(query), params_list)
+        return
+
+    assert _sqlite is not None
+    await _sqlite.executemany(query, params_list)
+    await _sqlite.commit()
+
+
 async def execute_returning(query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
     await init_db()
     if settings.using_postgres:

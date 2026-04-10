@@ -6,7 +6,7 @@ import asyncio
 import json
 from dataclasses import dataclass
 
-from backend.database import execute, fetch_all
+from backend.database import execute, execute_many, fetch_all
 from backend.services.chunking import ChunkPayload
 from backend.settings import settings
 
@@ -37,39 +37,50 @@ async def replace_chunks(
     embeddings: list[list[float]],
 ) -> None:
     await execute("DELETE FROM document_chunks WHERE document_id = ? AND owner_id = ?", (document_id, owner_id))
-    for chunk, embedding in zip(chunks, embeddings, strict=True):
-        if settings.using_postgres:
-            await execute(
-                """
-                INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, embedding)
-                VALUES (?, ?, ?, ?, ?, ?, ?::vector)
-                """,
-                (
-                    f"{document_id}:{chunk.chunk_index}",
-                    document_id,
-                    owner_id,
-                    chunk.chunk_index,
-                    chunk.content,
-                    chunk.page_number,
-                    _vector_literal(embedding),
-                ),
+
+    if not chunks:
+        return
+
+    if settings.using_postgres:
+        params_list = [
+            (
+                f"{document_id}:{chunk.chunk_index}",
+                document_id,
+                owner_id,
+                chunk.chunk_index,
+                chunk.content,
+                chunk.page_number,
+                _vector_literal(embedding),
             )
-        else:
-            await execute(
-                """
-                INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, embedding_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    f"{document_id}:{chunk.chunk_index}",
-                    document_id,
-                    owner_id,
-                    chunk.chunk_index,
-                    chunk.content,
-                    chunk.page_number,
-                    json.dumps(embedding),
-                ),
+            for chunk, embedding in zip(chunks, embeddings, strict=True)
+        ]
+        await execute_many(
+            """
+            INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, embedding)
+            VALUES (?, ?, ?, ?, ?, ?, ?::vector)
+            """,
+            params_list,
+        )
+    else:
+        params_list = [
+            (
+                f"{document_id}:{chunk.chunk_index}",
+                document_id,
+                owner_id,
+                chunk.chunk_index,
+                chunk.content,
+                chunk.page_number,
+                json.dumps(embedding),
             )
+            for chunk, embedding in zip(chunks, embeddings, strict=True)
+        ]
+        await execute_many(
+            """
+            INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, embedding_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            params_list,
+        )
 
 
 async def preview_chunks(document_id: str, owner_id: str, limit: int = 8) -> list[dict]:

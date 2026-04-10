@@ -57,7 +57,8 @@ async def analytics_overview(_: object = Depends(require_authenticated_context))
     document_rows = await fetch_all("SELECT created_at FROM documents")
     message_rows = await fetch_all("SELECT role, created_at FROM messages")
     session_rows = await fetch_all(
-        "SELECT user_id, created_at FROM auth_sessions WHERE revoked IS NOT TRUE"
+        "SELECT user_id, created_at FROM auth_sessions WHERE revoked = ?",
+        (False,),
     )
 
     now = datetime.now(timezone.utc)

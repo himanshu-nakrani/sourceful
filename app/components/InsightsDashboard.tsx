@@ -36,6 +36,25 @@ export default function InsightsDashboard() {
       ]
     : [];
 
+  const recentActivity = [
+    { label: "Signups (7d)", value: data?.recent.signups_7d ?? 0, color: "#3b82f6" },
+    { label: "Uploads (7d)", value: data?.recent.uploads_7d ?? 0, color: "#14b8a6" },
+    { label: "Questions (24h)", value: data?.recent.questions_24h ?? 0, color: "#8b5cf6" },
+    { label: "Sessions (24h)", value: data?.recent.sessions_24h ?? 0, color: "#f59e0b" },
+  ];
+
+  const footprint = [
+    { label: "Documents", value: data?.totals.documents ?? 0, color: "#0ea5e9" },
+    { label: "Conversations", value: data?.totals.conversations ?? 0, color: "#22c55e" },
+    { label: "Messages", value: data?.totals.messages ?? 0, color: "#a855f7" },
+    { label: "Chunks", value: data?.totals.chunks ?? 0, color: "#f97316" },
+  ];
+
+  const providerTotal = (data?.provider_breakdown ?? []).reduce((sum, item) => sum + item.documents, 0);
+  const readyDocuments = data?.totals.ready_documents ?? 0;
+  const totalDocuments = data?.totals.documents ?? 0;
+  const readyPercent = totalDocuments > 0 ? Math.round((readyDocuments / totalDocuments) * 100) : 0;
+
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6" style={{ background: "var(--bg-primary)" }}>
       <div className="mx-auto flex max-w-5xl flex-col gap-6 animate-fade-in">
@@ -118,6 +137,9 @@ export default function InsightsDashboard() {
               <MetricMini label="Questions (24h)" value={data?.recent.questions_24h ?? 0} />
               <MetricMini label="Sessions (24h)" value={data?.recent.sessions_24h ?? 0} />
             </div>
+            <div className="mt-5">
+              <MiniBarChart rows={recentActivity} />
+            </div>
           </div>
 
           <div
@@ -127,8 +149,22 @@ export default function InsightsDashboard() {
             <div className="flex items-center gap-2">
               <BarChart3 size={16} style={{ color: "var(--accent-brand)" }} />
               <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Provider mix
+                Document health
               </h3>
+            </div>
+            <div
+              className="mt-4 flex items-center gap-4 rounded-xl border px-4 py-4"
+              style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
+            >
+              <ProgressDonut percent={readyPercent} />
+              <div>
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                  {readyDocuments}/{totalDocuments} ready
+                </p>
+                <p className="mt-1 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                  {totalDocuments - readyDocuments} still processing or failed
+                </p>
+              </div>
             </div>
             <div className="mt-4 flex flex-col gap-3">
               {(data?.provider_breakdown ?? []).map((provider) => (
@@ -150,6 +186,9 @@ export default function InsightsDashboard() {
                       }}
                     />
                   </div>
+                  <p className="mt-1 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                    {providerTotal > 0 ? `${Math.round((provider.documents / providerTotal) * 100)}% of docs` : "No docs"}
+                  </p>
                 </div>
               ))}
               {!data?.provider_breakdown.length && !loading ? (
@@ -158,6 +197,24 @@ export default function InsightsDashboard() {
                 </p>
               ) : null}
             </div>
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl border px-5 py-5"
+          style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}
+        >
+          <div className="flex items-center gap-2">
+            <Database size={16} style={{ color: "var(--accent-brand)" }} />
+            <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              Knowledge base footprint
+            </h3>
+          </div>
+          <p className="mt-1 text-xs" style={{ color: "var(--text-tertiary)" }}>
+            Relative size across indexed entities
+          </p>
+          <div className="mt-4">
+            <MiniBarChart rows={footprint} />
           </div>
         </div>
       </div>
@@ -177,4 +234,53 @@ function MetricMini({ label, value }: { label: string; value: number }) {
       </p>
     </div>
   );
+}
+
+function MiniBarChart({
+  rows,
+}: {
+  rows: Array<{ label: string; value: number; color: string }>;
+}) {
+  const max = rows.reduce((peak, row) => Math.max(peak, row.value), 0);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {rows.map((row) => {
+        const width = max > 0 ? (row.value / max) * 100 : 0;
+        return (
+          <div key={row.label}>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span style={{ color: "var(--text-secondary)" }}>{row.label}</span>
+              <span style={{ color: "var(--text-primary)" }}>{formatNumber(row.value)}</span>
+            </div>
+            <div className="h-2 rounded-full" style={{ background: "var(--bg-tertiary)" }}>
+              <div className="h-2 rounded-full" style={{ width: `${width}%`, background: row.color }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProgressDonut({ percent }: { percent: number }) {
+  const normalized = Math.min(100, Math.max(0, percent));
+  return (
+    <div
+      className="grid h-16 w-16 place-items-center rounded-full"
+      style={{
+        background: `conic-gradient(#3b82f6 0% ${normalized}%, var(--bg-tertiary) ${normalized}% 100%)`,
+      }}
+    >
+      <div className="grid h-12 w-12 place-items-center rounded-full" style={{ background: "var(--bg-surface)" }}>
+        <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+          {normalized}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function formatNumber(value: number): string {
+  return Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }

@@ -291,15 +291,22 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
               : "var(--warning)";
           return (
             <div key={document.id} className="mb-2">
-              {/* [a11y] Changed clickable div to button for keyboard accessibility */}
-              <button
-                type="button"
+              {/* [a11y] Use a keyboard-focusable container so row actions can stay real buttons */}
+              <div
+                role="button"
+                tabIndex={0}
                 className="group rounded-xl px-3 py-3 cursor-pointer w-full text-left"
                 style={{
                   background: isActive ? "var(--accent-soft)" : "transparent",
                   border: `1px solid ${isActive ? "var(--border-accent)" : "transparent"}`,
                 }}
                 onClick={() => void selectDocument(document.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    void selectDocument(document.id);
+                  }
+                }}
               >
                 <div className="flex items-start gap-2.5">
                   <div
@@ -359,7 +366,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                     </button>
                   </div>
                 </div>
-              </button>
+              </div>
 
               {isActive ? (
                 <div className="ml-6 mt-2 pl-3" style={{ borderLeft: "2px solid var(--border)" }}>

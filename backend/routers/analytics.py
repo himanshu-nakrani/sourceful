@@ -56,7 +56,9 @@ async def analytics_overview(_: object = Depends(require_authenticated_context))
     user_rows = await fetch_all("SELECT created_at FROM users")
     document_rows = await fetch_all("SELECT created_at FROM documents")
     message_rows = await fetch_all("SELECT role, created_at FROM messages")
-    session_rows = await fetch_all("SELECT user_id, created_at FROM auth_sessions WHERE revoked = 0")
+    session_rows = await fetch_all(
+        "SELECT user_id, created_at FROM auth_sessions WHERE revoked IS NOT TRUE"
+    )
 
     now = datetime.now(timezone.utc)
     cutoff_24h = now - timedelta(hours=24)

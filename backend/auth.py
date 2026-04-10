@@ -147,15 +147,15 @@ async def create_session(
         INSERT INTO auth_sessions (id, user_id, token_hash, user_agent, ip_address, expires_at, revoked)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (str(uuid4()), user_id, _session_token_hash(token), user_agent, ip_address, expires_at, 0),
+        (str(uuid4()), user_id, _session_token_hash(token), user_agent, ip_address, expires_at, False),
     )
     return token
 
 
 async def revoke_session(token: str) -> None:
     await execute(
-        "UPDATE auth_sessions SET revoked = 1 WHERE token_hash = ?",
-        (_session_token_hash(token),),
+        "UPDATE auth_sessions SET revoked = ? WHERE token_hash = ?",
+        (True, _session_token_hash(token)),
     )
 
 

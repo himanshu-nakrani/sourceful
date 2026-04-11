@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     rate_limit_rpm: int = Field(default=60, alias="RATE_LIMIT_RPM")
     max_conversation_history: int = Field(default=50, alias="MAX_CONVERSATION_HISTORY")
+    max_question_length: int = Field(default=2000, alias="MAX_QUESTION_LENGTH")
     allowed_file_types: str = Field(
         default=".pdf,.txt,.md,.docx,.csv",
         alias="ALLOWED_FILE_TYPES",

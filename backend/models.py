@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from backend.settings import settings
+
 
 class Citation(BaseModel):
     chunk_id: str
@@ -66,7 +68,7 @@ class ChatRequest(BaseModel):
     provider: Literal["openai", "gemini"]
     model: str = Field(max_length=128)
     document_id: str
-    question: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=settings.max_question_length)
     conversation_id: str | None = None
 
 

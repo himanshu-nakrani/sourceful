@@ -98,6 +98,7 @@ export default function AuthScreen() {
             <label className="text-sm" style={{ color: "var(--text-secondary)" }}>
               Email
               <input
+                required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="mt-2 w-full rounded-xl px-4 py-3 outline-none"
@@ -109,6 +110,7 @@ export default function AuthScreen() {
             <label className="text-sm" style={{ color: "var(--text-secondary)" }}>
               Password
               <input
+                required
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}

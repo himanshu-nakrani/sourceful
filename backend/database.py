@@ -62,7 +62,7 @@ async def init_db() -> None:
                         await _apply_postgres_v3_migration(cur)
                 logger.info("Postgres initialized.")
                 return
-            except Exception as e:
+            except Exception:
                 logger.exception("Database initialization failed (Postgres)")
                 if _pg_pool:
                     await _pg_pool.close()

@@ -9,3 +9,7 @@
 ## 2026-04-10 - Batch Database Operations
 **Learning:** In the SQLite/PostgreSQL layer, repeatedly executing single INSERT statements inside a loop (like for document chunks) is significantly slower due to per-query network and database overhead.
 **Action:** Use `execute_many` wrapping connection `executemany` calls when dealing with bulk inserts rather than iterating with `await execute`.
+## 2024-05-19 - Pydantic TypeAdapter serialization vs json.dumps
+
+**Learning:** `json.dumps()` from the standard library is exceptionally slow when serializing large float arrays (like LLM embeddings) and large lists of object dicts. For Pydantic models and basic types, using a pre-compiled `TypeAdapter(type).dump_json().decode("utf-8")` utilizes pydantic's Rust-backed core to execute an order of magnitude faster (e.g. ~8x faster for an embedding payload), while still avoiding adding an extra required dependency.
+**Action:** When serializing JSON into the database (like sources payload or SQLite fallback vectors), prefer `TypeAdapter.dump_json()` or `orjson` when present rather than `json.dumps()`. Keep `TypeAdapter` compilations at the module level to avoid the initial compile overhead at runtime.

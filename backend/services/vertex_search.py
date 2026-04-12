@@ -97,13 +97,12 @@ def upload_document(
         struct_data=struct_data,
     )
 
-    request = discoveryengine.CreateDocumentRequest(
-        parent=parent,
+    request = discoveryengine.UpdateDocumentRequest(
         document=document,
-        document_id=document_id,
+        allow_missing=True,
     )
 
-    response = client.create_document(request=request)
+    response = client.update_document(request=request)
     logger.info("vertex_search_upload_ok document_id=%s", document_id)
     return response.id if response.id else document_id
 

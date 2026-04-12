@@ -6,6 +6,7 @@ import asyncio
 import json
 from dataclasses import dataclass
 
+from pydantic import TypeAdapter
 from backend.database import execute, execute_many, fetch_all
 from backend.services.chunking import ChunkPayload
 from backend.settings import settings
@@ -15,6 +16,11 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
     orjson = None
 
+# ⚡ BOLT OPTIMIZATION:
+# Pre-compile the TypeAdapter for list[float] to avoid runtime overhead.
+# This uses Pydantic's underlying Rust-based JSON parser directly via dump_json(),
+# skipping the standard library's json.dumps() when orjson is not available.
+_embedding_adapter = TypeAdapter(list[float])
 
 @dataclass(slots=True)
 class RetrievedChunk:
@@ -70,7 +76,7 @@ async def replace_chunks(
                 chunk.chunk_index,
                 chunk.content,
                 chunk.page_number,
-                json.dumps(embedding),
+                orjson.dumps(embedding).decode("utf-8") if orjson is not None else _embedding_adapter.dump_json(embedding).decode("utf-8"),
             )
             for chunk, embedding in zip(chunks, embeddings, strict=True)
         ]

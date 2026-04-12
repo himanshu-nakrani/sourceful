@@ -172,8 +172,7 @@ async def _generate_chat_response(
     return {
         "conversation_id": conversation_id,
         "message_id": assistant_message_id,
-        # Convert models to dicts for API response
-        "sources": [model.model_dump(mode="json") for model in source_payload],
+        "sources": source_payload,
         "content": answer,
     }
 

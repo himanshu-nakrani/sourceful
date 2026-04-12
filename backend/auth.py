@@ -92,6 +92,29 @@ async def create_user(email: str, password: str, role: str = "user") -> dict[str
     return _normalize_user(row) or {}
 
 
+
+async def authenticate_or_create_oauth_user(email: str) -> dict[str, Any] | None:
+    """Find or create a user from Google OAuth. No password is set for OAuth users."""
+    normalized_email = email.strip().lower()
+    existing = await get_user_by_email(normalized_email)
+    if existing:
+        if not bool(existing.get("is_active")):
+            return None
+        return _normalize_user(existing) or {}
+    now = _utcnow().isoformat()
+    row = await execute_returning(
+        """
+        INSERT INTO users (id, email, password_hash, role, is_active, is_verified, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING id, email, role, is_active, is_verified, created_at, updated_at
+        """,
+        (str(uuid4()), normalized_email, "oauth_no_password", "user", True, True, now, now),
+    )
+    if not row:
+        raise RuntimeError("Failed to create OAuth user.")
+    return _normalize_user(row) or {}
+
+
 def is_reserved_superuser_email(email: str) -> bool:
     return email.strip().lower() == settings.default_superuser_email
 

@@ -271,3 +271,46 @@ body {
   border-top: 1px solid var(--border);
   margin: 1rem 0;
 }
+
+/* ===================================================================
+   Mobile Responsive Overrides
+   =================================================================== */
+
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 85vw;
+    --header-height: 48px;
+  }
+
+  body {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Make all touch targets at least 44px */
+  button, [role="button"], a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Prevent text from being too small on mobile */
+  input, textarea, select {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --sidebar-width: 92vw;
+  }
+
+  .markdown-body {
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .markdown-body pre {
+    padding: 0.75rem;
+    font-size: 0.75rem;
+  }
+}

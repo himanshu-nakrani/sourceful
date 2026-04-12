@@ -53,19 +53,28 @@ class Settings(BaseSettings):
         alias="DEFAULT_EMBEDDING_MODEL_GEMINI",
     )
     default_chat_model_openai: str = Field(default="gpt-4o-mini", alias="DEFAULT_CHAT_MODEL_OPENAI")
-    default_chat_model_gemini: str = Field(default="gemini-2.0-flash", alias="DEFAULT_CHAT_MODEL_GEMINI")
+    default_chat_model_gemini: str = Field(default="gemini-2.5-flash", alias="DEFAULT_CHAT_MODEL_GEMINI")
     default_embedding_model_vertex_search: str = Field(
         default="vertex_search_managed",
         alias="DEFAULT_EMBEDDING_MODEL_VERTEX_SEARCH",
     )
     default_chat_model_vertex_search: str = Field(
-        default="gemini-2.0-flash",
+        default="gemini-2.5-flash",
         alias="DEFAULT_CHAT_MODEL_VERTEX_SEARCH",
     )
 
     vertex_search_project: str | None = Field(default="gen-lang-client-0318750942", alias="VERTEX_SEARCH_PROJECT")
     vertex_search_location: str = Field(default="global", alias="VERTEX_SEARCH_LOCATION")
     vertex_search_datastore_id: str | None = Field(default="docuqa-data_1775953648723", alias="VERTEX_SEARCH_DATASTORE_ID")
+
+    google_oauth_client_id: str = Field(
+        default="",
+        alias="GOOGLE_OAUTH_CLIENT_ID",
+    )
+    google_oauth_client_secret: str = Field(
+        default="",
+        alias="GOOGLE_OAUTH_CLIENT_SECRET",
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:

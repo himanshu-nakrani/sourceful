@@ -75,9 +75,13 @@ def upload_document(
         section.text for section in extracted.sections if section.text.strip()
     )
 
+    from datetime import datetime, timezone
     struct_data = struct_pb2.Struct()
     struct_data.update({
         "title": filename,
+        "uri": filename,
+        "categories": ["General"],
+        "available_time": datetime.now(timezone.utc).isoformat(),
         "content": text_content[:100_000],
         "mime_type": mime_type,
         "document_id": document_id,
@@ -110,10 +114,15 @@ def search(
     client = _get_search_client()
     serving_config = _serving_config_path()
 
-    filter_str = f"document_id: \"{document_id}\"" if document_id else None
+    filter_str = f'document_id: ANY("{document_id}")' if document_id else None
+
+    # If we are strictly querying a single document, pass an empty query to 
+    # bypass standard edition's conversational relevance filter, which drops results 
+    # for questions like 'summarize this' because it doesn't map to text exactly.
+    actual_query = "" if document_id else query
 
     request = discoveryengine.SearchRequest(
-        query=query,
+        query=actual_query,
         serving_config=serving_config,
         page_size=top_k,
         filter=filter_str,
@@ -138,6 +147,11 @@ def search(
                 excerpt = snippets[0].get("snippet", "")
             elif struct.get("content"):
                 excerpt = struct.get("content", "")
+
+        if hasattr(doc, "struct_data") and doc.struct_data:
+            base_struct = dict(doc.struct_data)
+            if base_struct.get("content") and not excerpt:
+                excerpt = base_struct.get("content", "")
 
         if hasattr(doc, "content") and doc.content:
             if hasattr(doc.content, "raw_bytes") and doc.content.raw_bytes and not excerpt:

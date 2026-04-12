@@ -30,7 +30,7 @@ function AppShell() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden relative w-full" style={{ background: "var(--bg-primary)" }}>
+    <div className="flex h-[100dvh] overflow-hidden relative w-full" style={{ background: "var(--bg-primary)" }}>
       {state.sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity"

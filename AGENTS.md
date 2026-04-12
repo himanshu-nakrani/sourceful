@@ -50,7 +50,7 @@
   - `VECTOR_STORE_DIRECTORY`
   - `DOCUMENT_REGISTRY_PATH`
 - Production storage should use `DATABASE_URL`.
-- Ingest/reprocess/chat requests require a provider key via `X-Provider-Api-Key`.
+- Ingest/reprocess/chat requests require a provider key via `X-Provider-Api-Key` (except `vertex_search` ingest + reprocess, which use service-side credentials).
 - Data is scoped by `X-Client-Session`; the frontend generates and persists this automatically.
 
 ## Testing expectations

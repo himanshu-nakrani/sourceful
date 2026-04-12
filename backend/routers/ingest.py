@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Request, UploadFile
 
 from backend.errors import api_error_response
 from backend.models import IngestResponse
-from backend.routers.deps import RequestContext, get_request_context, require_provider_api_key
+from backend.routers.deps import RequestContext, get_request_context
 from backend.services.extract import FileValidationError, validate_upload
 from backend.services.jobs import enqueue_ingest_job
+from backend.services.provider_auth import normalize_provider_api_key, provider_requires_api_key
 from backend.settings import settings
 
 router = APIRouter()
@@ -22,8 +23,8 @@ async def ingest(
     provider: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     embedding_model: str = Form(""),
+    x_provider_api_key: str | None = Header(default=None),
     context: RequestContext = Depends(get_request_context),
-    provider_api_key: str = Depends(require_provider_api_key),
 ):
     if provider not in {"openai", "gemini", "vertex_search"}:
         return api_error_response(
@@ -55,6 +56,14 @@ async def ingest(
             status_code=400,
             error="Embedding model id is too long.",
             code="INVALID_EMBEDDING_MODEL",
+        )
+    provider_api_key = normalize_provider_api_key(x_provider_api_key)
+    if provider_requires_api_key(provider) and not provider_api_key:
+        return api_error_response(
+            request=request,
+            status_code=401,
+            error="Missing X-Provider-Api-Key header.",
+            code="MISSING_PROVIDER_API_KEY",
         )
 
     raw = await file.read()

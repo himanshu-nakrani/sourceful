@@ -111,6 +111,7 @@ export default function AuthScreen() {
               Password
               <input
                 required
+                minLength={mode === "signup" ? 8 : undefined}
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}

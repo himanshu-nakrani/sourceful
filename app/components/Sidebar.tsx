@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import {
   BarChart3,
+  Cpu,
   Download,
   FileText,
   Loader2,
@@ -14,6 +15,7 @@ import {
   Settings,
   Trash2,
   Upload,
+  Users,
   PanelLeftClose,
 } from "lucide-react";
 import {
@@ -207,24 +209,36 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
       </div>
 
       <div className="px-3 pb-2 flex-shrink-0">
-        <button
-          type="button"
-          onClick={() => dispatch({ type: "SET_ACTIVE_VIEW", payload: "dashboard" })}
-          className="mb-2 flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
-          style={{
-            background: activeView === "dashboard" ? "var(--accent-soft)" : "var(--bg-surface)",
-            border: `1px solid ${activeView === "dashboard" ? "var(--border-accent)" : "var(--border)"}`,
-            color: activeView === "dashboard" ? "var(--text-primary)" : "var(--text-secondary)",
-          }}
-        >
-          <span className="inline-flex items-center gap-2">
-            <BarChart3 size={14} />
-            Insights Dashboard
-          </span>
-          <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>
-            Shared
-          </span>
-        </button>
+        {/* Navigation buttons */}
+        <div className="flex flex-col gap-1 mb-2">
+          {([
+            { view: "insights" as const, label: "Insights", icon: <BarChart3 size={14} />, badge: "Shared" },
+            { view: "users" as const, label: "Users", icon: <Users size={14} />, badge: "" },
+            { view: "models" as const, label: "Models", icon: <Cpu size={14} />, badge: "" },
+          ] as const).map((nav) => (
+            <button
+              key={nav.view}
+              type="button"
+              onClick={() => dispatch({ type: "SET_ACTIVE_VIEW", payload: nav.view })}
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
+              style={{
+                background: activeView === nav.view ? "var(--accent-soft)" : "var(--bg-surface)",
+                border: `1px solid ${activeView === nav.view ? "var(--border-accent)" : "var(--border)"}`,
+                color: activeView === nav.view ? "var(--text-primary)" : "var(--text-secondary)",
+              }}
+            >
+              <span className="inline-flex items-center gap-2">
+                {nav.icon}
+                {nav.label}
+              </span>
+              {nav.badge ? (
+                <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>
+                  {nav.badge}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
         <div
           className="flex items-center gap-2 rounded-lg px-3 py-2"
           style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}

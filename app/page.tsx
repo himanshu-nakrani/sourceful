@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import { Loader2 } from "lucide-react";
 import AuthScreen from "./components/AuthScreen";
 import InsightsDashboard from "./components/InsightsDashboard";
+import UserManagement from "./components/UserManagement";
+import ModelManagement from "./components/ModelManagement";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import SettingsPanel from "./components/SettingsPanel";
@@ -29,6 +31,19 @@ function AppShell() {
     return <AuthScreen />;
   }
 
+  const renderContent = () => {
+    switch (state.activeView) {
+      case "insights":
+        return <InsightsDashboard />;
+      case "users":
+        return <UserManagement />;
+      case "models":
+        return <ModelManagement />;
+      default:
+        return <ChatArea onUploadClick={() => setUploadOpen(true)} />;
+    }
+  };
+
   return (
     <div className="flex h-[100dvh] overflow-hidden relative w-full" style={{ background: "var(--bg-primary)" }}>
       {state.sidebarOpen && (
@@ -38,11 +53,7 @@ function AppShell() {
         />
       )}
       <Sidebar onUploadClick={() => setUploadOpen(true)} />
-      {state.activeView === "dashboard" ? (
-        <InsightsDashboard />
-      ) : (
-        <ChatArea onUploadClick={() => setUploadOpen(true)} />
-      )}
+      {renderContent()}
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
       <SettingsPanel
         open={state.settingsOpen}

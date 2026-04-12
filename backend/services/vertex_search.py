@@ -148,11 +148,11 @@ def search(
                 excerpt = struct.get("content", "")
 
         if hasattr(doc, "content") and doc.content:
+        if hasattr(doc, "content") and doc.content:
             if hasattr(doc.content, "raw_bytes") and doc.content.raw_bytes and not excerpt:
-                try:
-                    excerpt = base64.b64decode(doc.content.raw_bytes).decode("utf-8", errors="replace")[:2000]
-                except Exception:
-                    excerpt = doc.content.raw_bytes[:2000]
+                mime = getattr(doc.content, "mime_type", "")
+                if mime in ("text/plain", "text/markdown", "text/csv"):
+                    excerpt = doc.content.raw_bytes.decode("utf-8", errors="replace")[:2000]
             if hasattr(doc.content, "mime_type") and doc.content.mime_type == "application/pdf":
                 page_number = 1
 

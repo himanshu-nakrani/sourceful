@@ -7,9 +7,9 @@ import { type Provider } from "../lib/api";
 import { DEFAULT_CHAT, DEFAULT_EMBEDDING, useStore } from "../lib/store";
 
 const CHAT_MODEL_OPTIONS: Record<Provider, string[]> = {
-  openai: ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1", "gpt-4o"],
-  gemini: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
-  vertex_search: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
+  openai: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+  gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+  vertex_search: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
 };
 
 const EMBEDDING_MODEL_OPTIONS: Record<Provider, string[]> = {

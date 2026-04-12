@@ -188,6 +188,10 @@ async def process_job(job: dict) -> None:
     owner_id = job["owner_id"]
     started = datetime.now(timezone.utc)
     try:
+        if job["provider"] == "vertex_search":
+            await _process_vertex_search_job(job, job_id, document_id, owner_id, started)
+            return
+
         chunks = await _build_chunks(job)
         await execute(
             f"UPDATE document_jobs SET stage = 'embedding', progress = 0.45, updated_at = {TIMESTAMP_SQL} WHERE id = ?",
@@ -303,6 +307,81 @@ async def process_job(job: dict) -> None:
             (datetime.now(timezone.utc) - started).total_seconds() * 1000.0,
             status="error",
         )
+
+
+async def _process_vertex_search_job(
+    job: dict, job_id: str, document_id: str, owner_id: str, started: datetime
+) -> None:
+    from backend.services.vertex_search import upload_document
+
+    if not settings.vertex_search_configured:
+        raise ValueError("Vertex AI Search is not configured. Set VERTEX_SEARCH_PROJECT and VERTEX_SEARCH_DATASTORE_ID.")
+
+    payload_bytes = job.get("payload_bytes")
+    if not payload_bytes:
+        raise ValueError("No document payload available for Vertex AI Search upload.")
+
+    await execute(
+        f"UPDATE document_jobs SET stage = 'uploading', progress = 0.3, updated_at = {TIMESTAMP_SQL} WHERE id = ?",
+        (job_id,),
+    )
+
+    await asyncio.to_thread(
+        upload_document,
+        document_id,
+        job["payload_filename"],
+        bytes(payload_bytes),
+        job["payload_mime_type"],
+    )
+
+    await execute(
+        f"UPDATE document_jobs SET stage = 'storing', progress = 0.9, updated_at = {TIMESTAMP_SQL} WHERE id = ?",
+        (job_id,),
+    )
+
+    page_count = None
+    try:
+        extracted = extract_document(filename=job["payload_filename"], raw=bytes(payload_bytes))
+        page_count = extracted.page_count
+    except Exception:
+        pass
+
+    await execute(
+        f"""
+        UPDATE documents
+        SET status = 'ready',
+            embedding_model = ?,
+            chunk_count = 0,
+            page_count = ?,
+            processed_at = {TIMESTAMP_SQL},
+            last_error = NULL
+        WHERE id = ? AND owner_id = ?
+        """,
+        (job["embedding_model"], page_count, document_id, owner_id),
+    )
+    await execute(
+        f"""
+        UPDATE document_jobs
+        SET status = 'ready',
+            stage = 'complete',
+            progress = 1,
+            error_message = NULL,
+            finished_at = {TIMESTAMP_SQL},
+            updated_at = {TIMESTAMP_SQL},
+            payload_bytes = NULL,
+            provider_api_key = NULL,
+            next_retry_at = NULL,
+            terminal = FALSE
+        WHERE id = ?
+        """,
+        (job_id,),
+    )
+    metrics.inc("ingest_jobs_total", status="ready")
+    metrics.observe(
+        "ingest_job_duration_ms",
+        (datetime.now(timezone.utc) - started).total_seconds() * 1000.0,
+        status="ready",
+    )
 
 
 async def _build_chunks(job: dict):

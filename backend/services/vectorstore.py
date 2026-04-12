@@ -154,3 +154,10 @@ async def query_similar(document_id: str, owner_id: str, query_embedding: list[f
         return []
 
     return await asyncio.to_thread(_compute_similarities_sqlite, rows, query_embedding, top_k)
+
+
+async def query_vertex_search(document_id: str, question: str, top_k: int) -> list[RetrievedChunk]:
+    """Query Vertex AI Search instead of local vector similarity."""
+    from backend.services.vertex_search import search as vertex_search
+
+    return await asyncio.to_thread(vertex_search, question, document_id, top_k)

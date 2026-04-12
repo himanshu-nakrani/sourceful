@@ -21,11 +21,13 @@ interface SettingsPanelProps {
 const CHAT_MODEL_OPTIONS: Record<Provider, string[]> = {
   openai: ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1", "gpt-4o"],
   gemini: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
+  vertex_search: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
 };
 
 const EMBEDDING_MODEL_OPTIONS: Record<Provider, string[]> = {
   openai: ["text-embedding-3-small", "text-embedding-3-large"],
   gemini: ["models/gemini-embedding-001"],
+  vertex_search: ["vertex_search_managed"],
 };
 
 export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
@@ -43,6 +45,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const providers: { value: Provider; label: string; icon: string }[] = [
     { value: "openai", label: "OpenAI", icon: "O" },
     { value: "gemini", label: "Google Gemini", icon: "G" },
+    { value: "vertex_search", label: "Vertex AI Search", icon: "V" },
   ];
 
   return (
@@ -202,7 +205,13 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             onChange={(value) =>
               dispatch({ type: "SET_SETTINGS", payload: { providerApiKey: value } })
             }
-            placeholder={settings.provider === "openai" ? "sk-..." : "Google AI API key"}
+            placeholder={
+              settings.provider === "openai"
+                ? "sk-..."
+                : settings.provider === "vertex_search"
+                  ? "Google AI API key (for Gemini chat)"
+                  : "Google AI API key"
+            }
             help="Used for uploads, reprocessing, embeddings, and chat generation."
           />
 

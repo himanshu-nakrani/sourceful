@@ -63,7 +63,7 @@ class IngestResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    provider: Literal["openai", "gemini"]
+    provider: Literal["openai", "gemini", "vertex_search"]
     model: str = Field(max_length=128)
     document_id: str
     question: str = Field(min_length=1)
@@ -71,7 +71,7 @@ class ChatRequest(BaseModel):
 
 
 class RerunMessageRequest(BaseModel):
-    provider: Literal["openai", "gemini"]
+    provider: Literal["openai", "gemini", "vertex_search"]
     model: str = Field(max_length=128)
     document_id: str
     conversation_id: str = Field(min_length=1)

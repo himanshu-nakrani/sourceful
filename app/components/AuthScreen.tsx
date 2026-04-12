@@ -71,14 +71,15 @@ export default function AuthScreen() {
     if (!googleClientId) return;
     const redirectUri = `${window.location.origin}${window.location.pathname}`;
     const scope = "openid email profile";
-    const url =
-      `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${encodeURIComponent(googleClientId)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=code` +
-      `&scope=${encodeURIComponent(scope)}` +
-      `&access_type=offline` +
-      `&prompt=consent`;
+    const params = new URLSearchParams({
+      client_id: googleClientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: scope,
+      access_type: "offline",
+      prompt: "consent",
+    });
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     window.location.href = url;
   };
 

@@ -132,6 +132,8 @@ def search(
 
     chunks: list[RetrievedChunk] = []
     for i, result in enumerate(response):
+        if i >= top_k:
+            break
         doc = result.document
         doc_id = doc.id if hasattr(doc, "id") else str(i)
 

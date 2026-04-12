@@ -99,6 +99,7 @@ export default function AuthScreen() {
               Email
               <input
                 required
+                type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="mt-2 w-full rounded-xl px-4 py-3 outline-none"

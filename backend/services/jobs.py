@@ -12,6 +12,7 @@ from backend.metrics import metrics
 from backend.services.chunking import chunk_sections
 from backend.services.embeddings import embed_texts
 from backend.services.extract import extract_document
+from backend.services.provider_auth import require_provider_api_key
 from backend.services.vectorstore import replace_chunks
 from backend.settings import settings
 
@@ -105,9 +106,7 @@ async def enqueue_reprocess_job(
     payload_mime_type = document["mime_type"]
     payload_bytes = latest_job.get("payload_bytes") if latest_job else None
     model_name = embedding_model or document["embedding_model"]
-    provider_key = (provider_api_key or "").strip()
-    if document["provider"] != "vertex_search" and not provider_key:
-        raise ValueError("Missing X-Provider-Api-Key header.")
+    provider_key = require_provider_api_key(document["provider"], provider_api_key)
 
     job_id = str(uuid.uuid4())
     await execute(

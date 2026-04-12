@@ -14,6 +14,7 @@ from backend.models import (
     IngestResponse,
 )
 from backend.routers.deps import RequestContext, get_request_context
+from backend.services.provider_auth import MissingProviderApiKeyError
 from backend.services.jobs import enqueue_reprocess_job
 from backend.services.vectorstore import preview_chunks
 
@@ -113,14 +114,20 @@ async def reprocess_document(
             provider_api_key=(x_provider_api_key or "").strip(),
             embedding_model=embedding_model,
         )
-    except ValueError as exc:
-        status_code = 401 if str(exc) == "Missing X-Provider-Api-Key header." else 404
-        error_code = "MISSING_PROVIDER_API_KEY" if status_code == 401 else "DOCUMENT_NOT_FOUND"
+    except MissingProviderApiKeyError as exc:
         return api_error_response(
             request=request,
-            status_code=status_code,
+            status_code=401,
+            error="Missing X-Provider-Api-Key header.",
+            code="MISSING_PROVIDER_API_KEY",
+            details={"document_id": document_id},
+        )
+    except ValueError as exc:
+        return api_error_response(
+            request=request,
+            status_code=404,
             error=str(exc),
-            code=error_code,
+            code="DOCUMENT_NOT_FOUND",
             details={"document_id": document_id},
         )
 

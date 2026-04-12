@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from fastapi import Depends, Header, HTTPException, Request
 from backend.auth import get_user_from_session
 from backend.settings import settings
+from backend.services.provider_auth import normalize_provider_api_key
 
 
 @dataclass(slots=True)
@@ -50,7 +51,8 @@ async def get_request_context(
 
 
 def require_provider_api_key(x_provider_api_key: str | None = Header(default=None)) -> str:
-    if not x_provider_api_key or not x_provider_api_key.strip():
+    provider_api_key = normalize_provider_api_key(x_provider_api_key)
+    if not provider_api_key:
         raise HTTPException(
             status_code=401,
             detail={
@@ -58,7 +60,7 @@ def require_provider_api_key(x_provider_api_key: str | None = Header(default=Non
                 "code": "MISSING_PROVIDER_API_KEY",
             },
         )
-    return x_provider_api_key.strip()
+    return provider_api_key
 
 
 async def require_authenticated_context(

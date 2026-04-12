@@ -64,6 +64,26 @@ def test_openai_ingest_requires_provider_key(client):
     assert payload["code"] == "MISSING_PROVIDER_API_KEY"
 
 
+def test_reprocess_requires_provider_key_for_non_vertex_provider(client):
+    login_superuser(client)
+    response = client.post(
+        "/api/ingest",
+        data={"provider": "openai"},
+        files={"file": ("reprocess.txt", b"hello reprocess", "text/plain")},
+        headers=PROVIDER_HEADERS,
+    )
+    assert response.status_code == 202
+    ingest_payload = response.json()
+
+    reprocess = client.post(
+        f"/api/documents/{ingest_payload['document_id']}/reprocess",
+        headers=HEADERS,
+    )
+    assert reprocess.status_code == 401
+    payload = reprocess.json()
+    assert payload["code"] == "MISSING_PROVIDER_API_KEY"
+
+
 def test_full_ingest_chat_and_conversation_flow(client):
     login_superuser(client)
     response = client.post(

@@ -154,13 +154,15 @@ async def google_oauth_callback(request: Request, response: Response):
     parts = id_token.split(".")
     if len(parts) < 2:
         raise HTTPException(status_code=502, detail={"error": "Malformed id_token.", "code": "GOOGLE_BAD_TOKEN"})
-    payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+    payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
     payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
     email = payload.get("email", "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail={"error": "No email in Google token.", "code": "GOOGLE_NO_EMAIL"})
 
     user = await authenticate_or_create_oauth_user(email)
+    if not user:
+        raise HTTPException(status_code=401, detail={"error": "Account disabled.", "code": "ACCOUNT_DISABLED"})
     token = await create_session(
         user["id"],
         user_agent=request.headers.get("user-agent"),

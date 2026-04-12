@@ -93,11 +93,13 @@ async def create_user(email: str, password: str, role: str = "user") -> dict[str
 
 
 
-async def authenticate_or_create_oauth_user(email: str) -> dict[str, Any]:
+async def authenticate_or_create_oauth_user(email: str) -> dict[str, Any] | None:
     """Find or create a user from Google OAuth. No password is set for OAuth users."""
     normalized_email = email.strip().lower()
     existing = await get_user_by_email(normalized_email)
     if existing:
+        if not bool(existing.get("is_active")):
+            return None
         return _normalize_user(existing) or {}
     now = _utcnow().isoformat()
     row = await execute_returning(

@@ -25,7 +25,7 @@ async def ingest(
     context: RequestContext = Depends(get_request_context),
     provider_api_key: str = Depends(require_provider_api_key),
 ):
-    if provider not in {"openai", "gemini"}:
+    if provider not in {"openai", "gemini", "vertex_search"}:
         return api_error_response(
             request=request,
             status_code=400,
@@ -43,11 +43,12 @@ async def ingest(
 
     model_name = embedding_model.strip()
     if not model_name:
-        model_name = (
-            settings.default_embedding_model_openai
-            if provider == "openai"
-            else settings.default_embedding_model_gemini
-        )
+        if provider == "openai":
+            model_name = settings.default_embedding_model_openai
+        elif provider == "gemini":
+            model_name = settings.default_embedding_model_gemini
+        else:
+            model_name = settings.default_embedding_model_vertex_search
     if len(model_name) > settings.max_model_name_length:
         return api_error_response(
             request=request,

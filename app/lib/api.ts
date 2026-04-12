@@ -490,6 +490,18 @@ export async function me(): Promise<AuthUser | null> {
   return res.json();
 }
 
+export async function googleLogin(code: string, redirectUri: string): Promise<AuthUser> {
+  const res = await apiFetch("/api/auth/google/callback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, redirect_uri: redirectUri }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const user = (await res.json()) as AuthUser;
+  updateStoredSession({ authToken: user.session_token ?? null });
+  return user;
+}
+
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   const res = await apiFetch("/api/auth/change-password", {
     method: "POST",

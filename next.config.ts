@@ -8,13 +8,18 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const base = `${backendUrl}/api`;
     return [
+      { source: "/api/auth/:path*", destination: `${base}/auth/:path*` },
       { source: "/api/chat", destination: `${base}/chat` },
+      { source: "/api/chat/:path*", destination: `${base}/chat/:path*` },
       { source: "/api/ingest", destination: `${base}/ingest` },
       { source: "/api/documents", destination: `${base}/documents` },
       { source: "/api/documents/:path*", destination: `${base}/documents/:path*` },
       { source: "/api/jobs/:path*", destination: `${base}/jobs/:path*` },
       { source: "/api/conversations", destination: `${base}/conversations` },
       { source: "/api/conversations/:path*", destination: `${base}/conversations/:path*` },
+      { source: "/api/users", destination: `${base}/users` },
+      { source: "/api/users/:path*", destination: `${base}/users/:path*` },
+      { source: "/api/analytics/:path*", destination: `${base}/analytics/:path*` },
       { source: "/health", destination: `${backendUrl}/health` },
       { source: "/metrics", destination: `${backendUrl}/metrics` },
       { source: "/ready", destination: `${backendUrl}/ready` },

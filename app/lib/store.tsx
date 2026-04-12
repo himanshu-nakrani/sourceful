@@ -30,7 +30,7 @@ export interface AppState {
   authLoading: boolean;
   activeDocumentId: string | null;
   activeConversationId: string | null;
-  activeView: "chat" | "dashboard";
+  activeView: "chat" | "insights" | "users" | "models";
   sidebarOpen: boolean;
   settingsOpen: boolean;
 }
@@ -141,7 +141,7 @@ type Action =
   | { type: "SET_PROVIDER"; payload: Provider }
   | { type: "SET_ACTIVE_DOCUMENT"; payload: string | null }
   | { type: "SET_ACTIVE_CONVERSATION"; payload: string | null }
-  | { type: "SET_ACTIVE_VIEW"; payload: "chat" | "dashboard" }
+  | { type: "SET_ACTIVE_VIEW"; payload: "chat" | "insights" | "users" | "models" }
   | { type: "TOGGLE_SIDEBAR" }
   | { type: "SET_SIDEBAR"; payload: boolean }
   | { type: "TOGGLE_SETTINGS" }

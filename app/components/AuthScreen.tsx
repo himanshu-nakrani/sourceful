@@ -32,7 +32,10 @@ export default function AuthScreen() {
     if (!code) return;
 
     // Clean URL immediately
-    window.history.replaceState({}, "", window.location.pathname);
+    const newParams = new URLSearchParams(window.location.search);
+    newParams.delete("code");
+    const newUrl = window.location.pathname + (newParams.toString() ? `?${newParams.toString()}` : "");
+    window.history.replaceState({}, "", newUrl);
 
     setLoading(true);
     const redirectUri = `${window.location.origin}${window.location.pathname}`;

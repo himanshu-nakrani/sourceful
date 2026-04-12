@@ -87,7 +87,7 @@ async def enqueue_reprocess_job(
     *,
     owner_id: str,
     document_id: str,
-    provider_api_key: str,
+    provider_api_key: str | None,
     embedding_model: str | None = None,
 ) -> tuple[dict, dict]:
     document = await fetch_one(
@@ -105,6 +105,9 @@ async def enqueue_reprocess_job(
     payload_mime_type = document["mime_type"]
     payload_bytes = latest_job.get("payload_bytes") if latest_job else None
     model_name = embedding_model or document["embedding_model"]
+    provider_key = (provider_api_key or "").strip()
+    if document["provider"] != "vertex_search" and not provider_key:
+        raise ValueError("Missing X-Provider-Api-Key header.")
 
     job_id = str(uuid.uuid4())
     await execute(
@@ -123,7 +126,7 @@ async def enqueue_reprocess_job(
             payload_filename,
             payload_mime_type,
             payload_bytes,
-            provider_api_key,
+            provider_key,
         ),
     )
     await execute(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 from typing import Any
 
@@ -39,14 +38,6 @@ def _serving_config_path() -> str:
         location=settings.vertex_search_location,
         data_store=settings.vertex_search_datastore_id,
         serving_config="default_config",
-    )
-
-
-def _datastore_path() -> str:
-    client = _get_document_client()
-    return client.common_location_path(
-        project=settings.vertex_search_project,
-        location=settings.vertex_search_location,
     )
 
 
@@ -93,6 +84,7 @@ def upload_document(
     })
 
     document = discoveryengine.Document(
+        name=f"{parent}/documents/{document_id}",
         id=document_id,
         struct_data=struct_data,
     )
@@ -147,7 +139,6 @@ def search(
             elif struct.get("content"):
                 excerpt = struct.get("content", "")
 
-        if hasattr(doc, "content") and doc.content:
         if hasattr(doc, "content") and doc.content:
             if hasattr(doc.content, "raw_bytes") and doc.content.raw_bytes and not excerpt:
                 mime = getattr(doc.content, "mime_type", "")

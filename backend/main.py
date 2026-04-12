@@ -12,7 +12,7 @@ from backend.database import close_db, fetch_one, init_db, record_heartbeat, req
 from backend.errors import api_error_payload
 from backend.logging_utils import configure_logging
 from backend.metrics import metrics
-from backend.middleware import RateLimitMiddleware, RequestIdMiddleware, RequestLoggingMiddleware
+from backend.middleware import RateLimitMiddleware, RequestIdMiddleware, RequestLoggingMiddleware, SecurityHeadersMiddleware
 from backend.routers import analytics, auth, chat, conversations, documents, ingest, users
 from backend.routers import jobs as jobs_router
 from backend.settings import settings
@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Document RAG API", version="2.0.0", lifespan=lifespan)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware, rpm=settings.rate_limit_rpm)
 app.add_middleware(RequestIdMiddleware)

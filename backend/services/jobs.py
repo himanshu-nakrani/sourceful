@@ -49,7 +49,7 @@ async def enqueue_ingest_job(
     if existing:
         document_id = existing["id"]
         await execute(
-            f"UPDATE documents SET status = 'queued', current_job_id = NULL, last_error = NULL WHERE id = ? AND owner_id = ?",
+            "UPDATE documents SET status = 'queued', current_job_id = NULL, last_error = NULL WHERE id = ? AND owner_id = ?",
             (document_id, owner_id),
         )
     else:

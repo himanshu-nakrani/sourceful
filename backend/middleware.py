@@ -13,7 +13,6 @@ from starlette.responses import JSONResponse, Response
 from backend.database import cleanup_rate_limits, upsert_rate_limit
 from backend.errors import api_error_payload
 from backend.metrics import metrics
-from backend.settings import settings
 
 logger = logging.getLogger("ragapp")
 
@@ -88,4 +87,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             method=request.method,
             path=request.url.path,
         )
+        return response
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        if request.url.scheme == "https":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        response.headers.setdefault("X-XSS-Protection", "1; mode=block")
         return response

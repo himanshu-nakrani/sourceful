@@ -1,5 +1,4 @@
 import asyncio
-import json
 from unittest.mock import AsyncMock, patch
 
 from backend.database import fetch_one

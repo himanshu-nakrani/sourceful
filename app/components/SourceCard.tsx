@@ -8,7 +8,10 @@ interface SourceCardProps {
   sources: Citation[];
 }
 
-export default function SourceCard({ sources }: SourceCardProps) {
+// ⚡ BOLT OPTIMIZATION:
+// Wrapped SourceCard in React.memo to prevent unnecessary re-renders of source
+// citations for older messages during rapid state updates from token streaming.
+const SourceCard = React.memo(function SourceCard({ sources }: SourceCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (!sources.length) return null;
@@ -78,4 +81,6 @@ export default function SourceCard({ sources }: SourceCardProps) {
       )}
     </div>
   );
-}
+});
+
+export default SourceCard;

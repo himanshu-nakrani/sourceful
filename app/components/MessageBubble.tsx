@@ -14,7 +14,11 @@ interface MessageBubbleProps {
   rerunDisabled?: boolean;
 }
 
-export default function MessageBubble({ message, onRerun, rerunDisabled = false }: MessageBubbleProps) {
+// ⚡ BOLT OPTIMIZATION:
+// Wrapped MessageBubble in React.memo to prevent expensive ReactMarkdown and
+// SyntaxHighlighter re-renders for all previous messages in the chat history
+// during rapid state updates from token streaming.
+const MessageBubble = React.memo(function MessageBubble({ message, onRerun, rerunDisabled = false }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -118,7 +122,8 @@ export default function MessageBubble({ message, onRerun, rerunDisabled = false 
       ) : null}
     </div>
   );
-}
+});
+export default MessageBubble;
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = React.useState(false);

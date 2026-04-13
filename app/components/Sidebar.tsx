@@ -250,7 +250,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search documents"
             aria-label="Search documents"
-            className="w-full bg-transparent text-sm outline-none"
+            className="w-full bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{ color: "var(--text-primary)" }}
           />
         </div>

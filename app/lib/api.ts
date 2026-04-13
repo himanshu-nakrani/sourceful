@@ -500,7 +500,6 @@ export async function getGoogleOAuthClientId(): Promise<string | null> {
     return null;
   }
 }
-
 export async function googleLogin(code: string, redirectUri: string): Promise<AuthUser> {
   const res = await apiFetch("/api/auth/google/callback", {
     method: "POST",

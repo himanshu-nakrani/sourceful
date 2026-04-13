@@ -3,6 +3,7 @@
 import React from "react";
 import { CheckCircle2, KeyRound, RotateCcw, X } from "lucide-react";
 import {
+  getGoogleOAuthClientId,
   listUsers,
   login,
   logout,
@@ -42,9 +43,10 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
 
   React.useEffect(() => {
     if (!open) return;
-    fetch("/api/auth/google/config")
-      .then((res) => res.json())
-      .then((data) => { if (data.client_id) setGoogleClientId(data.client_id); })
+    getGoogleOAuthClientId()
+      .then((clientId) => {
+        if (clientId) setGoogleClientId(clientId);
+      })
       .catch(() => {});
   }, [open]);
 

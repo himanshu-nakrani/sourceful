@@ -124,7 +124,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="Email"
-                    className="rounded-lg px-3 py-2 text-sm outline-none w-full min-w-0 h-11"
+                    className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] w-full min-w-0 h-11"
                     style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
                   />
                   <input
@@ -132,7 +132,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Password"
-                    className="rounded-lg px-3 py-2 text-sm outline-none w-full min-w-0 h-11"
+                    className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] w-full min-w-0 h-11"
                     style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
                   />
                   <button
@@ -408,7 +408,7 @@ function Field({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-lg px-3 py-2.5 pl-9 text-sm outline-none"
+          className="w-full rounded-lg px-3 py-2.5 pl-9 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
@@ -445,7 +445,7 @@ function PresetField({
         list={listId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+        className="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         style={{
           background: "var(--bg-surface)",
           border: "1px solid var(--border)",

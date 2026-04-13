@@ -490,17 +490,6 @@ export async function me(): Promise<AuthUser | null> {
   return res.json();
 }
 
-export async function getGoogleOAuthClientId(): Promise<string | null> {
-  const res = await apiFetch("/api/auth/google/config", { headers: baseHeaders({}) });
-  if (!res.ok) return null;
-  try {
-    const data = await res.json();
-    return data.client_id || null;
-  } catch {
-    return null;
-  }
-}
-
 export async function googleLogin(code: string, redirectUri: string): Promise<AuthUser> {
   const res = await apiFetch("/api/auth/google/callback", {
     method: "POST",

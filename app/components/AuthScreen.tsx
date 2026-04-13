@@ -3,7 +3,7 @@
 import React from "react";
 import { LockKeyhole, Users } from "lucide-react";
 
-import { getGoogleOAuthClientId, googleLogin, login, signup } from "../lib/api";
+import { googleLogin, login, signup } from "../lib/api";
 import { useStore } from "../lib/store";
 
 export default function AuthScreen() {
@@ -17,9 +17,10 @@ export default function AuthScreen() {
 
   /* ---- Fetch Google OAuth client_id from backend ---- */
   React.useEffect(() => {
-    getGoogleOAuthClientId()
-      .then((clientId) => {
-        if (clientId) setGoogleClientId(clientId);
+    fetch("/api/auth/google/config")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed to load Google OAuth config"))))
+      .then((data) => {
+        if (data.client_id) setGoogleClientId(data.client_id);
       })
       .catch(() => { /* Google sign-in will just be hidden */ });
   }, []);
@@ -149,7 +150,7 @@ export default function AuthScreen() {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="mt-2 w-full rounded-xl px-4 py-3 outline-none"
+                className="mt-2 w-full rounded-xl px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                 placeholder="you@example.com"
                 autoComplete="email"
@@ -163,7 +164,7 @@ export default function AuthScreen() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="mt-2 w-full rounded-xl px-4 py-3 outline-none"
+                className="mt-2 w-full rounded-xl px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                 placeholder={mode === "login" ? "Enter your password" : "Minimum 8 characters"}
                 autoComplete={mode === "login" ? "current-password" : "new-password"}

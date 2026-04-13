@@ -167,7 +167,7 @@ export default function ModelManagement() {
               value={settings.chatModel}
               onChange={(e) => dispatch({ type: "SET_SETTINGS", payload: { chatModel: e.target.value } })}
               placeholder="Or type a custom model name"
-              className="mt-3 w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+              className="mt-3 w-full rounded-lg px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               style={{
                 background: "var(--bg-secondary)",
                 border: "1px solid var(--border)",
@@ -217,7 +217,7 @@ export default function ModelManagement() {
               value={settings.embeddingModel}
               onChange={(e) => dispatch({ type: "SET_SETTINGS", payload: { embeddingModel: e.target.value } })}
               placeholder="Or type a custom model name"
-              className="mt-3 w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+              className="mt-3 w-full rounded-lg px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               style={{
                 background: "var(--bg-secondary)",
                 border: "1px solid var(--border)",
@@ -255,7 +255,7 @@ export default function ModelManagement() {
                   ? "sk-..."
                   : "Google AI API key"
               }
-              className="w-full rounded-lg px-3 py-2.5 pl-9 text-sm outline-none"
+              className="w-full rounded-lg px-3 py-2.5 pl-9 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               style={{
                 background: "var(--bg-secondary)",
                 border: "1px solid var(--border)",

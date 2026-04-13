@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import httpx
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
@@ -25,6 +26,7 @@ from backend.routers.deps import RequestContext, require_authenticated_context
 from backend.settings import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _read_bearer_token(request: Request) -> str | None:
@@ -138,9 +140,14 @@ async def google_oauth_callback(request: Request, response: Response):
             },
         )
     if token_res.status_code != 200:
+        logger.warning(
+            "Google token exchange failed (status=%s): %s",
+            token_res.status_code,
+            token_res.text,
+        )
         raise HTTPException(
             status_code=502,
-            detail={"error": f"Google token exchange failed: {token_res.text}", "code": "GOOGLE_TOKEN_FAILED"},
+            detail={"error": "Google token exchange failed.", "code": "GOOGLE_TOKEN_FAILED"},
         )
     tokens = token_res.json()
     id_token = tokens.get("id_token")
@@ -159,6 +166,11 @@ async def google_oauth_callback(request: Request, response: Response):
     email = payload.get("email", "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail={"error": "No email in Google token.", "code": "GOOGLE_NO_EMAIL"})
+    if payload.get("email_verified") is not True:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Google account email is not verified.", "code": "GOOGLE_EMAIL_NOT_VERIFIED"},
+        )
 
     user = await authenticate_or_create_oauth_user(email)
     if not user:

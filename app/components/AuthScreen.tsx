@@ -3,7 +3,7 @@
 import React from "react";
 import { LockKeyhole, Users } from "lucide-react";
 
-import { googleLogin, login, signup } from "../lib/api";
+import { getGoogleOAuthClientId, googleLogin, login, signup } from "../lib/api";
 import { useStore } from "../lib/store";
 
 export default function AuthScreen() {
@@ -17,10 +17,9 @@ export default function AuthScreen() {
 
   /* ---- Fetch Google OAuth client_id from backend ---- */
   React.useEffect(() => {
-    fetch("/api/auth/google/config")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.client_id) setGoogleClientId(data.client_id);
+    getGoogleOAuthClientId()
+      .then((clientId) => {
+        if (clientId) setGoogleClientId(clientId);
       })
       .catch(() => { /* Google sign-in will just be hidden */ });
   }, []);

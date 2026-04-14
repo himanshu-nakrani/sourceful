@@ -127,8 +127,7 @@ async def _fetch_gemini_models(api_key: str) -> tuple[list[str], list[str]]:
 
                 # Check if it's an embedding model
                 if "embedContent" in supported_actions and "embedding" in name.lower():
-                    model_name = name.replace("models/", "")
-                    embedding_models.append(model_name)
+                    embedding_models.append(name)
 
             return (
                 chat_models if chat_models else DEFAULT_CHAT_MODELS["gemini"],

@@ -87,7 +87,7 @@ function hasStoredAuthToken(): boolean {
 /**
  * Resolve and return the application's settings by combining defaults with any persisted preferences and session secrets available in the browser.
  *
- * Loads theme from localStorage for all users. When a stored session auth token exists, additional non-sensitive preferences (provider, chatModel, embeddingModel, topK, similarityThreshold) are loaded from localStorage and session secrets (providerApiKey, clientSessionId) are read from sessionStorage. For anonymous contexts or when stored values are absent, defaults are used and a new `clientSessionId` is generated.
+ * Loads theme from localStorage for all users. When a stored session auth token exists, additional non-sensitive preferences (provider, chatModel, embeddingModel, topK, similarityThreshold) are loaded from localStorage. Session-scoped secrets (providerApiKey, clientSessionId) are read from sessionStorage for both authenticated and anonymous users so anonymous sessions can resume after refresh.
  *
  * @returns An AppSettings object containing the resolved `provider`, `chatModel`, `embeddingModel`, `providerApiKey`, `clientSessionId`, `topK`, `similarityThreshold`, and `theme`. `providerApiKey` will be empty unless found in session storage; `clientSessionId` will be generated if not present.
  */
@@ -143,50 +143,36 @@ function loadSettings(): AppSettings {
     } catch {
       // Use defaults
     }
-
-    try {
-      const rawSecrets = sessionStorage.getItem("rag-session");
-      if (rawSecrets) {
-        const parsed = JSON.parse(rawSecrets) as SessionSecrets;
-        providerApiKey = parsed.providerApiKey ?? "";
-      }
-    } catch {
-      // Use defaults
-    }
   }
-  // For anonymous users: always use defaults (stateless - no persistence)
 
-  // Always generate a fresh session ID for anonymous users (stateless)
-  // For authenticated users, try to reuse existing session ID from storage
-  let clientSessionId = "";
-  if (isAuthenticated) {
-    try {
-      const rawSecrets = sessionStorage.getItem("rag-session");
-      if (rawSecrets) {
-        const parsed = JSON.parse(rawSecrets) as SessionSecrets;
-        clientSessionId = parsed.clientSessionId ?? "";
-      }
-    } catch {
-      // Will generate new below
-    }
+  // Load session-scoped secrets for both authenticated and anonymous users.
+  // Anonymous access relies on a stable clientSessionId across refreshes (scopes backend data to anon:<clientSessionId>).
+  let existingSecrets: SessionSecrets = {};
+  try {
+    const rawSecrets = sessionStorage.getItem("rag-session");
+    existingSecrets = rawSecrets ? (JSON.parse(rawSecrets) as SessionSecrets) : {};
+  } catch {
+    existingSecrets = {};
   }
+  providerApiKey = existingSecrets.providerApiKey ?? "";
+  let clientSessionId = existingSecrets.clientSessionId ?? "";
 
   // Generate new session ID if not found or anonymous
   if (!clientSessionId) {
     clientSessionId = generateClientSessionId();
   }
 
-  // Only persist for authenticated users
-  if (isAuthenticated) {
-    const rawSecrets = sessionStorage.getItem("rag-session");
-    const existing = rawSecrets ? (JSON.parse(rawSecrets) as SessionSecrets) : {};
+  // Always persist the client session ID so anonymous users can resume their session after refresh.
+  try {
     sessionStorage.setItem(
       "rag-session",
       JSON.stringify({
-        ...existing,
+        ...existingSecrets,
         clientSessionId,
       })
     );
+  } catch {
+    // ignore
   }
 
   return {
@@ -233,11 +219,10 @@ type Action =
 /**
  * Persist selected app settings to browser storage.
  *
- * Always writes the user's `theme` to localStorage (under "rag-prefs"). When `isAuthenticated`
- * is true, also persists provider, model selections, `topK`, and `similarityThreshold` to
- * localStorage and stores sensitive session secrets (`providerApiKey` and `clientSessionId`)
- * in sessionStorage (under "rag-session"). No storage operations are performed when not
- * running in a browser environment.
+ * Always writes the user's `theme` to localStorage (under "rag-prefs"). When `isAuthenticated` is
+ * true, also persists provider, model selections, `topK`, and `similarityThreshold` to localStorage.
+ * Session-scoped secrets (`providerApiKey` and `clientSessionId`) are stored in sessionStorage (under
+ * "rag-session") for both authenticated and anonymous users so anonymous sessions can resume after refresh.
  *
  * @param next - The full AppSettings object whose values should be persisted.
  * @param isAuthenticated - Whether the current session is authenticated; controls which
@@ -268,24 +253,29 @@ function persistSettings(next: AppSettings, isAuthenticated: boolean): void {
         theme: next.theme,
       })
     );
+  }
 
-    let existing: SessionSecrets = {};
-    try {
-      const rawSecrets = sessionStorage.getItem("rag-session");
-      existing = rawSecrets ? (JSON.parse(rawSecrets) as SessionSecrets) : {};
-    } catch {
-      existing = {};
-    }
+  // Always persist session-scoped secrets so anonymous users can resume after refresh.
+  let existing: SessionSecrets = {};
+  try {
+    const rawSecrets = sessionStorage.getItem("rag-session");
+    existing = rawSecrets ? (JSON.parse(rawSecrets) as SessionSecrets) : {};
+  } catch {
+    existing = {};
+  }
+  const clientSessionId = next.clientSessionId || existing.clientSessionId || generateClientSessionId();
+  try {
     sessionStorage.setItem(
       "rag-session",
       JSON.stringify({
         ...existing,
         providerApiKey: next.providerApiKey,
-        clientSessionId: next.clientSessionId || generateClientSessionId(),
+        clientSessionId,
       })
     );
+  } catch {
+    // ignore
   }
-  // For anonymous users: do not persist - stateless session
 }
 
 /**

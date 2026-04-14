@@ -124,6 +124,31 @@ async def _generate_chat_response(
     effective_min_score = similarity_threshold if similarity_threshold is not None else 0.0
 
     if True: # Always use vector search since vertex_search is disabled
+        if extra_document_ids:
+            all_doc_ids = [document["id"]] + extra_document_ids
+            placeholders = ", ".join(["?"] * len(all_doc_ids))
+            rows = await fetch_all(
+                f"SELECT id, embedding_model FROM documents WHERE owner_id = ? AND id IN ({placeholders})",
+                (context.owner_id, *all_doc_ids),
+            )
+            models_by_id = {row["id"]: row["embedding_model"] for row in rows}
+            expected_model = document["embedding_model"]
+            mismatched = [
+                doc_id
+                for doc_id in extra_document_ids
+                if models_by_id.get(doc_id) and models_by_id.get(doc_id) != expected_model
+            ]
+            if mismatched:
+                return api_error_response(
+                    request=request,
+                    status_code=400,
+                    error="All selected documents must use the same embedding model for multi-document chat.",
+                    code="EMBEDDING_MODEL_MISMATCH",
+                    details={
+                        "expected_embedding_model": expected_model,
+                        "mismatched_document_ids": mismatched,
+                    },
+                )
         try:
             question_embedding = await embed_query(
                 provider,

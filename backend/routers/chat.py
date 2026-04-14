@@ -97,29 +97,29 @@ async def _generate_chat_response(
     #         settings.rag_top_k,
     #     )
     # else:
-    if True: # Always use vector search since vertex_search is disabled
-        try:
-            question_embedding = await embed_query(
-                provider,
-                provider_api_key,
-                document["embedding_model"],
-                trimmed_question,
-            )
-        except Exception as exc:
-            metrics.inc("chat_stream_failures_total", reason="embedding_failed")
-            return api_error_response(
-                request=request,
-                status_code=502,
-                error=f"Query embedding failed: {exc}",
-                code="QUERY_EMBEDDING_FAILED",
-            )
-
-        citations = await query_similar(
-            document["id"],
-            context.owner_id,
-            question_embedding,
-            settings.rag_top_k,
+    # Always use vector search since vertex_search is disabled
+    try:
+        question_embedding = await embed_query(
+            provider,
+            provider_api_key,
+            document["embedding_model"],
+            trimmed_question,
         )
+    except Exception as exc:
+        metrics.inc("chat_stream_failures_total", reason="embedding_failed")
+        return api_error_response(
+            request=request,
+            status_code=502,
+            error=f"Query embedding failed: {exc}",
+            code="QUERY_EMBEDDING_FAILED",
+        )
+
+    citations = await query_similar(
+        document["id"],
+        context.owner_id,
+        question_embedding,
+        settings.rag_top_k,
+    )
     if not citations:
         return api_error_response(
             request=request,

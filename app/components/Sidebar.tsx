@@ -328,7 +328,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
               <div
                 role="button"
                 tabIndex={0}
-                className="group rounded-xl px-3 py-3 cursor-pointer w-full text-left"
+                className="group rounded-xl px-3 py-3 cursor-pointer w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 style={{
                   background: isSelected ? "var(--accent-soft)" : "transparent",
                   border: `1px solid ${isActive ? "var(--border-accent)" : isSelected ? "var(--border-hover)" : "transparent"}`,
@@ -460,7 +460,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                     <button
                       type="button"
                       key={conversation.id}
-                      className="group flex items-center gap-2 px-2 py-2.5 rounded-md cursor-pointer w-full text-left"
+                      className="group flex items-center gap-2 px-2 py-2.5 rounded-md cursor-pointer w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                       style={{
                         background:
                           activeConversationId === conversation.id ? "var(--bg-surface)" : "transparent",
@@ -476,6 +476,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                       <span
                         role="button"
                         tabIndex={0}
+                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-md transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         onClick={(event) => {
                           event.stopPropagation();
                           if (window.confirm(`Delete conversation "${conversation.title}"?`)) {
@@ -491,7 +492,6 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                             }
                           }
                         }}
-                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-md transition-opacity"
                         style={{ color: "var(--text-tertiary)" }}
                         aria-label="Delete conversation"
                         title="Delete conversation"

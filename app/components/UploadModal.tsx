@@ -170,7 +170,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
           <div
             role="button"
             tabIndex={0}
-            className="rounded-xl transition-all cursor-pointer"
+            className="rounded-xl transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{
               border: `2px dashed ${dragOver ? "var(--accent)" : "var(--border-hover)"}`,
               background: dragOver ? "var(--accent-soft)" : "var(--bg-tertiary)",

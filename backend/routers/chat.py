@@ -17,7 +17,7 @@ from backend.models import ChatRequest, Citation, RerunMessageRequest
 from backend.routers.deps import RequestContext, get_request_context, require_provider_api_key
 from backend.services.embeddings import embed_query
 from backend.services.llm import build_rag_prompt, create_openai_text, gemini_text
-from backend.services.vectorstore import query_similar, query_vertex_search
+from backend.services.vectorstore import query_similar # , query_vertex_search
 from backend.settings import settings
 
 logger = logging.getLogger("ragapp.chat")
@@ -83,20 +83,21 @@ async def _generate_chat_response(
 ):
     trimmed_question = question.strip()
 
-    if provider == "vertex_search":
-        if not settings.vertex_search_configured:
-            return api_error_response(
-                request=request,
-                status_code=503,
-                error="Vertex AI Search is not configured on the server.",
-                code="VERTEX_SEARCH_NOT_CONFIGURED",
-            )
-        citations = await query_vertex_search(
-            document["id"],
-            trimmed_question,
-            settings.rag_top_k,
-        )
-    else:
+    # if provider == "vertex_search":
+    #     if not settings.vertex_search_configured:
+    #         return api_error_response(
+    #             request=request,
+    #             status_code=503,
+    #             error="Vertex AI Search is not configured on the server.",
+    #             code="VERTEX_SEARCH_NOT_CONFIGURED",
+    #         )
+    #     citations = await query_vertex_search(
+    #         document["id"],
+    #         trimmed_question,
+    #         settings.rag_top_k,
+    #     )
+    # else:
+    if True: # Always use vector search since vertex_search is disabled
         try:
             question_embedding = await embed_query(
                 provider,
@@ -154,15 +155,15 @@ async def _generate_chat_response(
     try:
         if provider == "openai":
             answer = await create_openai_text(provider_api_key, model.strip(), prompt)
-        elif provider == "vertex_search":
-            loop = asyncio.get_running_loop()
-            answer = await loop.run_in_executor(
-                None,
-                gemini_text,
-                provider_api_key,
-                model.strip(),
-                prompt,
-            )
+        # elif provider == "vertex_search":
+        #     loop = asyncio.get_running_loop()
+        #     answer = await loop.run_in_executor(
+        #         None,
+        #         gemini_text,
+        #         provider_api_key,
+        #         model.strip(),
+        #         prompt,
+        #     )
         else:
             loop = asyncio.get_running_loop()
             answer = await loop.run_in_executor(

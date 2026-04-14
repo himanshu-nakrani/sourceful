@@ -13,11 +13,11 @@ class MissingProviderApiKeyError(ValueError):
 def provider_requires_api_key(provider: str) -> bool:
     """Return True if the provider requires a caller-supplied API key.
 
-    Vertex AI Search uses service-side credentials for ingest/reprocess/search,
-    so it does not require `X-Provider-Api-Key` for those flows.
+    # Vertex AI Search uses service-side credentials for ingest/reprocess/search,
+    # so it does not require `X-Provider-Api-Key` for those flows.
     """
 
-    return provider != "vertex_search"
+    return True
 
 
 def normalize_provider_api_key(value: str | None) -> str:

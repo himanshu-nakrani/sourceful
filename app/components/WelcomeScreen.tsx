@@ -9,6 +9,12 @@ interface WelcomeScreenProps {
   onComplete: () => void;
 }
 
+/**
+ * Render the initial Quick Setup UI to choose an LLM provider, enter an API key, optionally sign in, and complete initial app setup.
+ *
+ * @param onComplete - Callback invoked after settings are saved and setup is marked complete
+ * @returns The welcome/setup screen as a JSX element
+ */
 export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
   const { dispatch } = useStore();
   const [provider, setProvider] = useState<Provider>("openai");
@@ -202,6 +208,16 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
   );
 }
 
+/**
+ * Renders a sign-in / sign-up prompt that authenticates a user and marks initial setup complete.
+ *
+ * The component provides email and password inputs, toggles between login and signup modes,
+ * lazily imports and calls the appropriate auth function, dispatches the authenticated user
+ * to the store, and sets the setup-complete flag. It also manages loading and error states.
+ *
+ * @param onBack - Callback invoked when the user chooses to return to the setup screen
+ * @returns The JSX element for the login/signup prompt
+ */
 function LoginPrompt({ onBack }: { onBack: () => void }) {
   const { dispatch } = useStore();
   const [mode, setMode] = useState<"login" | "signup">("login");

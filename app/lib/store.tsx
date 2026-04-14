@@ -52,6 +52,14 @@ const DEFAULT_EMBEDDING: Record<Provider, string> = {
   // vertex_search: "vertex_search_managed",
 };
 
+/**
+ * Generate a client session identifier.
+ *
+ * When the Web Crypto API's `crypto.randomUUID` is available, the returned value is that UUID;
+ * otherwise the function returns a fallback string of the form `rag-<timestamp>-<randomHex>`.
+ *
+ * @returns A string session identifier — a UUID when supported, otherwise a `rag-<timestamp>-<randomHex>` fallback.
+ */
 function generateClientSessionId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -59,6 +67,11 @@ function generateClientSessionId(): string {
   return `rag-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+/**
+ * Determines whether a non-empty auth token is present in session storage under the `rag-session` key.
+ *
+ * @returns `true` if a non-empty `authToken` exists and is accessible in `sessionStorage["rag-session"]`, `false` otherwise (including when not running in a browser or when parsing/accessing storage fails).
+ */
 function hasStoredAuthToken(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -71,6 +84,13 @@ function hasStoredAuthToken(): boolean {
   }
 }
 
+/**
+ * Resolve and return the application's settings by combining defaults with any persisted preferences and session secrets available in the browser.
+ *
+ * Loads theme from localStorage for all users. When a stored session auth token exists, additional non-sensitive preferences (provider, chatModel, embeddingModel, topK, similarityThreshold) are loaded from localStorage and session secrets (providerApiKey, clientSessionId) are read from sessionStorage. For anonymous contexts or when stored values are absent, defaults are used and a new `clientSessionId` is generated.
+ *
+ * @returns An AppSettings object containing the resolved `provider`, `chatModel`, `embeddingModel`, `providerApiKey`, `clientSessionId`, `topK`, `similarityThreshold`, and `theme`. `providerApiKey` will be empty unless found in session storage; `clientSessionId` will be generated if not present.
+ */
 function loadSettings(): AppSettings {
   if (typeof window === "undefined") {
     return {
@@ -210,6 +230,19 @@ type Action =
   | { type: "SET_SETTINGS_OPEN"; payload: boolean }
   | { type: "SET_SETUP_COMPLETE"; payload: boolean };
 
+/**
+ * Persist selected app settings to browser storage.
+ *
+ * Always writes the user's `theme` to localStorage (under "rag-prefs"). When `isAuthenticated`
+ * is true, also persists provider, model selections, `topK`, and `similarityThreshold` to
+ * localStorage and stores sensitive session secrets (`providerApiKey` and `clientSessionId`)
+ * in sessionStorage (under "rag-session"). No storage operations are performed when not
+ * running in a browser environment.
+ *
+ * @param next - The full AppSettings object whose values should be persisted.
+ * @param isAuthenticated - Whether the current session is authenticated; controls which
+ *                          settings are persisted beyond theme.
+ */
 function persistSettings(next: AppSettings, isAuthenticated: boolean): void {
   if (typeof window === "undefined") return;
 
@@ -255,6 +288,16 @@ function persistSettings(next: AppSettings, isAuthenticated: boolean): void {
   // For anonymous users: do not persist - stateless session
 }
 
+/**
+ * Produce the next application state given the current state and an action.
+ *
+ * Handles all store actions (settings, auth, document/conversation/view, UI toggles, and in-memory flags).
+ * When settings are updated, relevant values are persisted (auth-dependent) and, if `theme` is provided, the document's `data-theme` attribute is updated in the browser. The `setupComplete` flag is kept in-memory and is not persisted.
+ *
+ * @param state - The current application state
+ * @param action - The action describing the update to apply
+ * @returns The new application state after applying the action
+ */
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "SET_SETTINGS": {

@@ -22,6 +22,16 @@ interface ChatAreaProps {
   onUploadClick: () => void;
 }
 
+/**
+ * Renders the document-aware chat interface, including message display, submission, streaming control,
+ * reruns, source citations, conversation management, and contextual empty/error states.
+ *
+ * This component drives user interactions for asking questions about one or more indexed documents,
+ * handles streaming assistant responses, and coordinates conversation lifecycle actions.
+ *
+ * @param onUploadClick - Callback invoked when the user chooses to upload a document from the empty state
+ * @returns The chat area React element
+ */
 export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const { state, dispatch } = useStore();
   const {

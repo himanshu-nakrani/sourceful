@@ -20,6 +20,15 @@ export const metadata: Metadata = {
   keywords: ["RAG", "document QA", "AI", "embeddings", "OpenAI", "Gemini", "PDF"],
 };
 
+/**
+ * Root HTML layout that applies global fonts, viewport settings, and a pre-paint theme selection.
+ *
+ * Injects a viewport meta tag and an inline script that reads `localStorage.getItem('rag-prefs')`
+ * and sets `document.documentElement`'s `data-theme` attribute to `"light"` before the first paint when the saved theme is `"light"`.
+ *
+ * @param children - The page content to render inside the document body
+ * @returns The root HTML element containing the configured head and body with the provided `children`
+ */
 export default function RootLayout({
   children,
 }: Readonly<{

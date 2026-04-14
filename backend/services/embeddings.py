@@ -55,16 +55,16 @@ def embed_query_gemini_sync(api_key: str, model: str, text: str) -> list[float]:
 
 
 async def embed_texts(provider: str, api_key: str, model: str, texts: list[str]) -> list[list[float]]:
-    if provider == "vertex_search":
-        return [[0.0] * 768 for _ in texts]
+    # if provider == "vertex_search":
+    #     return [[0.0] * 768 for _ in texts]
     if provider == "openai":
         return await embed_texts_openai(api_key, model, texts)
     return await asyncio.to_thread(embed_texts_gemini_sync, api_key, model, texts)
 
 
 async def embed_query(provider: str, api_key: str, model: str, text: str) -> list[float]:
-    if provider == "vertex_search":
-        return [0.0] * 768
+    # if provider == "vertex_search":
+    #     return [0.0] * 768
     if provider == "openai":
         return await embed_query_openai(api_key, model, text)
     return await asyncio.to_thread(embed_query_gemini_sync, api_key, model, text)

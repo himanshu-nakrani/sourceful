@@ -9,13 +9,13 @@ import { DEFAULT_CHAT, DEFAULT_EMBEDDING, useStore } from "../lib/store";
 const CHAT_MODEL_OPTIONS: Record<Provider, string[]> = {
   openai: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-4.1-mini", "gpt-4.1"],
   gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
-  vertex_search: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
+  // vertex_search: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
 };
 
 const EMBEDDING_MODEL_OPTIONS: Record<Provider, string[]> = {
   openai: ["text-embedding-3-small", "text-embedding-3-large"],
   gemini: ["models/gemini-embedding-001"],
-  vertex_search: ["vertex_search_managed"],
+  // vertex_search: ["vertex_search_managed"],
 };
 
 const PROVIDER_INFO: Record<Provider, { label: string; icon: string; color: string; description: string }> = {
@@ -31,19 +31,19 @@ const PROVIDER_INFO: Record<Provider, { label: string; icon: string; color: stri
     color: "#4285f4",
     description: "Gemini flash and pro models via Google AI Studio.",
   },
-  vertex_search: {
+  /* vertex_search: {
     label: "Vertex AI Search",
     icon: "V",
     color: "#ea4335",
     description: "Google Cloud Vertex AI Search with managed embeddings.",
-  },
+  }, */
 };
 
 export default function ModelManagement() {
   const { state, dispatch } = useStore();
   const { settings } = state;
 
-  const providers: Provider[] = ["openai", "gemini", "vertex_search"];
+  const providers: Provider[] = ["openai", "gemini"/*, "vertex_search"*/];
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6" style={{ background: "var(--bg-primary)" }}>

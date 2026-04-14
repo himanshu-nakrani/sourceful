@@ -190,9 +190,9 @@ async def process_job(job: dict) -> None:
     owner_id = job["owner_id"]
     started = datetime.now(timezone.utc)
     try:
-        if job["provider"] == "vertex_search":
-            await _process_vertex_search_job(job, job_id, document_id, owner_id, started)
-            return
+        # if job["provider"] == "vertex_search":
+        #     await _process_vertex_search_job(job, job_id, document_id, owner_id, started)
+        #     return
 
         chunks = await _build_chunks(job)
         await execute(

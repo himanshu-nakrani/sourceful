@@ -38,13 +38,13 @@ export interface AppState {
 const DEFAULT_CHAT: Record<Provider, string> = {
   openai: "gpt-4o-mini",
   gemini: "gemini-2.0-flash",
-  vertex_search: "gemini-2.0-flash",
+  // vertex_search: "gemini-2.0-flash",
 };
 
 const DEFAULT_EMBEDDING: Record<Provider, string> = {
   openai: "text-embedding-3-small",
   gemini: "models/gemini-embedding-001",
-  vertex_search: "vertex_search_managed",
+  // vertex_search: "vertex_search_managed",
 };
 
 function generateClientSessionId(): string {
@@ -72,7 +72,7 @@ function loadSettings(): AppSettings {
     const rawPrefs = localStorage.getItem("rag-prefs");
     if (rawPrefs) {
       const parsed = JSON.parse(rawPrefs) as Partial<AppSettings>;
-      const validProviders: Provider[] = ["openai", "gemini", "vertex_search"];
+      const validProviders: Provider[] = ["openai", "gemini"/*, "vertex_search"*/];
       provider = validProviders.includes(parsed.provider as Provider) ? (parsed.provider as Provider) : "openai";
       chatModel = parsed.chatModel ?? DEFAULT_CHAT[provider];
       embeddingModel = parsed.embeddingModel ?? DEFAULT_EMBEDDING[provider];

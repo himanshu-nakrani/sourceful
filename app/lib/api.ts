@@ -1,4 +1,4 @@
-export type Provider = "openai" | "gemini" | "vertex_search";
+export type Provider = "openai" | "gemini"; // | "vertex_search";
 
 export interface ClientAuthContext {
   clientSessionId?: string;

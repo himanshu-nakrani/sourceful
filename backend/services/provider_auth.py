@@ -17,7 +17,7 @@ def provider_requires_api_key(provider: str) -> bool:
     # so it does not require `X-Provider-Api-Key` for those flows.
     """
 
-    return True  # provider != "vertex_search"
+    return True
 
 
 def normalize_provider_api_key(value: str | None) -> str:

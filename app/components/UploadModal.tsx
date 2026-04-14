@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2, Upload, X } from "lucide-react";
 import { getJob, ingestDocument, type JobInfo } from "../lib/api";
 import { useServerState } from "../lib/server-state";
@@ -9,9 +9,10 @@ import { useStore } from "../lib/store";
 interface UploadModalProps {
   open: boolean;
   onClose: () => void;
+  initialFile?: File | null;
 }
 
-export default function UploadModal({ open, onClose }: UploadModalProps) {
+export default function UploadModal({ open, onClose, initialFile }: UploadModalProps) {
   const { state } = useStore();
   const { refreshDocuments, selectDocument } = useServerState();
   const { settings } = state;
@@ -22,6 +23,12 @@ export default function UploadModal({ open, onClose }: UploadModalProps) {
   const [dragOver, setDragOver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open && initialFile) {
+      setFile(initialFile);
+    }
+  }, [open, initialFile]);
 
   const auth = {
     clientSessionId: settings.clientSessionId,

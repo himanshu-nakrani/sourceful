@@ -1,16 +1,15 @@
 "use client";
 
-import React from "react";
-import { CheckCircle2, KeyRound, RotateCcw, X } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { CheckCircle2, ChevronDown, KeyRound, RotateCcw, Search, UserCircle, X } from "lucide-react";
 import {
+  fetchModels,
   getGoogleOAuthClientId,
-  listUsers,
   login,
   logout,
   signup,
-  updateUser,
-  type AuthUser,
   type Provider,
+  type ModelsResponse,
 } from "../lib/api";
 import { DEFAULT_CHAT, DEFAULT_EMBEDDING, useStore } from "../lib/store";
 
@@ -19,29 +18,19 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-const CHAT_MODEL_OPTIONS: Record<Provider, string[]> = {
-  openai: ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1", "gpt-4o"],
-  gemini: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
-  // vertex_search: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
-};
-
-const EMBEDDING_MODEL_OPTIONS: Record<Provider, string[]> = {
-  openai: ["text-embedding-3-small", "text-embedding-3-large"],
-  gemini: ["models/gemini-embedding-001"],
-  // vertex_search: ["vertex_search_managed"],
-};
-
 export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const { state, dispatch } = useStore();
   const { settings } = state;
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [authError, setAuthError] = React.useState<string | null>(null);
-  const [adminUsers, setAdminUsers] = React.useState<AuthUser[]>([]);
-  const [adminLoading, setAdminLoading] = React.useState(false);
-  const [googleClientId, setGoogleClientId] = React.useState<string | null>(null);
+  const [models, setModels] = useState<ModelsResponse | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const [showRetrieval, setShowRetrieval] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     getGoogleOAuthClientId()
       .then((clientId) => {
@@ -49,6 +38,33 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       })
       .catch(() => {});
   }, [open]);
+
+  // Fetch models when provider or API key changes
+  useEffect(() => {
+    if (!open || !settings.providerApiKey.trim()) {
+      setModels(null);
+      return;
+    }
+
+    const loadModels = async () => {
+      setModelsLoading(true);
+      try {
+        const auth = {
+          clientSessionId: settings.clientSessionId,
+          providerApiKey: settings.providerApiKey,
+        };
+        const response = await fetchModels(auth, settings.provider);
+        setModels(response);
+      } catch {
+        // Keep defaults on error
+        setModels(null);
+      } finally {
+        setModelsLoading(false);
+      }
+    };
+
+    loadModels();
+  }, [open, settings.provider, settings.providerApiKey, settings.clientSessionId]);
 
   if (!open) return null;
   const user = state.currentUser;
@@ -96,121 +112,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </div>
 
         <div className="px-5 py-5 flex flex-col gap-5">
-          <div className="rounded-xl p-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-            {user ? (
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                    Signed in as {user.email}
-                  </p>
-                  <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-                    Role: {user.role}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="px-3 py-1.5 rounded-lg text-xs"
-                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
-                  onClick={async () => {
-                    await logout();
-                    dispatch({ type: "SET_CURRENT_USER", payload: null });
-                  }}
-                >
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 items-stretch">
-                  <input
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="Email"
-                    className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] w-full min-w-0 h-11"
-                    style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
-                  />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Password"
-                    className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] w-full min-w-0 h-11"
-                    style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
-                  />
-                  <button
-                    type="button"
-                    className="px-4 py-2 rounded-lg text-sm h-11 whitespace-nowrap inline-flex items-center justify-center"
-                    style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
-                    onClick={async () => {
-                      try {
-                        const next = await login(email.trim(), password);
-                        dispatch({ type: "SET_CURRENT_USER", payload: next });
-                        setAuthError(null);
-                      } catch (error) {
-                        setAuthError(error instanceof Error ? error.message : "Login failed.");
-                      }
-                    }}
-                  >
-                    Login
-                  </button>
-                  <button
-                    type="button"
-                    className="px-4 py-2 rounded-lg text-sm h-11 whitespace-nowrap inline-flex items-center justify-center"
-                    style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
-                    onClick={async () => {
-                      try {
-                        const next = await signup(email.trim(), password);
-                        dispatch({ type: "SET_CURRENT_USER", payload: next });
-                        setAuthError(null);
-                      } catch (error) {
-                        setAuthError(error instanceof Error ? error.message : "Signup failed.");
-                      }
-                    }}
-                  >
-                    Sign up
-                  </button>
-                </div>
-                {googleClientId ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const redirectUri = `${window.location.origin}${window.location.pathname}`;
-                      const scope = "openid email profile";
-                      const url =
-                        `https://accounts.google.com/o/oauth2/v2/auth?` +
-                        `client_id=${encodeURIComponent(googleClientId)}` +
-                        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-                        `&response_type=code` +
-                        `&scope=${encodeURIComponent(scope)}` +
-                        `&access_type=offline` +
-                        `&prompt=consent`;
-                      window.location.href = url;
-                    }}
-                    className="w-full flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm h-11"
-                    style={{
-                      background: "var(--bg-secondary)",
-                      border: "1px solid var(--border)",
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 48 48">
-                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                    </svg>
-                    Sign in with Google
-                  </button>
-                ) : null}
-              </div>
-            )}
-            {authError ? (
-              <p className="text-xs mt-2" style={{ color: "var(--error)" }}>
-                {authError}
-              </p>
-            ) : null}
-          </div>
-
+          {/* Provider Selection */}
           <div className="flex flex-col gap-2">
             <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
               Provider
@@ -261,24 +163,27 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             help="Used for uploads, reprocessing, embeddings, and chat generation."
           />
 
+          {/* Dynamic Model Dropdowns */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <PresetField
+            <SelectField
               label="Chat Model"
               value={settings.chatModel}
-              options={CHAT_MODEL_OPTIONS[settings.provider]}
+              options={models?.chat_models || [DEFAULT_CHAT[settings.provider]]}
               onChange={(value) =>
                 dispatch({ type: "SET_SETTINGS", payload: { chatModel: value } })
               }
-              listId="chat-models"
+              loading={modelsLoading}
+              disabled={!settings.providerApiKey.trim()}
             />
-            <PresetField
+            <SelectField
               label="Embedding Model"
               value={settings.embeddingModel}
-              options={EMBEDDING_MODEL_OPTIONS[settings.provider]}
+              options={models?.embedding_models || [DEFAULT_EMBEDDING[settings.provider]]}
               onChange={(value) =>
                 dispatch({ type: "SET_SETTINGS", payload: { embeddingModel: value } })
               }
-              listId="embedding-models"
+              loading={modelsLoading}
+              disabled={!settings.providerApiKey.trim()}
             />
           </div>
 
@@ -295,54 +200,193 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             </div>
           </div>
 
-          {user?.role === "admin" ? (
-            <div className="rounded-xl p-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
-                  User Management
-                </p>
-                <button
-                  type="button"
-                  className="text-xs px-2 py-1 rounded"
-                  style={{ border: "1px solid var(--border)" }}
-                  onClick={async () => {
-                    setAdminLoading(true);
-                    try {
-                      setAdminUsers(await listUsers());
-                    } finally {
-                      setAdminLoading(false);
-                    }
-                  }}
-                >
-                  {adminLoading ? "Loading..." : "Refresh"}
-                </button>
+          {/* RAG Retrieval Settings - Collapsible */}
+          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+            <button
+              type="button"
+              onClick={() => setShowRetrieval(!showRetrieval)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm"
+              style={{ background: "var(--bg-surface)" }}
+            >
+              <span className="flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+                <Search size={16} />
+                Retrieval Settings
+              </span>
+              <ChevronDown
+                size={16}
+                style={{
+                  color: "var(--text-tertiary)",
+                  transform: showRetrieval ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s",
+                }}
+              />
+            </button>
+            {showRetrieval && (
+              <div className="px-4 py-4 flex flex-col gap-4" style={{ background: "var(--bg-secondary)" }}>
+                <SliderField
+                  label="Top-K Chunks"
+                  value={settings.topK}
+                  min={1}
+                  max={20}
+                  step={1}
+                  onChange={(value) => dispatch({ type: "SET_SETTINGS", payload: { topK: value } })}
+                  format={(v) => `${v} chunks`}
+                  help="Number of document chunks retrieved per query."
+                />
+                <SliderField
+                  label="Similarity Threshold"
+                  value={settings.similarityThreshold}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={(value) => dispatch({ type: "SET_SETTINGS", payload: { similarityThreshold: value } })}
+                  format={(v) => v === 0 ? "Off" : v.toFixed(2)}
+                  help="Minimum similarity score to include a chunk. 0 = no filter."
+                />
               </div>
-              <div className="max-h-40 overflow-auto flex flex-col gap-2">
-                {adminUsers.map((managedUser) => (
-                  <div key={managedUser.id} className="flex items-center justify-between text-xs">
-                    <span style={{ color: "var(--text-secondary)" }}>
-                      {managedUser.email} ({managedUser.role})
-                    </span>
+            )}
+          </div>
+
+          {/* Optional Authentication - Collapsible */}
+          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+            <button
+              type="button"
+              onClick={() => setShowAuth(!showAuth)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm"
+              style={{ background: "var(--bg-surface)" }}
+            >
+              <span className="flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+                <UserCircle size={16} />
+                {user ? `Signed in as ${user.email}` : "Sign in for cross-device sync (optional)"}
+              </span>
+              <ChevronDown
+                size={16}
+                style={{
+                  color: "var(--text-tertiary)",
+                  transform: showAuth ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s",
+                }}
+              />
+            </button>
+
+            {showAuth && (
+              <div className="px-4 py-4" style={{ background: "var(--bg-secondary)" }}>
+                {user ? (
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                      Your data is synced across devices.
+                    </p>
                     <button
                       type="button"
-                      style={{ border: "1px solid var(--border)" }}
-                      className="px-2 py-0.5 rounded"
+                      className="px-3 py-1.5 rounded-lg text-xs"
+                      style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
                       onClick={async () => {
-                        const next = await updateUser(managedUser.id, {
-                          is_active: !managedUser.is_active,
-                        });
-                        setAdminUsers((current) =>
-                          current.map((item) => (item.id === next.id ? next : item))
-                        );
+                        await logout();
+                        dispatch({ type: "SET_CURRENT_USER", payload: null });
                       }}
                     >
-                      {managedUser.is_active ? "Disable" : "Enable"}
+                      Logout
                     </button>
                   </div>
-                ))}
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="Email"
+                        className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                      />
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="Password"
+                        className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="flex-1 px-4 py-2 rounded-lg text-sm"
+                        style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+                        onClick={async () => {
+                          try {
+                            const next = await login(email.trim(), password);
+                            dispatch({ type: "SET_CURRENT_USER", payload: next });
+                            setAuthError(null);
+                            setEmail("");
+                            setPassword("");
+                          } catch (error) {
+                            setAuthError(error instanceof Error ? error.message : "Login failed.");
+                          }
+                        }}
+                      >
+                        Sign In
+                      </button>
+                      <button
+                        type="button"
+                        className="flex-1 px-4 py-2 rounded-lg text-sm"
+                        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                        onClick={async () => {
+                          try {
+                            const next = await signup(email.trim(), password);
+                            dispatch({ type: "SET_CURRENT_USER", payload: next });
+                            setAuthError(null);
+                            setEmail("");
+                            setPassword("");
+                          } catch (error) {
+                            setAuthError(error instanceof Error ? error.message : "Signup failed.");
+                          }
+                        }}
+                      >
+                        Create Account
+                      </button>
+                    </div>
+                    {googleClientId ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const redirectUri = `${window.location.origin}${window.location.pathname}`;
+                          const scope = "openid email profile";
+                          const url =
+                            `https://accounts.google.com/o/oauth2/v2/auth?` +
+                            `client_id=${encodeURIComponent(googleClientId)}` +
+                            `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+                            `&response_type=code` +
+                            `&scope=${encodeURIComponent(scope)}` +
+                            `&access_type=offline` +
+                            `&prompt=consent`;
+                          window.location.href = url;
+                        }}
+                        className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm"
+                        style={{
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border)",
+                          color: "var(--text-primary)",
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 48 48">
+                          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                        </svg>
+                        Sign in with Google
+                      </button>
+                    ) : null}
+                    {authError ? (
+                      <p className="text-xs" style={{ color: "var(--error)" }}>
+                        {authError}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
               </div>
-            </div>
-          ) : null}
+            )}
+          </div>
         </div>
 
         <div
@@ -425,40 +469,108 @@ function Field({
   );
 }
 
-function PresetField({
+function SelectField({
   label,
   value,
   onChange,
   options,
-  listId,
+  loading,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: string[];
-  listId: string;
+  loading?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
       <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
         {label}
       </label>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled || loading}
+          className="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] appearance-none cursor-pointer disabled:opacity-50"
+          style={{
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            color: disabled ? "var(--text-muted)" : "var(--text-primary)",
+          }}
+        >
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <div
+          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+          style={{ color: "var(--text-muted)" }}
+        >
+          <ChevronDown size={14} />
+        </div>
+      </div>
+      {loading && (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Loading models...
+        </p>
+      )}
+      {disabled && !loading && (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Enter API key to see available models
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SliderField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  format,
+  help,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  format: (v: number) => string;
+  help: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+          {label}
+        </label>
+        <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
+          {format(value)}
+        </span>
+      </div>
       <input
-        list={listId}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
         style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          color: "var(--text-primary)",
+          background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${((value - min) / (max - min)) * 100}%, var(--bg-elevated) ${((value - min) / (max - min)) * 100}%, var(--bg-elevated) 100%)`,
+          accentColor: "var(--accent)",
         }}
       />
-      <datalist id={listId}>
-        {options.map((option) => (
-          <option key={option} value={option} />
-        ))}
-      </datalist>
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>{help}</p>
     </div>
   );
 }

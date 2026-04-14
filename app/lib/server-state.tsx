@@ -55,7 +55,6 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
     }),
     [state.settings.clientSessionId]
   );
-  const isAuthenticated = Boolean(state.currentUser);
 
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
@@ -70,7 +69,7 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
   const [chunkPreviewLoading, setChunkPreviewLoading] = useState(false);
 
   const refreshDocuments = useCallback(async () => {
-    if (!auth.clientSessionId || !isAuthenticated) return;
+    if (!auth.clientSessionId) return;
     setDocumentsLoading(true);
     try {
       const nextDocuments = await listDocuments(auth);
@@ -92,12 +91,12 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
     } finally {
       setDocumentsLoading(false);
     }
-  }, [auth, dispatch, isAuthenticated, state.activeDocumentId]);
+  }, [auth, dispatch, state.activeDocumentId]);
 
   const refreshConversations = useCallback(
     async (documentId?: string | null) => {
       const target = documentId ?? state.activeDocumentId;
-      if (!auth.clientSessionId || !target || !isAuthenticated) {
+      if (!auth.clientSessionId || !target) {
         setConversations([]);
         return;
       }
@@ -116,13 +115,13 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
         setConversationsLoading(false);
       }
     },
-    [auth, isAuthenticated, state.activeDocumentId]
+    [auth, state.activeDocumentId]
   );
 
   const refreshChunkPreview = useCallback(
     async (documentId?: string | null) => {
       const target = documentId ?? state.activeDocumentId;
-      if (!auth.clientSessionId || !target || !isAuthenticated) {
+      if (!auth.clientSessionId || !target) {
         setChunkPreview([]);
         return;
       }
@@ -136,7 +135,7 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
         setChunkPreviewLoading(false);
       }
     },
-    [auth, isAuthenticated, state.activeDocumentId]
+    [auth, state.activeDocumentId]
   );
 
   const selectDocument = useCallback(
@@ -207,9 +206,15 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!auth.clientSessionId || !isAuthenticated) return;
+    if (!auth.clientSessionId) return;
     void refreshDocuments();
-  }, [auth.clientSessionId, isAuthenticated, refreshDocuments]);
+  }, [auth.clientSessionId, refreshDocuments]);
+
+  // Refresh documents when user logs in (owner_id changes from anon to user)
+  useEffect(() => {
+    if (!auth.clientSessionId || !state.currentUser) return;
+    void refreshDocuments();
+  }, [state.currentUser, state.currentUser?.id, auth.clientSessionId, refreshDocuments]);
 
   useEffect(() => {
     if (!documents.some((document) => ["queued", "processing"].includes(document.status))) {

@@ -28,6 +28,12 @@ def _read_bearer_token(request: Request) -> str | None:
     return token or None
 
 
+def _read_client_session(request: Request) -> str | None:
+    """Read client session ID from header for anonymous users."""
+    client_session = request.headers.get("x-client-session", "")
+    return client_session.strip() or None
+
+
 async def get_request_context(
     request: Request,
 ) -> RequestContext:
@@ -43,9 +49,20 @@ async def get_request_context(
                 role=user.get("role", "user"),
                 is_authenticated=True,
             )
+    # Allow anonymous access with client session ID
+    client_session = _read_client_session(request)
+    if client_session:
+        return RequestContext(
+            owner_id=f"anon:{client_session}",
+            request_id=getattr(request.state, "request_id", "unknown"),
+            client_ip=request.client.host if request.client else "unknown",
+            user_id=None,
+            role="anonymous",
+            is_authenticated=False,
+        )
     raise HTTPException(
         status_code=401,
-        detail={"error": "Authentication required.", "code": "AUTH_REQUIRED"},
+        detail={"error": "Authentication required. Provide auth token or X-Client-Session header.", "code": "AUTH_REQUIRED"},
     )
 
 

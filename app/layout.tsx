@@ -32,6 +32,12 @@ export default function RootLayout({
     >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+        {/* Apply theme before first paint to prevent flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p=localStorage.getItem('rag-prefs');if(p){var t=JSON.parse(p).theme;if(t==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

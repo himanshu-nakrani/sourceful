@@ -389,7 +389,10 @@ export async function sendChat(
   documentId: string,
   question: string,
   conversationId: string | null,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  topK?: number,
+  similarityThreshold?: number,
+  documentIds?: string[]
 ): Promise<ChatResponse> {
   const res = await apiFetch("/api/chat", {
     method: "POST",
@@ -398,8 +401,11 @@ export async function sendChat(
       provider,
       model: model.trim(),
       document_id: documentId,
+      document_ids: documentIds && documentIds.length > 1 ? documentIds : undefined,
       question: question.trim(),
       conversation_id: conversationId,
+      top_k: topK,
+      similarity_threshold: similarityThreshold,
     }),
     signal,
   });
@@ -417,7 +423,9 @@ export async function rerunMessage(
   model: string,
   documentId: string,
   conversationId: string,
-  messageId: string
+  messageId: string,
+  topK?: number,
+  similarityThreshold?: number
 ): Promise<ChatResponse> {
   const res = await apiFetch("/api/chat/rerun", {
     method: "POST",
@@ -428,6 +436,8 @@ export async function rerunMessage(
       document_id: documentId,
       conversation_id: conversationId,
       message_id: messageId,
+      top_k: topK,
+      similarity_threshold: similarityThreshold,
     }),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
@@ -540,6 +550,23 @@ export async function updateUser(userId: string, payload: UpdateUserPayload): Pr
 
 export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   const res = await apiFetch("/api/analytics/overview", { headers: baseHeaders({}) });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export interface ModelsResponse {
+  provider: Provider;
+  chat_models: string[];
+  embedding_models: string[];
+}
+
+export async function fetchModels(
+  auth: ClientAuthContext,
+  provider: Provider
+): Promise<ModelsResponse> {
+  const res = await apiFetch(`/api/models?provider=${encodeURIComponent(provider)}`, {
+    headers: baseHeaders(auth, { includeProviderKey: true }),
+  });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }

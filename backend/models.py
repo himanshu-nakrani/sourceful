@@ -68,8 +68,11 @@ class ChatRequest(BaseModel):
     provider: Literal["openai", "gemini"]
     model: str = Field(max_length=128)
     document_id: str
+    document_ids: list[str] | None = None
     question: str = Field(min_length=1, max_length=settings.max_question_length)
     conversation_id: str | None = None
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class RerunMessageRequest(BaseModel):
@@ -78,6 +81,8 @@ class RerunMessageRequest(BaseModel):
     document_id: str
     conversation_id: str = Field(min_length=1)
     message_id: str = Field(min_length=1)
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class MessageResponse(BaseModel):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 import asyncio
@@ -17,7 +18,7 @@ from backend.models import ChatRequest, Citation, RerunMessageRequest
 from backend.routers.deps import RequestContext, get_request_context, require_provider_api_key
 from backend.services.embeddings import embed_query
 from backend.services.llm import build_rag_prompt, create_openai_text, gemini_text
-from backend.services.vectorstore import query_similar # , query_vertex_search
+from backend.services.vectorstore import query_similar, query_similar_multi # , query_vertex_search
 from backend.settings import settings
 
 logger = logging.getLogger("ragapp.chat")
@@ -80,6 +81,9 @@ async def _generate_chat_response(
     conversation_id: str,
     history: list[dict[str, str]],
     provider_api_key: str,
+    top_k: int | None = None,
+    similarity_threshold: float | None = None,
+    extra_document_ids: list[str] | None = None,
 ):
     trimmed_question = question.strip()
 
@@ -97,6 +101,9 @@ async def _generate_chat_response(
     #         settings.rag_top_k,
     #     )
     # else:
+    effective_top_k = top_k if top_k is not None else settings.rag_top_k
+    effective_min_score = similarity_threshold if similarity_threshold is not None else 0.0
+
     if True: # Always use vector search since vertex_search is disabled
         try:
             question_embedding = await embed_query(
@@ -114,12 +121,23 @@ async def _generate_chat_response(
                 code="QUERY_EMBEDDING_FAILED",
             )
 
-        citations = await query_similar(
-            document["id"],
-            context.owner_id,
-            question_embedding,
-            settings.rag_top_k,
-        )
+        if extra_document_ids:
+            all_doc_ids = [document["id"]] + extra_document_ids
+            citations = await query_similar_multi(
+                all_doc_ids,
+                context.owner_id,
+                question_embedding,
+                effective_top_k,
+                effective_min_score,
+            )
+        else:
+            citations = await query_similar(
+                document["id"],
+                context.owner_id,
+                question_embedding,
+                effective_top_k,
+                effective_min_score,
+            )
     if not citations:
         return api_error_response(
             request=request,
@@ -242,9 +260,11 @@ async def chat(
     else:
         conversation_id = str(uuid.uuid4())
         title = body.question.strip()[:80] + ("..." if len(body.question.strip()) > 80 else "")
+        extra_ids = [d for d in (body.document_ids or []) if d != body.document_id]
+        doc_ids_json = json.dumps([body.document_id] + extra_ids) if extra_ids else None
         await execute(
-            "INSERT INTO conversations (id, owner_id, document_id, title) VALUES (?, ?, ?, ?)",
-            (conversation_id, context.owner_id, body.document_id, title),
+            "INSERT INTO conversations (id, owner_id, document_id, title, document_ids_json) VALUES (?, ?, ?, ?, ?)",
+            (conversation_id, context.owner_id, body.document_id, title, doc_ids_json),
         )
 
     history_rows = await fetch_all(
@@ -255,6 +275,7 @@ async def chat(
         {"role": row["role"], "content": row["content"]}
         for row in history_rows
     ][-settings.max_conversation_history :]
+    extra_doc_ids = [d for d in (body.document_ids or []) if d != body.document_id]
     return await _generate_chat_response(
         request=request,
         context=context,
@@ -265,6 +286,9 @@ async def chat(
         conversation_id=conversation_id,
         history=history,
         provider_api_key=provider_api_key,
+        top_k=body.top_k,
+        similarity_threshold=body.similarity_threshold,
+        extra_document_ids=extra_doc_ids or None,
     )
 
 
@@ -372,4 +396,6 @@ async def rerun_chat_message(
         conversation_id=next_conversation_id,
         history=history,
         provider_api_key=provider_api_key,
+        top_k=body.top_k,
+        similarity_threshold=body.similarity_threshold,
     )

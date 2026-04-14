@@ -3,8 +3,8 @@ from collections.abc import Iterable
 from backend.settings import settings
 
 
-SQLITE_MIGRATION_VERSION = 3
-POSTGRES_MIGRATION_VERSION = 3
+SQLITE_MIGRATION_VERSION = 4
+POSTGRES_MIGRATION_VERSION = 4
 
 
 def _split_statements(script: str) -> list[str]:

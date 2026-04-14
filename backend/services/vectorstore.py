@@ -110,7 +110,7 @@ def _load_embedding_json(payload: str) -> list[float]:
     return json.loads(payload)
 
 
-def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
+def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float], top_k: int, min_score: float = 0.0) -> list[RetrievedChunk]:
 
     try:
         import numpy as np
@@ -126,20 +126,29 @@ def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float],
     indices = np.argsort(-scores)[:top_k]
     result: list[RetrievedChunk] = []
     for index in indices:
+        score = float(scores[int(index)])
+        if score < min_score:
+            continue
         row = rows[int(index)]
         result.append(
             RetrievedChunk(
                 chunk_id=row["id"],
                 document_id=row["document_id"],
                 excerpt=row["content"],
-                score=float(scores[int(index)]),
+                score=score,
                 page_number=row.get("page_number"),
             )
         )
     return result
 
 
-async def query_similar(document_id: str, owner_id: str, query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
+async def query_similar(
+    document_id: str,
+    owner_id: str,
+    query_embedding: list[float],
+    top_k: int,
+    min_score: float = 0.0,
+) -> list[RetrievedChunk]:
     if settings.using_postgres:
         rows = await fetch_all(
             """
@@ -161,6 +170,7 @@ async def query_similar(document_id: str, owner_id: str, query_embedding: list[f
                 page_number=row.get("page_number"),
             )
             for row in rows
+            if float(row["score"] or 0.0) >= min_score
         ]
 
     rows = await fetch_all(
@@ -170,7 +180,27 @@ async def query_similar(document_id: str, owner_id: str, query_embedding: list[f
     if not rows:
         return []
 
-    return await asyncio.to_thread(_compute_similarities_sqlite, rows, query_embedding, top_k)
+    return await asyncio.to_thread(_compute_similarities_sqlite, rows, query_embedding, top_k, min_score)
+
+
+async def query_similar_multi(
+    document_ids: list[str],
+    owner_id: str,
+    query_embedding: list[float],
+    top_k: int,
+    min_score: float = 0.0,
+) -> list[RetrievedChunk]:
+    """Query across multiple documents and merge results ranked by score."""
+    tasks = [
+        query_similar(doc_id, owner_id, query_embedding, top_k, min_score)
+        for doc_id in document_ids
+    ]
+    results_per_doc = await asyncio.gather(*tasks)
+    merged: list[RetrievedChunk] = []
+    for chunks in results_per_doc:
+        merged.extend(chunks)
+    merged.sort(key=lambda c: c.score, reverse=True)
+    return merged[:top_k]
 
 
 # async def query_vertex_search(document_id: str, question: str, top_k: int) -> list[RetrievedChunk]:

@@ -35,11 +35,16 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     updateLastAssistantSources,
     setMessages,
   } = useServerState();
-  const { settings, activeConversationId, activeDocumentId, sidebarOpen } = state;
+  const { settings, activeConversationId, activeDocumentId, activeDocumentIds, sidebarOpen } = state;
   const activeDocument = useMemo(
     () => documents.find((document) => document.id === activeDocumentId) ?? null,
     [documents, activeDocumentId]
   );
+  const activeDocuments = useMemo(
+    () => documents.filter((d) => activeDocumentIds.includes(d.id)),
+    [documents, activeDocumentIds]
+  );
+  const isMultiDoc = activeDocumentIds.length > 1;
   const [question, setQuestion] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [currentSources, setCurrentSources] = useState<Citation[]>([]);
@@ -66,7 +71,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
 
   const canAsk = Boolean(
     activeDocumentId &&
-      activeDocument?.status === "ready" &&
+      (isMultiDoc ? activeDocuments.every((d) => d.status === "ready") : activeDocument?.status === "ready") &&
       settings.providerApiKey.trim() &&
       settings.chatModel.trim() &&
       question.trim() &&
@@ -121,7 +126,10 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           activeDocumentId,
           prompt,
           activeConversationId,
-          controller.signal
+          controller.signal,
+          settings.topK,
+          settings.similarityThreshold,
+          activeDocumentIds
         );
 
         setCurrentSources(response.sources);
@@ -147,6 +155,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     [
       activeConversationId,
       activeDocumentId,
+      activeDocumentIds,
       addMessage,
       appendToLastAssistant,
       auth,
@@ -157,6 +166,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       setMessages,
       settings.chatModel,
       settings.provider,
+      settings.topK,
+      settings.similarityThreshold,
       updateLastAssistantSources,
     ]
   );
@@ -183,7 +194,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           settings.chatModel,
           activeDocumentId,
           activeConversationId,
-          message.id
+          message.id,
+          settings.topK,
+          settings.similarityThreshold
         );
         dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: response.conversation_id });
         await refreshConversations(activeDocumentId);
@@ -205,6 +218,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       settings.chatModel,
       settings.provider,
       settings.providerApiKey,
+      settings.topK,
+      settings.similarityThreshold,
       streaming,
     ]
   );
@@ -225,6 +240,17 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   };
 
   const renderEmptyState = () => {
+    if (!settings.providerApiKey.trim()) {
+      return (
+        <StateCard
+          title="API Key Required"
+          description="Add your OpenAI or Google AI API key in Settings to start chatting with your documents."
+          primaryLabel="Open Settings"
+          onPrimary={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
+        />
+      );
+    }
+
     if (!activeDocument) {
       return (
         <StateCard
@@ -317,7 +343,20 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         >
           <PanelLeftOpen size={18} />
         </button>
-        {activeDocument ? (
+        {isMultiDoc ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
+            <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+              {activeDocumentIds.length} documents
+            </span>
+            <span
+              className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+              style={{ background: "var(--accent-soft)", color: "var(--accent-hover)" }}
+            >
+              {activeDocuments.reduce((sum, d) => sum + d.chunk_count, 0)} chunks
+            </span>
+          </div>
+        ) : activeDocument ? (
           <div className="flex items-center gap-2 min-w-0">
             <FileText size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
             <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>

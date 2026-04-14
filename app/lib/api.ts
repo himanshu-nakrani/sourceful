@@ -382,6 +382,19 @@ export interface ChatResponse {
   content: string;
 }
 
+/**
+ * Send a chat query to the server with optional retrieval controls and conversation context.
+ *
+ * @param provider - The LLM provider to use ("openai" | "gemini")
+ * @param model - The provider model identifier (leading/trailing whitespace is trimmed)
+ * @param documentId - Primary document id to scope retrievals
+ * @param question - The user's question (leading/trailing whitespace is trimmed)
+ * @param conversationId - Conversation id to append the message to, or `null` to start a new conversation
+ * @param topK - Maximum number of retrieved passages to include for grounding
+ * @param similarityThreshold - Minimum similarity score (typically 0–1) required for retrieved passages
+ * @param documentIds - Optional explicit list of document ids to restrict retrieval; sent to the API only when the array contains more than one id
+ * @returns The chat response object (`ChatResponse`)
+ */
 export async function sendChat(
   auth: ClientAuthContext,
   provider: Provider,
@@ -389,7 +402,10 @@ export async function sendChat(
   documentId: string,
   question: string,
   conversationId: string | null,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  topK?: number,
+  similarityThreshold?: number,
+  documentIds?: string[]
 ): Promise<ChatResponse> {
   const res = await apiFetch("/api/chat", {
     method: "POST",
@@ -398,8 +414,11 @@ export async function sendChat(
       provider,
       model: model.trim(),
       document_id: documentId,
+      document_ids: documentIds && documentIds.length > 1 ? documentIds : undefined,
       question: question.trim(),
       conversation_id: conversationId,
+      top_k: topK,
+      similarity_threshold: similarityThreshold,
     }),
     signal,
   });
@@ -411,13 +430,22 @@ export async function sendChat(
   return res.json();
 }
 
+/**
+ * Re-executes a previously sent chat message to produce an updated response.
+ *
+ * @param topK - Optional maximum number of retrieved documents to consider for the rerun
+ * @param similarityThreshold - Optional minimum similarity score required for retrieved documents
+ * @returns The updated ChatResponse for the rerun operation
+ */
 export async function rerunMessage(
   auth: ClientAuthContext,
   provider: Provider,
   model: string,
   documentId: string,
   conversationId: string,
-  messageId: string
+  messageId: string,
+  topK?: number,
+  similarityThreshold?: number
 ): Promise<ChatResponse> {
   const res = await apiFetch("/api/chat/rerun", {
     method: "POST",
@@ -428,6 +456,8 @@ export async function rerunMessage(
       document_id: documentId,
       conversation_id: conversationId,
       message_id: messageId,
+      top_k: topK,
+      similarity_threshold: similarityThreshold,
     }),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
@@ -538,8 +568,37 @@ export async function updateUser(userId: string, payload: UpdateUserPayload): Pr
   return res.json();
 }
 
+/**
+ * Fetches the analytics overview containing aggregate totals, recent activity, and per-provider breakdowns.
+ *
+ * @returns An AnalyticsOverview containing totals, recent activity, and provider-specific counts.
+ */
 export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   const res = await apiFetch("/api/analytics/overview", { headers: baseHeaders({}) });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export interface ModelsResponse {
+  provider: Provider;
+  chat_models: string[];
+  embedding_models: string[];
+}
+
+/**
+ * Fetches the available chat and embedding models for the given provider.
+ *
+ * @param provider - The model provider (`"openai"` or `"gemini"`) to query
+ * @returns An object containing `provider`, `chat_models`, and `embedding_models`
+ * @throws Error with the server-provided message when the request fails
+ */
+export async function fetchModels(
+  auth: ClientAuthContext,
+  provider: Provider
+): Promise<ModelsResponse> {
+  const res = await apiFetch(`/api/models?provider=${encodeURIComponent(provider)}`, {
+    headers: baseHeaders(auth, { includeProviderKey: true }),
+  });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }

@@ -2,20 +2,19 @@
 
 import React, { useMemo, useState } from "react";
 import {
-  BarChart3,
-  Cpu,
   Download,
   FileText,
   Loader2,
   MessageSquare,
+  Moon,
   Pencil,
   Plus,
   RefreshCcw,
   Search,
   Settings,
+  Sun,
   Trash2,
   Upload,
-  Users,
   PanelLeftClose,
 } from "lucide-react";
 import {
@@ -32,6 +31,17 @@ interface SidebarProps {
   onUploadClick: () => void;
 }
 
+/**
+ * Render the app sidebar for document indexing and conversation management.
+ *
+ * Displays controls for upload, theme, and settings; a searchable list of documents;
+ * multi-document selection and a "Chat" action for selected docs; per-document actions
+ * (select, toggle selection, reprocess, delete); conversation management (new chat,
+ * rename, delete, export); chunk previews for ready documents; and refresh/error loading states.
+ *
+ * @param onUploadClick - Callback invoked when the Upload button is clicked
+ * @returns The sidebar element used for document navigation and conversation management
+ */
 export default function Sidebar({ onUploadClick }: SidebarProps) {
   const { state, dispatch } = useStore();
   const {
@@ -49,7 +59,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
     selectDocument,
     setMessages,
   } = useServerState();
-  const { settings, activeConversationId, activeDocumentId, activeView, sidebarOpen } = state;
+  const { settings, activeConversationId, activeDocumentId, activeDocumentIds, sidebarOpen } = state;
   const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const auth = {
@@ -194,6 +204,25 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         </button>
         <button
           type="button"
+          onClick={() =>
+            dispatch({
+              type: "SET_SETTINGS",
+              payload: { theme: settings.theme === "dark" ? "light" : "dark" },
+            })
+          }
+          className="flex items-center justify-center px-3 py-2 rounded-lg"
+          style={{
+            background: "var(--bg-surface)",
+            color: "var(--text-secondary)",
+            border: "1px solid var(--border)",
+          }}
+          aria-label="Toggle theme"
+          title={settings.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {settings.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+        <button
+          type="button"
           onClick={() => dispatch({ type: "TOGGLE_SETTINGS" })}
           className="flex items-center justify-center px-3 py-2 rounded-lg"
           style={{
@@ -209,36 +238,6 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
       </div>
 
       <div className="px-3 pb-2 flex-shrink-0">
-        {/* Navigation buttons */}
-        <div className="flex flex-col gap-1 mb-2">
-          {([
-            { view: "insights" as const, label: "Insights", icon: <BarChart3 size={14} />, badge: "Shared" },
-            { view: "users" as const, label: "Users", icon: <Users size={14} />, badge: "" },
-            { view: "models" as const, label: "Models", icon: <Cpu size={14} />, badge: "" },
-          ] as const).map((nav) => (
-            <button
-              key={nav.view}
-              type="button"
-              onClick={() => dispatch({ type: "SET_ACTIVE_VIEW", payload: nav.view })}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
-              style={{
-                background: activeView === nav.view ? "var(--accent-soft)" : "var(--bg-surface)",
-                border: `1px solid ${activeView === nav.view ? "var(--border-accent)" : "var(--border)"}`,
-                color: activeView === nav.view ? "var(--text-primary)" : "var(--text-secondary)",
-              }}
-            >
-              <span className="inline-flex items-center gap-2">
-                {nav.icon}
-                {nav.label}
-              </span>
-              {nav.badge ? (
-                <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>
-                  {nav.badge}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
         <div
           className="flex items-center gap-2 rounded-lg px-3 py-2"
           style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
@@ -295,8 +294,28 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           </div>
         ) : null}
 
+        {activeDocumentIds.length > 1 ? (
+          <div
+            className="mx-2 mb-2 rounded-lg px-3 py-2 flex items-center justify-between"
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-accent)" }}
+          >
+            <span className="text-xs" style={{ color: "var(--text-primary)" }}>
+              {activeDocumentIds.length} docs selected
+            </span>
+            <button
+              type="button"
+              className="text-xs px-2 py-1 rounded-md"
+              style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+              onClick={() => dispatch({ type: "SET_ACTIVE_DOCUMENT_IDS", payload: activeDocumentIds })}
+            >
+              Chat
+            </button>
+          </div>
+        ) : null}
+
         {visibleDocuments.map((document) => {
           const isActive = activeDocumentId === document.id;
+          const isSelected = activeDocumentIds.includes(document.id);
           const statusColor =
             document.status === "ready"
               ? "var(--success)"
@@ -311,10 +330,16 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                 tabIndex={0}
                 className="group rounded-xl px-3 py-3 cursor-pointer w-full text-left"
                 style={{
-                  background: isActive ? "var(--accent-soft)" : "transparent",
-                  border: `1px solid ${isActive ? "var(--border-accent)" : "transparent"}`,
+                  background: isSelected ? "var(--accent-soft)" : "transparent",
+                  border: `1px solid ${isActive ? "var(--border-accent)" : isSelected ? "var(--border-hover)" : "transparent"}`,
                 }}
-                onClick={() => void selectDocument(document.id)}
+                onClick={(e) => {
+                  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                    dispatch({ type: "TOGGLE_DOCUMENT_SELECTION", payload: document.id });
+                  } else {
+                    void selectDocument(document.id);
+                  }
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
@@ -323,10 +348,21 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                 }}
               >
                 <div className="flex items-start gap-2.5">
-                  <div
-                    className="mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0"
-                    style={{ background: statusColor }}
-                  />
+                  {activeDocumentIds.length > 1 || isSelected ? (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => dispatch({ type: "TOGGLE_DOCUMENT_SELECTION", payload: document.id })}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-1 flex-shrink-0 cursor-pointer"
+                      aria-label={`Select ${document.filename}`}
+                    />
+                  ) : (
+                    <div
+                      className="mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0"
+                      style={{ background: statusColor }}
+                    />
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
                       {document.filename}

@@ -3,11 +3,20 @@ from collections.abc import Iterable
 from backend.settings import settings
 
 
-SQLITE_MIGRATION_VERSION = 3
-POSTGRES_MIGRATION_VERSION = 3
+SQLITE_MIGRATION_VERSION = 4
+POSTGRES_MIGRATION_VERSION = 4
 
 
 def _split_statements(script: str) -> list[str]:
+    """
+    Split an SQL script into individual statements.
+    
+    Parameters:
+        script (str): The SQL script containing one or more statements.
+    
+    Returns:
+        list[str]: Trimmed SQL statements with empty segments removed.
+    """
     return [statement.strip() for statement in script.split(";") if statement.strip()]
 
 

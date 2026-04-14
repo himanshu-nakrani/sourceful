@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2, Upload, X } from "lucide-react";
 import { getJob, ingestDocument, type JobInfo } from "../lib/api";
 import { useServerState } from "../lib/server-state";
@@ -9,9 +9,20 @@ import { useStore } from "../lib/store";
 interface UploadModalProps {
   open: boolean;
   onClose: () => void;
+  initialFile?: File | null;
 }
 
-export default function UploadModal({ open, onClose }: UploadModalProps) {
+/**
+ * Modal UI that lets the user select or drop a file, upload it for background indexing, poll job status until completion or error, refresh/select the resulting document, and then auto-close.
+ *
+ * The component validates provider settings before upload, shows queue/processing/done/error states (with job progress when available), prevents closing while submitting, and initializes the selected file from `initialFile` when the modal opens.
+ *
+ * @param open - Whether the modal is visible
+ * @param onClose - Callback invoked to close the modal; will not be called while an upload is submitting
+ * @param initialFile - Optional file to preselect when the modal becomes open
+ * @returns The modal element when `open` is true, otherwise `null`
+ */
+export default function UploadModal({ open, onClose, initialFile }: UploadModalProps) {
   const { state } = useStore();
   const { refreshDocuments, selectDocument } = useServerState();
   const { settings } = state;
@@ -22,6 +33,12 @@ export default function UploadModal({ open, onClose }: UploadModalProps) {
   const [dragOver, setDragOver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open && initialFile) {
+      setFile(initialFile);
+    }
+  }, [open, initialFile]);
 
   const auth = {
     clientSessionId: settings.clientSessionId,

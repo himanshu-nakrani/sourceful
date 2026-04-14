@@ -18,6 +18,6 @@ def test_missing_client_session_is_rejected(client):
     response = client.get("/api/documents")
     assert response.status_code == 401
     payload = response.json()
-    assert payload["error"] == "Authentication required."
+    assert payload["error"] == "Authentication required. Provide auth token or X-Client-Session header."
     assert payload["code"] == "AUTH_REQUIRED"
     assert payload["request_id"]

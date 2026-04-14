@@ -16,6 +16,9 @@ export interface AppSettings {
   embeddingModel: string;
   providerApiKey: string;
   clientSessionId: string;
+  topK: number;
+  similarityThreshold: number;
+  theme: "dark" | "light";
 }
 
 interface SessionSecrets {
@@ -29,10 +32,12 @@ export interface AppState {
   currentUser: AuthUser | null;
   authLoading: boolean;
   activeDocumentId: string | null;
+  activeDocumentIds: string[];
   activeConversationId: string | null;
   activeView: "chat" | "insights" | "users" | "models";
   sidebarOpen: boolean;
   settingsOpen: boolean;
+  setupComplete: boolean;
 }
 
 const DEFAULT_CHAT: Record<Provider, string> = {
@@ -47,6 +52,14 @@ const DEFAULT_EMBEDDING: Record<Provider, string> = {
   // vertex_search: "vertex_search_managed",
 };
 
+/**
+ * Generate a client session identifier.
+ *
+ * When the Web Crypto API's `crypto.randomUUID` is available, the returned value is that UUID;
+ * otherwise the function returns a fallback string of the form `rag-<timestamp>-<randomHex>`.
+ *
+ * @returns A string session identifier — a UUID when supported, otherwise a `rag-<timestamp>-<randomHex>` fallback.
+ */
 function generateClientSessionId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -54,63 +67,11 @@ function generateClientSessionId(): string {
   return `rag-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function loadSettings(): AppSettings {
-  if (typeof window === "undefined") {
-    return {
-      provider: "openai",
-      chatModel: DEFAULT_CHAT.openai,
-      embeddingModel: DEFAULT_EMBEDDING.openai,
-      providerApiKey: "",
-      clientSessionId: "",
-    };
-  }
-
-  let provider: Provider = "openai";
-  let chatModel = DEFAULT_CHAT.openai;
-  let embeddingModel = DEFAULT_EMBEDDING.openai;
-  try {
-    const rawPrefs = localStorage.getItem("rag-prefs");
-    if (rawPrefs) {
-      const parsed = JSON.parse(rawPrefs) as Partial<AppSettings>;
-      const validProviders: Provider[] = ["openai", "gemini"/*, "vertex_search"*/];
-      provider = validProviders.includes(parsed.provider as Provider) ? (parsed.provider as Provider) : "openai";
-      chatModel = parsed.chatModel ?? DEFAULT_CHAT[provider];
-      embeddingModel = parsed.embeddingModel ?? DEFAULT_EMBEDDING[provider];
-    }
-  } catch {
-    // Use defaults.
-  }
-
-  let providerApiKey = "";
-  let clientSessionId = "";
-  try {
-    const rawSecrets = sessionStorage.getItem("rag-session");
-    if (rawSecrets) {
-      const parsed = JSON.parse(rawSecrets) as SessionSecrets;
-      providerApiKey = parsed.providerApiKey ?? "";
-      clientSessionId = parsed.clientSessionId ?? "";
-    }
-  } catch {
-    // Use defaults.
-  }
-
-  if (!clientSessionId) {
-    clientSessionId = generateClientSessionId();
-    sessionStorage.setItem(
-      "rag-session",
-      JSON.stringify({ providerApiKey, clientSessionId })
-    );
-  }
-
-  return {
-    provider,
-    chatModel,
-    embeddingModel,
-    providerApiKey,
-    clientSessionId,
-  };
-}
-
+/**
+ * Determines whether a non-empty auth token is present in session storage under the `rag-session` key.
+ *
+ * @returns `true` if a non-empty `authToken` exists and is accessible in `sessionStorage["rag-session"]`, `false` otherwise (including when not running in a browser or when parsing/accessing storage fails).
+ */
 function hasStoredAuthToken(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -123,15 +84,134 @@ function hasStoredAuthToken(): boolean {
   }
 }
 
+/**
+ * Resolve and return the application's settings by combining defaults with any persisted preferences and session secrets available in the browser.
+ *
+ * Loads theme from localStorage for all users. When a stored session auth token exists, additional non-sensitive preferences (provider, chatModel, embeddingModel, topK, similarityThreshold) are loaded from localStorage and session secrets (providerApiKey, clientSessionId) are read from sessionStorage. For anonymous contexts or when stored values are absent, defaults are used and a new `clientSessionId` is generated.
+ *
+ * @returns An AppSettings object containing the resolved `provider`, `chatModel`, `embeddingModel`, `providerApiKey`, `clientSessionId`, `topK`, `similarityThreshold`, and `theme`. `providerApiKey` will be empty unless found in session storage; `clientSessionId` will be generated if not present.
+ */
+function loadSettings(): AppSettings {
+  if (typeof window === "undefined") {
+    return {
+      provider: "openai",
+      chatModel: DEFAULT_CHAT.openai,
+      embeddingModel: DEFAULT_EMBEDDING.openai,
+      providerApiKey: "",
+      clientSessionId: "",
+      topK: 5,
+      similarityThreshold: 0.0,
+      theme: "dark",
+    };
+  }
+
+  const isAuthenticated = hasStoredAuthToken();
+
+  let provider: Provider = "openai";
+  let chatModel = DEFAULT_CHAT.openai;
+  let embeddingModel = DEFAULT_EMBEDDING.openai;
+  let providerApiKey = "";
+
+  let topK = 5;
+  let similarityThreshold = 0.0;
+  let theme: "dark" | "light" = "dark";
+
+  // Load theme from localStorage regardless of auth state (it's not sensitive)
+  try {
+    const rawPrefs = localStorage.getItem("rag-prefs");
+    if (rawPrefs) {
+      const parsed = JSON.parse(rawPrefs) as Partial<AppSettings>;
+      if (parsed.theme === "light" || parsed.theme === "dark") theme = parsed.theme;
+    }
+  } catch {
+    // Use default
+  }
+
+  if (isAuthenticated) {
+    // For authenticated users: load persisted settings
+    try {
+      const rawPrefs = localStorage.getItem("rag-prefs");
+      if (rawPrefs) {
+        const parsed = JSON.parse(rawPrefs) as Partial<AppSettings>;
+        const validProviders: Provider[] = ["openai", "gemini"];
+        provider = validProviders.includes(parsed.provider as Provider) ? (parsed.provider as Provider) : "openai";
+        chatModel = parsed.chatModel ?? DEFAULT_CHAT[provider];
+        embeddingModel = parsed.embeddingModel ?? DEFAULT_EMBEDDING[provider];
+        if (typeof parsed.topK === "number") topK = parsed.topK;
+        if (typeof parsed.similarityThreshold === "number") similarityThreshold = parsed.similarityThreshold;
+      }
+    } catch {
+      // Use defaults
+    }
+
+    try {
+      const rawSecrets = sessionStorage.getItem("rag-session");
+      if (rawSecrets) {
+        const parsed = JSON.parse(rawSecrets) as SessionSecrets;
+        providerApiKey = parsed.providerApiKey ?? "";
+      }
+    } catch {
+      // Use defaults
+    }
+  }
+  // For anonymous users: always use defaults (stateless - no persistence)
+
+  // Always generate a fresh session ID for anonymous users (stateless)
+  // For authenticated users, try to reuse existing session ID from storage
+  let clientSessionId = "";
+  if (isAuthenticated) {
+    try {
+      const rawSecrets = sessionStorage.getItem("rag-session");
+      if (rawSecrets) {
+        const parsed = JSON.parse(rawSecrets) as SessionSecrets;
+        clientSessionId = parsed.clientSessionId ?? "";
+      }
+    } catch {
+      // Will generate new below
+    }
+  }
+
+  // Generate new session ID if not found or anonymous
+  if (!clientSessionId) {
+    clientSessionId = generateClientSessionId();
+  }
+
+  // Only persist for authenticated users
+  if (isAuthenticated) {
+    const rawSecrets = sessionStorage.getItem("rag-session");
+    const existing = rawSecrets ? (JSON.parse(rawSecrets) as SessionSecrets) : {};
+    sessionStorage.setItem(
+      "rag-session",
+      JSON.stringify({
+        ...existing,
+        clientSessionId,
+      })
+    );
+  }
+
+  return {
+    provider,
+    chatModel,
+    embeddingModel,
+    providerApiKey,
+    clientSessionId,
+    topK,
+    similarityThreshold,
+    theme,
+  };
+}
+
 const initialState: AppState = {
   settings: loadSettings(),
   currentUser: null,
   authLoading: true,
   activeDocumentId: null,
+  activeDocumentIds: [],
   activeConversationId: null,
   activeView: "chat",
   sidebarOpen: true,
   settingsOpen: false,
+  setupComplete: false, // Always start as false - in-memory only, never persisted for anonymous users
 };
 
 type Action =
@@ -140,45 +220,92 @@ type Action =
   | { type: "SET_AUTH_LOADING"; payload: boolean }
   | { type: "SET_PROVIDER"; payload: Provider }
   | { type: "SET_ACTIVE_DOCUMENT"; payload: string | null }
+  | { type: "TOGGLE_DOCUMENT_SELECTION"; payload: string }
+  | { type: "SET_ACTIVE_DOCUMENT_IDS"; payload: string[] }
   | { type: "SET_ACTIVE_CONVERSATION"; payload: string | null }
   | { type: "SET_ACTIVE_VIEW"; payload: "chat" | "insights" | "users" | "models" }
   | { type: "TOGGLE_SIDEBAR" }
   | { type: "SET_SIDEBAR"; payload: boolean }
   | { type: "TOGGLE_SETTINGS" }
-  | { type: "SET_SETTINGS_OPEN"; payload: boolean };
+  | { type: "SET_SETTINGS_OPEN"; payload: boolean }
+  | { type: "SET_SETUP_COMPLETE"; payload: boolean };
 
-function persistSettings(next: AppSettings): void {
+/**
+ * Persist selected app settings to browser storage.
+ *
+ * Always writes the user's `theme` to localStorage (under "rag-prefs"). When `isAuthenticated`
+ * is true, also persists provider, model selections, `topK`, and `similarityThreshold` to
+ * localStorage and stores sensitive session secrets (`providerApiKey` and `clientSessionId`)
+ * in sessionStorage (under "rag-session"). No storage operations are performed when not
+ * running in a browser environment.
+ *
+ * @param next - The full AppSettings object whose values should be persisted.
+ * @param isAuthenticated - Whether the current session is authenticated; controls which
+ *                          settings are persisted beyond theme.
+ */
+function persistSettings(next: AppSettings, isAuthenticated: boolean): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(
-    "rag-prefs",
-    JSON.stringify({
-      provider: next.provider,
-      chatModel: next.chatModel,
-      embeddingModel: next.embeddingModel,
-    })
-  );
-  let existing: SessionSecrets = {};
+
+  // Always persist theme regardless of auth
   try {
-    const rawSecrets = sessionStorage.getItem("rag-session");
-    existing = rawSecrets ? (JSON.parse(rawSecrets) as SessionSecrets) : {};
+    const rawPrefs = localStorage.getItem("rag-prefs");
+    const existing = rawPrefs ? JSON.parse(rawPrefs) : {};
+    localStorage.setItem("rag-prefs", JSON.stringify({ ...existing, theme: next.theme }));
   } catch {
-    existing = {};
+    // ignore
   }
-  sessionStorage.setItem(
-    "rag-session",
-    JSON.stringify({
-      ...existing,
-      providerApiKey: next.providerApiKey,
-      clientSessionId: next.clientSessionId || generateClientSessionId(),
-    })
-  );
+
+  // Only persist other settings for authenticated users
+  if (isAuthenticated) {
+    localStorage.setItem(
+      "rag-prefs",
+      JSON.stringify({
+        provider: next.provider,
+        chatModel: next.chatModel,
+        embeddingModel: next.embeddingModel,
+        topK: next.topK,
+        similarityThreshold: next.similarityThreshold,
+        theme: next.theme,
+      })
+    );
+
+    let existing: SessionSecrets = {};
+    try {
+      const rawSecrets = sessionStorage.getItem("rag-session");
+      existing = rawSecrets ? (JSON.parse(rawSecrets) as SessionSecrets) : {};
+    } catch {
+      existing = {};
+    }
+    sessionStorage.setItem(
+      "rag-session",
+      JSON.stringify({
+        ...existing,
+        providerApiKey: next.providerApiKey,
+        clientSessionId: next.clientSessionId || generateClientSessionId(),
+      })
+    );
+  }
+  // For anonymous users: do not persist - stateless session
 }
 
+/**
+ * Produce the next application state given the current state and an action.
+ *
+ * Handles all store actions (settings, auth, document/conversation/view, UI toggles, and in-memory flags).
+ * When settings are updated, relevant values are persisted (auth-dependent) and, if `theme` is provided, the document's `data-theme` attribute is updated in the browser. The `setupComplete` flag is kept in-memory and is not persisted.
+ *
+ * @param state - The current application state
+ * @param action - The action describing the update to apply
+ * @returns The new application state after applying the action
+ */
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "SET_SETTINGS": {
       const next = { ...state.settings, ...action.payload };
-      persistSettings(next);
+      persistSettings(next, Boolean(state.currentUser));
+      if (typeof document !== "undefined" && action.payload.theme) {
+        document.documentElement.setAttribute("data-theme", next.theme);
+      }
       return { ...state, settings: next };
     }
     case "SET_PROVIDER": {
@@ -189,7 +316,7 @@ function reducer(state: AppState, action: Action): AppState {
         chatModel: DEFAULT_CHAT[provider],
         embeddingModel: DEFAULT_EMBEDDING[provider],
       };
-      persistSettings(next);
+      persistSettings(next, Boolean(state.currentUser));
       return { ...state, settings: next };
     }
     case "SET_CURRENT_USER":
@@ -200,8 +327,27 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         activeDocumentId: action.payload,
+        activeDocumentIds: action.payload ? [action.payload] : [],
         activeConversationId: null,
         activeView: "chat",
+      };
+    case "TOGGLE_DOCUMENT_SELECTION": {
+      const id = action.payload;
+      const ids = state.activeDocumentIds;
+      const next = ids.includes(id) ? ids.filter((d) => d !== id) : [...ids, id];
+      return {
+        ...state,
+        activeDocumentIds: next,
+        activeDocumentId: next.length > 0 ? next[0] : null,
+        activeConversationId: null,
+      };
+    }
+    case "SET_ACTIVE_DOCUMENT_IDS":
+      return {
+        ...state,
+        activeDocumentIds: action.payload,
+        activeDocumentId: action.payload.length > 0 ? action.payload[0] : null,
+        activeConversationId: null,
       };
     case "SET_ACTIVE_CONVERSATION":
       return { ...state, activeConversationId: action.payload, activeView: "chat" };
@@ -215,6 +361,11 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, settingsOpen: !state.settingsOpen };
     case "SET_SETTINGS_OPEN":
       return { ...state, settingsOpen: action.payload };
+    case "SET_SETUP_COMPLETE":
+      // Never persist setupComplete - it's in-memory only
+      // For anonymous users: flushed on reload
+      // For authenticated users: managed by auth state
+      return { ...state, setupComplete: action.payload };
     default:
       return state;
   }

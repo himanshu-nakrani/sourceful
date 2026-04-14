@@ -38,7 +38,7 @@ def _require_provider_api_key(x_provider_api_key: str | None = Header(default=No
     return provider_api_key
 
 
-async def _fetch_openai_models(api_key: str) -> list[str]:
+async def _fetch_openai_models(api_key: str) -> tuple[list[str], list[str]]:
     """Fetch available models from OpenAI API."""
     try:
         import httpx
@@ -51,7 +51,7 @@ async def _fetch_openai_models(api_key: str) -> list[str]:
             )
             if response.status_code != 200:
                 logger.warning("openai_models_fetch_failed", status_code=response.status_code)
-                return DEFAULT_CHAT_MODELS["openai"]
+                return DEFAULT_CHAT_MODELS["openai"], DEFAULT_EMBEDDING_MODELS["openai"]
 
             data = response.json()
             models = [m["id"] for m in data.get("data", [])]
@@ -60,8 +60,10 @@ async def _fetch_openai_models(api_key: str) -> list[str]:
             chat_models = [m for m in models if "gpt" in m.lower()]
             embedding_models = [m for m in models if "embedding" in m.lower()]
 
-            return chat_models if chat_models else DEFAULT_CHAT_MODELS["openai"], \
-                   embedding_models if embedding_models else DEFAULT_EMBEDDING_MODELS["openai"]
+            return (
+                chat_models if chat_models else DEFAULT_CHAT_MODELS["openai"],
+                embedding_models if embedding_models else DEFAULT_EMBEDDING_MODELS["openai"],
+            )
     except Exception as exc:
         logger.warning("openai_models_fetch_error", error=str(exc))
         return DEFAULT_CHAT_MODELS["openai"], DEFAULT_EMBEDDING_MODELS["openai"]

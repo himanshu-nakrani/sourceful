@@ -85,6 +85,25 @@ async def _generate_chat_response(
     similarity_threshold: float | None = None,
     extra_document_ids: list[str] | None = None,
 ):
+    """
+    Generate a grounded assistant response for a question, persist the user and assistant messages, update the conversation timestamp, and return the created assistant message payload.
+    
+    Parameters:
+        provider (str): LLM provider identifier (e.g., "openai"). Used to select the generation path.
+        model (str): Model name to use for text generation.
+        document (dict): Document record containing at least `id` and `embedding_model` used for retrieval and embedding.
+        history (list[dict[str, str]]): Prior conversation messages (each item with `role` and `content`) used to build the RAG prompt; will be truncated by caller if needed.
+        top_k (int | None): Optional override for the number of retrieved passages to return to the generator; when omitted, falls back to server settings.
+        similarity_threshold (float | None): Optional minimum similarity score filter for retrieval; when omitted, defaults to 0.0.
+        extra_document_ids (list[str] | None): Optional additional document IDs to include in the retrieval pool alongside the primary `document["id"]`.
+    
+    Returns:
+        dict: A payload with the assistant response and metadata:
+            conversation_id (str): ID of the conversation the response belongs to.
+            message_id (str): Newly created assistant message ID.
+            sources (list[tuple|object]): List of `Citation` objects describing retrieved citations (chunk_id, document_id, excerpt, score, page_number).
+            content (str): The assistant's generated answer.
+    """
     trimmed_question = question.strip()
 
     # if provider == "vertex_search":
@@ -226,6 +245,19 @@ async def chat(
     context: RequestContext = Depends(get_request_context),
     provider_api_key: str = Depends(require_provider_api_key),
 ):
+    """
+    Handle a chat request: create or continue a conversation for a document and generate a grounded assistant response.
+    
+    Processes the incoming ChatRequest by validating the target document, creating a new conversation when none is supplied (including storing optional extra document IDs), loading recent conversation history, and delegating to the internal generation routine to retrieve context, persist messages, and produce the assistant reply. Returns immediately with structured API error responses for validation failures (document not found/not ready/provider mismatch, conversation not found, or conversation/document mismatch).
+    
+    Parameters:
+        body (ChatRequest): The request payload containing at least `question`, `document_id`, `provider`, and `model`. May also include `conversation_id` to continue an existing conversation, `document_ids` to include extra documents for retrieval, and retrieval tuning fields `top_k` and `similarity_threshold`.
+        request (Request): HTTP request object (injected dependency).
+        context (RequestContext): Request-scoped context including `owner_id` (injected dependency).
+    
+    Returns:
+        dict: On success, a payload with `conversation_id` (str), `message_id` (str) for the created assistant message, `sources` (list of Citation objects), and `content` (assistant text). On failure, an API error response dict produced by `api_error_response` with appropriate HTTP status and error `code`.
+    """
     document, error_response = await _load_ready_document(
         request=request,
         context=context,
@@ -299,6 +331,22 @@ async def rerun_chat_message(
     context: RequestContext = Depends(get_request_context),
     provider_api_key: str = Depends(require_provider_api_key),
 ):
+    """
+    Create a new conversation by rerunning a previously stored user message and generate a grounded assistant response.
+    
+    This endpoint validates the target document and conversation, ensures the target message exists and is a user message, copies all messages prior to the target into a new conversation, and then invokes the core generation routine to produce and persist a new assistant reply for the rerun message content.
+    
+    Parameters:
+        body (RerunMessageRequest): Request payload containing `conversation_id`, `message_id`, `document_id`, `provider`, `model`, and optional retrieval tuning (`top_k`, `similarity_threshold`).
+        request (Request): FastAPI request object for the current HTTP call.
+        context (RequestContext): Authenticated request context (owner information).
+        provider_api_key (str): Provider API key resolved from dependencies.
+    
+    Returns:
+        dict: On success, a payload with keys `conversation_id`, `message_id`, `sources`, and `content` representing the new assistant response.
+        OR
+        Response: An API error response describing the failure (e.g., document/conversation/message not found or validation/generation errors).
+    """
     document, error_response = await _load_ready_document(
         request=request,
         context=context,

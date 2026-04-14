@@ -21,6 +21,14 @@ class RequestContext:
 
 
 def _read_bearer_token(request: Request) -> str | None:
+    """
+    Extracts a Bearer token from the request's Authorization header.
+    
+    Reads the Authorization header (case-insensitive) and returns the token portion after the "Bearer " prefix if present and non-empty.
+    
+    Returns:
+        str: The Bearer token string if present and non-empty, `None` otherwise.
+    """
     authorization = request.headers.get("authorization", "")
     if not authorization.lower().startswith("bearer "):
         return None
@@ -29,7 +37,17 @@ def _read_bearer_token(request: Request) -> str | None:
 
 
 def _read_client_session(request: Request) -> str | None:
-    """Read client session ID from header for anonymous users."""
+    """
+    Extract the X-Client-Session header value used for anonymous client scoping.
+    
+    Reads the "x-client-session" request header, strips surrounding whitespace, and returns the header value or None when the header is missing or empty.
+    
+    Parameters:
+        request (Request): The incoming HTTP request.
+    
+    Returns:
+        str | None: The trimmed client session identifier if present, `None` otherwise.
+    """
     client_session = request.headers.get("x-client-session", "")
     return client_session.strip() or None
 
@@ -37,6 +55,17 @@ def _read_client_session(request: Request) -> str | None:
 async def get_request_context(
     request: Request,
 ) -> RequestContext:
+    """
+    Resolve authentication for the incoming HTTP request and return a RequestContext reflecting the resolved scope.
+    
+    If a valid session token is found (cookie named by settings.auth_cookie_name or a Bearer token), returns an authenticated RequestContext with owner_id set to "user:{user_id}", the request_id and client_ip extracted from the request, the user's id and role, and is_authenticated=True. If no authenticated user is found but an X-Client-Session header is present, returns an anonymous RequestContext with owner_id set to "anon:{client_session}", user_id=None, role="anonymous", and is_authenticated=False.
+    
+    Returns:
+        RequestContext: Context populated with owner_id, request_id, client_ip, user_id, role, and is_authenticated.
+    
+    Raises:
+        HTTPException: Raised with status 401 and detail code "AUTH_REQUIRED" when neither an authenticated session nor an X-Client-Session header is provided.
+    """
     session_token = request.cookies.get(settings.auth_cookie_name) or _read_bearer_token(request)
     if session_token:
         user = await get_user_from_session(session_token)

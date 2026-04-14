@@ -11,6 +11,13 @@ import { ServerStateProvider } from "./lib/server-state";
 import { StoreProvider, useStore } from "./lib/store";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 
+/**
+ * Top-level application shell that manages global UI state, keyboard shortcuts, drag-and-drop uploads, and conditional screens.
+ *
+ * Renders an auth/loading view while authentication is loading, a welcome/setup screen when initial setup or API key is missing, or the main app layout containing Sidebar, ChatArea, UploadModal, and SettingsPanel. Handles opening/closing the upload modal (including receiving a dropped file), global drag-and-drop to trigger uploads, sidebar backdrop for mobile, and keyboard shortcuts for upload, settings, and escape behavior. Dispatches store actions for settings, sidebar, and setup completion.
+ *
+ * @returns The app's UI as a JSX element.
+ */
 function AppShell() {
   const { state, dispatch } = useStore();
   const [uploadOpen, setUploadOpen] = useState(false);

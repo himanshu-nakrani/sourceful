@@ -47,6 +47,15 @@ interface ServerStateValue {
 
 const ServerStateContext = createContext<ServerStateValue | null>(null);
 
+/**
+ * Provides server-derived application state and imperative actions to descendant components via ServerStateContext.
+ *
+ * The provider manages documents, conversations, messages, and chunk preview state along with loading/error flags,
+ * and exposes imperative actions to refresh or select those resources.
+ *
+ * @param children - The subtree that will receive the server state context
+ * @returns The ServerStateContext provider element that supplies server-sourced state and actions to its descendants
+ */
 export function ServerStateProvider({ children }: { children: ReactNode }) {
   const { state, dispatch } = useStore();
   const auth = useMemo(

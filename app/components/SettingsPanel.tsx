@@ -18,6 +18,15 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
+/**
+ * Render a centered modal that allows the user to configure provider credentials, select models, adjust retrieval settings, and optionally sign in for cross-device sync.
+ *
+ * Reads current settings and user from the app store and dispatches store actions to update provider, API key, selected models, retrieval parameters, and current user state (login/logout). Clicking the background overlay or the Done button invokes the close callback.
+ *
+ * @param open - Whether the settings panel is visible
+ * @param onClose - Callback invoked to close the panel
+ * @returns The settings modal element when `open` is true, otherwise `null`
+ */
 export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const { state, dispatch } = useStore();
   const { settings } = state;
@@ -424,6 +433,19 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   );
 }
 
+/**
+ * Renders a labeled input field with a left icon and contextual help text.
+ *
+ * The input is rendered as a password field with `autoComplete="off"`, suitable for credential entry.
+ *
+ * @param label - Visible label text shown above the input
+ * @param value - Controlled input value
+ * @param onChange - Callback invoked with the new input value on edit
+ * @param placeholder - Placeholder text shown inside the input
+ * @param help - Small help text shown below the input
+ * @param icon - Icon element displayed inside the input on the left
+ * @returns A JSX element containing the labeled input, icon, and help text
+ */
 function Field({
   label,
   value,
@@ -469,6 +491,15 @@ function Field({
   );
 }
 
+/**
+ * Renders a labeled select control with a chevron icon and contextual messaging for loading or disabled states.
+ *
+ * @param onChange - Called with the newly selected value when the user changes the selection.
+ * @param options - Array of string options to render as select choices.
+ * @param loading - When `true`, disables the control and shows "Loading models...".
+ * @param disabled - When `true` disables the control; if not loading, shows a hint prompting for an API key.
+ * @returns The select field element.
+ */
 function SelectField({
   label,
   value,
@@ -528,6 +559,19 @@ function SelectField({
   );
 }
 
+/**
+ * Renders a labeled range slider with a formatted value display and help text.
+ *
+ * @param label - Visible label shown above the slider.
+ * @param value - Current numeric value of the slider.
+ * @param min - Minimum permitted value.
+ * @param max - Maximum permitted value.
+ * @param step - Increment step for the slider.
+ * @param onChange - Callback invoked with the updated numeric value when the slider changes.
+ * @param format - Formatter that returns the display string for the current value.
+ * @param help - Small helper text shown below the slider.
+ * @returns A JSX element containing the labeled slider, formatted value, and helper text.
+ */
 function SliderField({
   label,
   value,

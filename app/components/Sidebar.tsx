@@ -31,6 +31,17 @@ interface SidebarProps {
   onUploadClick: () => void;
 }
 
+/**
+ * Render the app sidebar for document indexing and conversation management.
+ *
+ * Displays controls for upload, theme, and settings; a searchable list of documents;
+ * multi-document selection and a "Chat" action for selected docs; per-document actions
+ * (select, toggle selection, reprocess, delete); conversation management (new chat,
+ * rename, delete, export); chunk previews for ready documents; and refresh/error loading states.
+ *
+ * @param onUploadClick - Callback invoked when the Upload button is clicked
+ * @returns The sidebar element used for document navigation and conversation management
+ */
 export default function Sidebar({ onUploadClick }: SidebarProps) {
   const { state, dispatch } = useStore();
   const {

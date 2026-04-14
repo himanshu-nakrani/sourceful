@@ -12,6 +12,16 @@ interface UploadModalProps {
   initialFile?: File | null;
 }
 
+/**
+ * Modal UI that lets the user select or drop a file, upload it for background indexing, poll job status until completion or error, refresh/select the resulting document, and then auto-close.
+ *
+ * The component validates provider settings before upload, shows queue/processing/done/error states (with job progress when available), prevents closing while submitting, and initializes the selected file from `initialFile` when the modal opens.
+ *
+ * @param open - Whether the modal is visible
+ * @param onClose - Callback invoked to close the modal; will not be called while an upload is submitting
+ * @param initialFile - Optional file to preselect when the modal becomes open
+ * @returns The modal element when `open` is true, otherwise `null`
+ */
 export default function UploadModal({ open, onClose, initialFile }: UploadModalProps) {
   const { state } = useStore();
   const { refreshDocuments, selectDocument } = useServerState();

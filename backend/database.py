@@ -27,6 +27,14 @@ def _sql(query: str) -> str:
 
 
 async def init_db() -> None:
+    """
+    Initialize the module's database connection(s) and apply schema migrations.
+    
+    This function serializes initialization to a single concurrent caller, preferring a PostgreSQL connection pool when configured and falling back to a local SQLite connection. It applies legacy repairs and versioned migrations (up through version 4), configures connection-level settings (pool options or SQLite PRAGMAs), and sets module-level connection globals on success. If initialization fails, any partially-created connection is closed, module state is reset, and the original exception is re-raised.
+    
+    Raises:
+        Exception: If database initialization or migration application fails.
+    """
     global _pg_pool, _sqlite
     async with _init_lock:
         if settings.using_postgres:
@@ -277,6 +285,14 @@ async def _apply_postgres_v3_migration(cur) -> None:
 
 
 async def _apply_sqlite_v3_migration(conn: aiosqlite.Connection) -> None:
+    """
+    Apply the version 3 SQLite schema migration.
+    
+    Creates `users` and `auth_sessions` tables (with appropriate columns and indexes) and records migration version 3 in `schema_migrations`.
+    
+    Parameters:
+        conn (aiosqlite.Connection): An open SQLite connection on which to execute the migration statements.
+    """
     await conn.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -313,6 +329,14 @@ async def _apply_sqlite_v3_migration(conn: aiosqlite.Connection) -> None:
 
 
 async def _apply_postgres_v4_migration(cur) -> None:
+    """
+    Apply schema migration version 4 to a PostgreSQL database.
+    
+    Adds a nullable `document_ids_json` TEXT column to the `conversations` table if it does not already exist, and records migration version 4 in `schema_migrations` (no-op if the version is already present).
+    
+    Parameters:
+        cur: An async cursor/connection object capable of executing SQL statements (e.g., a psycopg async cursor).
+    """
     await cur.execute(
         """
         ALTER TABLE conversations
@@ -329,6 +353,14 @@ async def _apply_postgres_v4_migration(cur) -> None:
 
 
 async def _apply_sqlite_v4_migration(conn: aiosqlite.Connection) -> None:
+    """
+    Apply schema migration version 4 to a SQLite database connection.
+    
+    Adds a nullable `document_ids_json` TEXT column to the `conversations` table if it does not already exist, and records version `4` in the `schema_migrations` table.
+    
+    Parameters:
+        conn (aiosqlite.Connection): Open SQLite connection on which to run the migration.
+    """
     cursor = await conn.execute("PRAGMA table_info(conversations)")
     rows = await cursor.fetchall()
     await cursor.close()
@@ -339,6 +371,11 @@ async def _apply_sqlite_v4_migration(conn: aiosqlite.Connection) -> None:
 
 
 async def close_db() -> None:
+    """
+    Close any active database connections and clear the module-level connection state.
+    
+    Closes the PostgreSQL connection pool and/or the SQLite connection if they exist, and resets the corresponding module globals so the database layer can be reinitialized.
+    """
     global _pg_pool, _sqlite
     if _pg_pool is not None:
         await _pg_pool.close()

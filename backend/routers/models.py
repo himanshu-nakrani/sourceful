@@ -26,6 +26,18 @@ DEFAULT_EMBEDDING_MODELS: dict[str, list[str]] = {
 
 
 def _require_provider_api_key(x_provider_api_key: str | None = Header(default=None)) -> str:
+    """
+    Validate and return a normalized provider API key from the X-Provider-Api-Key header.
+    
+    Parameters:
+        x_provider_api_key (str | None): Value of the `X-Provider-Api-Key` header (may be None).
+    
+    Returns:
+        str: The normalized provider API key.
+    
+    Raises:
+        fastapi.HTTPException: With status code 401 and code `MISSING_PROVIDER_API_KEY` when the header is missing or the normalized value is empty.
+    """
     provider_api_key = normalize_provider_api_key(x_provider_api_key)
     if not provider_api_key:
         raise HTTPException(
@@ -39,7 +51,12 @@ def _require_provider_api_key(x_provider_api_key: str | None = Header(default=No
 
 
 async def _fetch_openai_models(api_key: str) -> list[str]:
-    """Fetch available models from OpenAI API."""
+    """
+    Fetch available chat and embedding model IDs from the OpenAI service, falling back to configured defaults on failure or when no matching models are found.
+    
+    Returns:
+        tuple[list[str], list[str]]: A pair where the first element is the list of chat model IDs (filtered by presence of "gpt") and the second element is the list of embedding model IDs (filtered by presence of "embedding"). If the remote fetch fails, returns non-200 status, raises an exception, or yields no matches, returns the module's default chat and embedding model lists for OpenAI.
+    """
     try:
         import httpx
 
@@ -68,7 +85,15 @@ async def _fetch_openai_models(api_key: str) -> list[str]:
 
 
 async def _fetch_gemini_models(api_key: str) -> tuple[list[str], list[str]]:
-    """Fetch available models from Google Gemini API."""
+    """
+    Retrieve available Gemini models and separate them into chat (generative) and embedding model lists.
+    
+    Parameters:
+        api_key (str): API key for Google Gemini (Generative Language API).
+    
+    Returns:
+        tuple[list[str], list[str]]: A pair where the first element is the list of chat/generative model IDs and the second is the list of embedding model IDs. If fetching fails or no matching models are found, returns the module's default model lists for Gemini.
+    """
     try:
         import httpx
 
@@ -119,14 +144,22 @@ async def list_models(
     context: RequestContext = Depends(get_request_context),
     provider_api_key: str = Depends(_require_provider_api_key),
 ) -> dict[str, Any]:
-    """List available models for a provider.
-
-    Args:
-        provider: "openai" or "gemini"
-        provider_api_key: The user's provider API key
-
+    """
+    Get available chat and embedding model IDs for the specified provider.
+    
+    Parameters:
+        provider (str): Provider name, must be "openai" or "gemini".
+        provider_api_key (str): Normalized provider API key extracted from the `X-Provider-Api-Key` header.
+    
     Returns:
-        Dictionary with chat_models and embedding_model lists
+        dict: {
+            "provider": str,
+            "chat_models": list[str],
+            "embedding_models": list[str]
+        }
+    
+    Raises:
+        HTTPException: If `provider` is not "openai" or "gemini" (status 400, code "INVALID_PROVIDER").
     """
     if provider not in ("openai", "gemini"):
         raise HTTPException(

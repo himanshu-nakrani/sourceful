@@ -114,7 +114,7 @@ async def reprocess_document(
             provider_api_key=(x_provider_api_key or "").strip(),
             embedding_model=embedding_model,
         )
-    except MissingProviderApiKeyError as exc:
+    except MissingProviderApiKeyError:
         return api_error_response(
             request=request,
             status_code=401,

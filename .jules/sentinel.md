@@ -8,3 +8,8 @@
 **Vulnerability:** Missing length validation on user chat queries created a potential DoS vulnerability by allowing users to submit excessively long prompts to the backend LLM endpoints.
 **Learning:** Long inputs can exhaust tokens and cause downstream processing (like embedding creation or LLM calls) to consume excessive API credits and processing time, or hang indefinitely.
 **Prevention:** Apply a character limit (e.g., `MAX_QUESTION_LENGTH`) to user chat messages via strict Pydantic model validation and a manual early check returning a 413 Payload Too Large error.
+
+## 2025-04-15 - Missing Admin Authorization on Analytics Endpoint
+**Vulnerability:** The `/api/analytics/overview` endpoint was only enforcing `require_authenticated_context`, allowing any authenticated user to access system-wide analytics data (including user counts, signups, document metrics, etc.).
+**Learning:** Endpoints returning aggregated or system-wide data must enforce role-based access control (RBAC), not just authentication. Relying solely on `Depends(require_authenticated_context)` is insufficient for admin-only functionality.
+**Prevention:** Always verify that administrative and reporting endpoints use `Depends(require_admin_context)` to enforce the principle of least privilege.

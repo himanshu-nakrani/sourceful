@@ -204,7 +204,7 @@ export default function AuthScreen() {
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                className="w-full flex items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border)",

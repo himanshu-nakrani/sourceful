@@ -30,7 +30,7 @@ def _parse_dt(value: Any) -> datetime | None:
 
 
 @router.get("/analytics/overview", response_model=AnalyticsOverviewResponse)
-async def analytics_overview(_: object = Depends(require_admin_context)):
+async def analytics_overview(_: RequestContext = Depends(require_admin_context)):
     counts = await fetch_one(
         """
         SELECT

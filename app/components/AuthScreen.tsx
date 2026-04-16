@@ -130,7 +130,7 @@ export default function AuthScreen() {
                 role="tab"
                 aria-selected={mode === item}
                 onClick={() => setMode(item)}
-                className="rounded-full px-4 py-2 text-sm"
+                className="rounded-full px-4 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
                 style={{
                   background: mode === item ? "var(--accent)" : "transparent",
                   color: mode === item ? "var(--accent-fg)" : "var(--text-secondary)",
@@ -179,7 +179,7 @@ export default function AuthScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="rounded-xl px-4 py-3 text-sm font-medium"
+              className="rounded-xl px-4 py-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
               style={{
                 background: "var(--accent)",
                 color: "var(--accent-fg)",
@@ -204,7 +204,7 @@ export default function AuthScreen() {
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all"
+                className="w-full flex items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border)",

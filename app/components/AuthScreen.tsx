@@ -179,7 +179,7 @@ export default function AuthScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="rounded-xl px-4 py-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="rounded-xl px-4 py-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
               style={{
                 background: "var(--accent)",
                 color: "var(--accent-fg)",

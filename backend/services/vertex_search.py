@@ -182,7 +182,6 @@ def search(
 
 def delete_document(document_id: str) -> None:
     """Delete a document from the Vertex AI Search datastore."""
-    from google.cloud import discoveryengine
 
     client = _get_document_client()
     parent = _document_parent_path()

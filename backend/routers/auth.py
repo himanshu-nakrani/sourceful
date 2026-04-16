@@ -3,7 +3,6 @@ from __future__ import annotations
 import httpx
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
 
 from backend.auth import (
     authenticate_or_create_oauth_user,

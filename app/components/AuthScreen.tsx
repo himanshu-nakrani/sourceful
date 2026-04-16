@@ -130,7 +130,7 @@ export default function AuthScreen() {
                 role="tab"
                 aria-selected={mode === item}
                 onClick={() => setMode(item)}
-                className="rounded-full px-4 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                className="rounded-full px-4 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
                 style={{
                   background: mode === item ? "var(--accent)" : "transparent",
                   color: mode === item ? "var(--accent-fg)" : "var(--text-secondary)",

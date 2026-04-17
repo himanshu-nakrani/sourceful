@@ -304,6 +304,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
                         placeholder="Email"
+                        aria-label="Email"
                         className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                       />
@@ -312,6 +313,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder="Password"
+                        aria-label="Password"
                         className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                       />
@@ -461,9 +463,10 @@ function Field({
   help: string;
   icon: React.ReactNode;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+      <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
         {label}
       </label>
       <div className="relative">
@@ -471,6 +474,7 @@ function Field({
           {icon}
         </div>
         <input
+          id={id}
           type="password"
           autoComplete="off"
           value={value}
@@ -515,13 +519,15 @@ function SelectField({
   loading?: boolean;
   disabled?: boolean;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+      <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
         {label}
       </label>
       <div className="relative">
         <select
+          id={id}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled || loading}
@@ -591,10 +597,11 @@ function SliderField({
   format: (v: number) => string;
   help: string;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+        <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
           {label}
         </label>
         <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
@@ -602,6 +609,7 @@ function SliderField({
         </span>
       </div>
       <input
+        id={id}
         type="range"
         min={min}
         max={max}

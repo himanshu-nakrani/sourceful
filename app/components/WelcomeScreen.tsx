@@ -132,6 +132,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
             {/* API Key Input */}
             <div>
               <label
+                htmlFor="welcome-api-key"
                 className="block text-xs font-medium uppercase tracking-wider mb-2"
                 style={{ color: "var(--text-tertiary)" }}
               >
@@ -145,6 +146,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
                   <KeyRound size={16} />
                 </div>
                 <input
+                  id="welcome-api-key"
                   type="password"
                   value={apiKey}
                   onChange={(e) => {
@@ -274,7 +276,9 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <label htmlFor="welcome-email" className="sr-only">Email</label>
             <input
+              id="welcome-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -287,7 +291,9 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
                 color: "var(--text-primary)",
               }}
             />
+            <label htmlFor="welcome-password" className="sr-only">Password</label>
             <input
+              id="welcome-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

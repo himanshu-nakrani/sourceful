@@ -156,7 +156,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
           <button
             type="button"
             onClick={handleClose}
-            className="p-1 rounded-md"
+            className="p-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{ color: "var(--text-tertiary)" }}
             aria-label="Close modal"
             title="Close modal"
@@ -284,7 +284,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
           <button
             type="button"
             onClick={handleClose}
-            className="px-4 py-2 rounded-lg text-sm"
+            className="px-4 py-2 rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{ background: "var(--bg-surface)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
           >
             Cancel
@@ -293,7 +293,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
             type="button"
             onClick={handleUpload}
             disabled={!file || submitting}
-            className="px-5 py-2 rounded-lg text-sm font-medium"
+            className="px-5 py-2 rounded-lg text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed"
             style={{
               background: !file || submitting ? "var(--bg-elevated)" : "var(--accent)",
               color: !file || submitting ? "var(--text-tertiary)" : "var(--accent-fg)",

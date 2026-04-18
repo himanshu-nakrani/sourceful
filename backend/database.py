@@ -69,6 +69,9 @@ async def init_db() -> None:
                         await _apply_postgres_v2_migration(cur)
                         await _apply_postgres_v3_migration(cur)
                         await _apply_postgres_v4_migration(cur)
+                        await _apply_postgres_v5_migration(cur)
+                        await _apply_postgres_v6_migration(cur)
+                        await _apply_postgres_v7_migration(cur)
                 logger.info("Postgres initialized.")
                 return
             except Exception:
@@ -94,6 +97,9 @@ async def init_db() -> None:
             await _apply_sqlite_v2_migration(_sqlite)
             await _apply_sqlite_v3_migration(_sqlite)
             await _apply_sqlite_v4_migration(_sqlite)
+            await _apply_sqlite_v5_migration(_sqlite)
+            await _apply_sqlite_v6_migration(_sqlite)
+            await _apply_sqlite_v7_migration(_sqlite)
             await _sqlite.commit()
             logger.info("SQLite initialized.")
         except Exception:
@@ -368,6 +374,145 @@ async def _apply_sqlite_v4_migration(conn: aiosqlite.Connection) -> None:
     if "document_ids_json" not in columns:
         await conn.execute("ALTER TABLE conversations ADD COLUMN document_ids_json TEXT")
     await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (4)")
+
+
+async def _apply_postgres_v5_migration(cur) -> None:
+    """v5: hybrid search FTS column + GIN + HNSW vector index."""
+    await cur.execute(
+        """
+        ALTER TABLE document_chunks
+        ADD COLUMN IF NOT EXISTS content_tsv tsvector
+            GENERATED ALWAYS AS (to_tsvector('english', coalesce(content, ''))) STORED
+        """
+    )
+    await cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_content_tsv
+        ON document_chunks USING GIN (content_tsv)
+        """
+    )
+    # HNSW index for dense retrieval. Use vector_cosine_ops since retrieval
+    # uses cosine distance (<=>). IF NOT EXISTS so repeat migrations are safe.
+    from backend.settings import settings as _settings
+    m = max(2, int(_settings.pgvector_hnsw_m))
+    ef = max(4, int(_settings.pgvector_hnsw_ef_construction))
+    try:
+        await cur.execute(
+            f"""
+            CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_hnsw
+            ON document_chunks USING hnsw (embedding vector_cosine_ops)
+            WITH (m = {m}, ef_construction = {ef})
+            """
+        )
+    except Exception as exc:
+        # Older pgvector without HNSW support — fall back to IVFFlat.
+        logger.warning("hnsw_index_failed err=%s falling_back_to_ivfflat", exc)
+        try:
+            await cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_ivfflat
+                ON document_chunks USING ivfflat (embedding vector_cosine_ops)
+                WITH (lists = 100)
+                """
+            )
+        except Exception:
+            logger.exception("ivfflat_index_also_failed")
+    await cur.execute(
+        """
+        INSERT INTO schema_migrations (version)
+        VALUES (5)
+        ON CONFLICT (version) DO NOTHING
+        """
+    )
+
+
+async def _apply_sqlite_v5_migration(conn: aiosqlite.Connection) -> None:
+    """SQLite has no native FTS/HNSW parity; record version for schema check."""
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (5)")
+
+
+async def _apply_postgres_v6_migration(cur) -> None:
+    """v6: parent-document retrieval — store parent window text per chunk."""
+    await cur.execute(
+        """
+        ALTER TABLE document_chunks
+        ADD COLUMN IF NOT EXISTS parent_content TEXT
+        """
+    )
+    await cur.execute(
+        """
+        INSERT INTO schema_migrations (version)
+        VALUES (6)
+        ON CONFLICT (version) DO NOTHING
+        """
+    )
+
+
+async def _apply_sqlite_v6_migration(conn: aiosqlite.Connection) -> None:
+    cursor = await conn.execute("PRAGMA table_info(document_chunks)")
+    rows = await cursor.fetchall()
+    await cursor.close()
+    columns = {row[1] for row in rows}
+    if "parent_content" not in columns:
+        await conn.execute("ALTER TABLE document_chunks ADD COLUMN parent_content TEXT")
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)")
+
+
+async def _apply_postgres_v7_migration(cur) -> None:
+    """v7: table-aware chunking + progress telemetry.
+
+    - chunk_type: 'text' (default) | 'table' | 'image' — allows UI and
+      retrieval to handle tables differently.
+    - metadata_json: arbitrary JSON per chunk (table headers, slide index, etc.)
+    - progress_detail: free-form stage detail surfaced in job status API.
+    """
+    await cur.execute(
+        """
+        ALTER TABLE document_chunks
+        ADD COLUMN IF NOT EXISTS chunk_type TEXT NOT NULL DEFAULT 'text'
+        """
+    )
+    await cur.execute(
+        """
+        ALTER TABLE document_chunks
+        ADD COLUMN IF NOT EXISTS metadata_json TEXT
+        """
+    )
+    await cur.execute(
+        """
+        ALTER TABLE document_jobs
+        ADD COLUMN IF NOT EXISTS progress_detail TEXT
+        """
+    )
+    await cur.execute(
+        """
+        INSERT INTO schema_migrations (version)
+        VALUES (7)
+        ON CONFLICT (version) DO NOTHING
+        """
+    )
+
+
+async def _apply_sqlite_v7_migration(conn: aiosqlite.Connection) -> None:
+    cursor = await conn.execute("PRAGMA table_info(document_chunks)")
+    rows = await cursor.fetchall()
+    await cursor.close()
+    columns = {row[1] for row in rows}
+    if "chunk_type" not in columns:
+        await conn.execute(
+            "ALTER TABLE document_chunks ADD COLUMN chunk_type TEXT NOT NULL DEFAULT 'text'"
+        )
+    if "metadata_json" not in columns:
+        await conn.execute("ALTER TABLE document_chunks ADD COLUMN metadata_json TEXT")
+
+    cursor2 = await conn.execute("PRAGMA table_info(document_jobs)")
+    job_rows = await cursor2.fetchall()
+    await cursor2.close()
+    job_columns = {row[1] for row in job_rows}
+    if "progress_detail" not in job_columns:
+        await conn.execute("ALTER TABLE document_jobs ADD COLUMN progress_detail TEXT")
+
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)")
 
 
 async def close_db() -> None:

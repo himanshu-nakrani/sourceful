@@ -37,6 +37,9 @@ jobs:
       - name: Backend tests
         run: pytest -q backend/tests
 
+      - name: Docstring coverage (RAG pipeline modules)
+        run: bash scripts/check_docstrings_rag_modules.sh
+
       - name: Validate Compose
         run: docker compose config
 

@@ -9,7 +9,7 @@ import uuid
 
 from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.metrics import metrics
-from backend.services.chunking import chunk_sections
+from backend.services.chunking import chunk_sections, chunk_sections_parent_child, chunk_sections_semantic
 from backend.services.embeddings import embed_texts
 from backend.services.extract import extract_document
 from backend.services.provider_auth import require_provider_api_key
@@ -158,6 +158,7 @@ async def claim_next_job() -> dict | None:
         SET status = 'processing',
             stage = 'extracting',
             progress = 0.05,
+            progress_detail = 'parsing document',
             attempt_count = attempt_count + 1,
             started_at = COALESCE(started_at, {TIMESTAMP_SQL}),
             updated_at = {TIMESTAMP_SQL},
@@ -195,18 +196,57 @@ async def process_job(job: dict) -> None:
         #     return
 
         chunks = await _build_chunks(job)
+
         await execute(
-            f"UPDATE document_jobs SET stage = 'embedding', progress = 0.45, updated_at = {TIMESTAMP_SQL} WHERE id = ?",
+            f"UPDATE document_jobs SET stage = 'chunking', progress = 0.2, progress_detail = 'split into {len(chunks)} chunks', updated_at = {TIMESTAMP_SQL} WHERE id = ?",
             (job_id,),
         )
+
+        # Optional: contextual retrieval enrichment (Anthropic 2024). We
+        # produce an LLM-generated situating sentence per chunk and
+        # embed `context + chunk`; `chunk.content` stays untouched so
+        # citations remain verbatim.
+        if settings.retrieval_contextual_enabled and job.get("payload_bytes"):
+            try:
+                from backend.services.contextual import situate_chunks
+
+                full_doc = "\n\n".join(chunk.content for chunk in chunks)
+                chunks, ctx_stats = await situate_chunks(
+                    chunks=chunks,
+                    full_document=full_doc,
+                    provider=job["provider"],
+                    api_key=job["provider_api_key"],
+                    chat_model=job.get("chat_model") or job.get("embedding_model") or "",
+                )
+                logger.info(
+                    "contextual_enrichment_done enriched=%d skipped=%d",
+                    ctx_stats.get("enriched", 0),
+                    ctx_stats.get("skipped", 0),
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("contextual_enrichment_failed")
+
+        table_count = sum(1 for c in chunks if c.chunk_type == 'table')
+        detail = f'computing embeddings for {len(chunks)} chunks'
+        if table_count:
+            detail += f' ({table_count} tables)'
+        await execute(
+            f"UPDATE document_jobs SET stage = 'embedding', progress = 0.45, progress_detail = ?, updated_at = {TIMESTAMP_SQL} WHERE id = ?",
+            (detail, job_id),
+        )
+        # Prefer `embedding_content` when contextual retrieval has enriched it.
+        embed_inputs = [
+            chunk.embedding_content if chunk.embedding_content else chunk.content
+            for chunk in chunks
+        ]
         embeddings = await embed_texts(
             job["provider"],
             job["provider_api_key"],
             job["embedding_model"],
-            [chunk.content for chunk in chunks],
+            embed_inputs,
         )
         await execute(
-            f"UPDATE document_jobs SET stage = 'storing', progress = 0.8, updated_at = {TIMESTAMP_SQL} WHERE id = ?",
+            f"UPDATE document_jobs SET stage = 'storing', progress = 0.8, progress_detail = 'indexing {len(chunks)} chunks into vector store', updated_at = {TIMESTAMP_SQL} WHERE id = ?",
             (job_id,),
         )
         await replace_chunks(document_id, owner_id, chunks, embeddings)
@@ -231,6 +271,7 @@ async def process_job(job: dict) -> None:
             SET status = 'ready',
                 stage = 'complete',
                 progress = 1,
+                progress_detail = 'done',
                 error_message = NULL,
                 finished_at = {TIMESTAMP_SQL},
                 updated_at = {TIMESTAMP_SQL},
@@ -390,7 +431,23 @@ async def _build_chunks(job: dict):
     payload_bytes = job.get("payload_bytes")
     if payload_bytes:
         extracted = extract_document(filename=job["payload_filename"], raw=bytes(payload_bytes))
-        chunks = chunk_sections(extracted.sections, settings.chunk_size, settings.chunk_overlap)
+
+        # Select chunking strategy
+        if settings.retrieval_parent_doc_enabled:
+            chunks = chunk_sections_parent_child(
+                extracted.sections,
+                parent_size=settings.retrieval_parent_window_chars,
+                child_size=settings.retrieval_child_window_chars,
+                child_overlap=settings.chunk_overlap,
+            )
+        elif settings.chunk_strategy == "semantic":
+            chunks = chunk_sections_semantic(
+                extracted.sections,
+                max_chunk_chars=settings.chunk_size,
+                sim_threshold=settings.chunk_semantic_threshold,
+            )
+        else:
+            chunks = chunk_sections(extracted.sections, settings.chunk_size, settings.chunk_overlap)
     else:
         existing_rows = await fetch_all(
             "SELECT chunk_index, content, page_number FROM document_chunks WHERE document_id = ? AND owner_id = ? ORDER BY chunk_index ASC",

@@ -1,0 +1,201 @@
+name: Nightly Eval
+
+on:
+  schedule:
+    # Run at 02:00 UTC every night
+    - cron: "0 2 * * *"
+  # Allow manual trigger for on-demand eval runs
+  workflow_dispatch:
+  # Also run on PRs that touch retrieval or eval code
+  pull_request:
+    paths:
+      - "backend/services/retrieval_pipeline.py"
+      - "backend/services/reranker.py"
+      - "backend/services/hybrid.py"
+      - "backend/services/mmr.py"
+      - "backend/services/query_transform.py"
+      - "backend/services/compression.py"
+      - "backend/services/grounding.py"
+      - "backend/services/contextual.py"
+      - "backend/services/vectorstore.py"
+      - "backend/services/embeddings.py"
+      - "backend/services/chunking.py"
+      - "backend/routers/chat.py"
+      - "backend/tests/eval/**"
+      - "docs/eval/baseline.json"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DEFAULT_SUPERUSER_EMAIL: admin@example.com
+      DEFAULT_SUPERUSER_PASSWORD: admin123
+      LOG_LEVEL: WARNING
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Run eval suite
+        run: pytest -m eval backend/tests/eval -v --tb=short -s
+
+      - name: Compare against baseline
+        id: delta
+        run: |
+          python - <<'PYEOF'
+          import json
+          import os
+          from pathlib import Path
+
+          baseline_path = Path("docs/eval/baseline.json")
+          last_run_path = Path("docs/eval/last_run.json")
+          last_run_v2_path = Path("docs/eval/last_run_v2.json")
+
+          lines = []
+          failed = False
+
+          # -- v1 comparison --
+          if baseline_path.exists() and last_run_path.exists():
+              baseline = json.loads(baseline_path.read_text())
+              current = json.loads(last_run_path.read_text())
+              b_recall = baseline.get("recall_at_k", 0)
+              c_recall = current.get("recall_at_k", 0)
+              delta = c_recall - b_recall
+              emoji = "✅" if delta >= 0 else "⚠️"
+              lines.append("### Retrieval Eval (v1 golden set)")
+              lines.append("")
+              lines.append(f"| Metric | Baseline | Current | Delta |")
+              lines.append(f"|--------|----------|---------|-------|")
+              lines.append(
+                  f"| recall@3 | {b_recall:.2f} | {c_recall:.2f} | {delta:+.2f} {emoji} |"
+              )
+              lines.append("")
+              lines.append(
+                  f"Items: {current.get('hits', '?')}/{current.get('total', '?')} hits "
+                  f"in {current.get('elapsed_seconds', '?')}s"
+              )
+              lines.append("")
+              # Fail if recall drops by more than 2 percentage points
+              if delta < -0.02:
+                  lines.append(f"❌ **Regression detected**: recall dropped by {abs(delta):.2f} (> 0.02 threshold)")
+                  failed = True
+          else:
+              lines.append("⚠️ Baseline or last_run not found — skipping v1 comparison.")
+
+          # -- v2 comparison --
+          if last_run_v2_path.exists():
+              v2 = json.loads(last_run_v2_path.read_text())
+              v2_recall = v2.get("recall_at_k", 0)
+              lines.append("### Retrieval Eval (v2 expanded golden set)")
+              lines.append("")
+              lines.append(f"| Metric | Value |")
+              lines.append(f"|--------|-------|")
+              lines.append(f"| recall@5 | {v2_recall:.2f} |")
+              lines.append(f"| items | {v2.get('hits', '?')}/{v2.get('total', '?')} |")
+              lines.append(f"| elapsed | {v2.get('elapsed_seconds', '?')}s |")
+              lines.append("")
+
+              # Category breakdown
+              categories = v2.get("categories", {})
+              if categories:
+                  lines.append("**Category breakdown:**")
+                  lines.append("")
+                  lines.append("| Category | Recall | Hits/Total |")
+                  lines.append("|----------|--------|------------|")
+                  for cat, info in sorted(categories.items()):
+                      lines.append(
+                          f"| {cat} | {info.get('recall', 0):.2f} | "
+                          f"{info.get('hits', 0)}/{info.get('total', 0)} |"
+                      )
+                  lines.append("")
+
+          # -- RAGAS comparison (optional) --
+          ragas_path = Path("docs/eval/last_run_ragas.json")
+          if ragas_path.exists():
+              ragas = json.loads(ragas_path.read_text())
+              scores = ragas.get("scores", {})
+              lines.append("### RAGAS Metrics")
+              lines.append("")
+              lines.append("| Metric | Score |")
+              lines.append("|--------|-------|")
+              for name, val in scores.items():
+                  lines.append(f"| {name} | {val:.4f}" if val is not None else f"| {name} | N/A |")
+              lines.append("")
+
+          body = "\n".join(lines)
+          print(body)
+
+          # Write outputs for the comment step
+          # Use GITHUB_OUTPUT for multi-line content
+          with open(os.environ.get("GITHUB_OUTPUT", "/dev/null"), "a") as f:
+              # Use heredoc-style delimiter for multi-line output
+              f.write(f"comment_body<<EVAL_EOF\n{body}\nEVAL_EOF\n")
+              f.write(f"failed={'true' if failed else 'false'}\n")
+          PYEOF
+
+      - name: Comment eval delta on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `${{ steps.delta.outputs.comment_body }}`;
+            if (!body || body.trim() === '') {
+              console.log('No eval comparison body to post.');
+              return;
+            }
+            const marker = '<!-- eval-bot -->';
+            const fullBody = `${marker}\n## 📊 Eval Report\n\n${body}`;
+
+            // Find existing comment to update instead of creating duplicates
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: fullBody,
+              });
+            }
+
+      - name: Fail on regression
+        if: steps.delta.outputs.failed == 'true'
+        run: |
+          echo "::error::Retrieval recall regressed beyond threshold. See eval report above."
+          exit 1
+
+      - name: Upload eval reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: |
+            docs/eval/last_run.json
+            docs/eval/last_run_v2.json
+            docs/eval/last_run_ragas.json
+          retention-days: 30
+          if-no-files-found: ignore

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     max_chunks: int = Field(default=800, alias="MAX_CHUNKS")
     chunk_size: int = Field(default=1200, alias="CHUNK_SIZE")
     chunk_overlap: int = Field(default=200, alias="CHUNK_OVERLAP")
+    chunk_strategy: str = Field(default="fixed", alias="CHUNK_STRATEGY")
+    chunk_semantic_threshold: float = Field(default=0.78, alias="CHUNK_SEMANTIC_THRESHOLD")
     rag_top_k: int = Field(default=5, alias="RAG_TOP_K")
     max_model_name_length: int = Field(default=128, alias="MAX_MODEL_NAME_LENGTH")
 
@@ -22,7 +24,11 @@ class Settings(BaseSettings):
     document_registry_path: str = Field(default="data/documents.json", alias="DOCUMENT_REGISTRY_PATH")
 
     cors_origins: str = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000",
+        default=(
+            "http://localhost:3000,http://127.0.0.1:3000,"
+            "http://localhost:3001,http://127.0.0.1:3001,"
+            "http://localhost:3002,http://127.0.0.1:3002"
+        ),
         alias="CORS_ORIGINS",
     )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
@@ -76,6 +82,81 @@ class Settings(BaseSettings):
         alias="GOOGLE_OAUTH_CLIENT_SECRET",
     )
 
+    # ---- Retrieval feature flags (Phase 0/1) ----
+    # All default OFF so behavior is unchanged unless explicitly enabled.
+    retrieval_hybrid_enabled: bool = Field(default=False, alias="RETRIEVAL_HYBRID_ENABLED")
+    retrieval_reranker_enabled: bool = Field(default=False, alias="RETRIEVAL_RERANKER_ENABLED")
+    retrieval_contextual_enabled: bool = Field(default=False, alias="RETRIEVAL_CONTEXTUAL_ENABLED")
+    retrieval_graph_enabled: bool = Field(default=False, alias="RETRIEVAL_GRAPH_ENABLED")
+    retrieval_agent_enabled: bool = Field(default=False, alias="RETRIEVAL_AGENT_ENABLED")
+
+    # Over-fetch factor when reranker is on (retrieve K*factor, rerank down to K)
+    reranker_overfetch_factor: int = Field(default=4, alias="RERANKER_OVERFETCH_FACTOR")
+
+    # Reranker provider: "cohere" | "jina" | "bge-local" | "noop"
+    reranker_provider: str = Field(default="noop", alias="RERANKER_PROVIDER")
+    reranker_model: str = Field(default="rerank-english-v3.0", alias="RERANKER_MODEL")
+    reranker_api_key: str | None = Field(default=None, alias="RERANKER_API_KEY")
+    reranker_timeout_seconds: float = Field(default=10.0, alias="RERANKER_TIMEOUT_SECONDS")
+
+    # Hybrid search tuning
+    hybrid_fts_weight: float = Field(default=1.0, alias="HYBRID_FTS_WEIGHT")
+    hybrid_vector_weight: float = Field(default=1.0, alias="HYBRID_VECTOR_WEIGHT")
+    hybrid_rrf_k: int = Field(default=60, alias="HYBRID_RRF_K")
+
+    # pgvector HNSW tuning
+    pgvector_hnsw_m: int = Field(default=16, alias="PGVECTOR_HNSW_M")
+    pgvector_hnsw_ef_construction: int = Field(default=64, alias="PGVECTOR_HNSW_EF_CONSTRUCTION")
+
+    # MMR diversification. lambda=1.0 disables diversity (pure relevance);
+    # lambda<1.0 trades relevance for diversity. OFF by default.
+    retrieval_mmr_enabled: bool = Field(default=False, alias="RETRIEVAL_MMR_ENABLED")
+    retrieval_mmr_lambda: float = Field(default=0.7, alias="RETRIEVAL_MMR_LAMBDA")
+
+    # Query transformations (HyDE / multi-query / step-back). All lanes are
+    # RRF-fused with the original dense lane when enabled.
+    retrieval_query_transforms_enabled: bool = Field(
+        default=False, alias="RETRIEVAL_QUERY_TRANSFORMS_ENABLED"
+    )
+    # Comma-separated: any of "hyde", "multi_query", "step_back".
+    retrieval_query_transforms: str = Field(
+        default="multi_query", alias="RETRIEVAL_QUERY_TRANSFORMS"
+    )
+    retrieval_multi_query_count: int = Field(default=3, alias="RETRIEVAL_MULTI_QUERY_COUNT")
+
+    # Parent-document retrieval. Embeds small child windows but returns the
+    # bigger parent window as the citation excerpt to the LLM.
+    retrieval_parent_doc_enabled: bool = Field(
+        default=False, alias="RETRIEVAL_PARENT_DOC_ENABLED"
+    )
+    retrieval_parent_window_chars: int = Field(
+        default=2400, alias="RETRIEVAL_PARENT_WINDOW_CHARS"
+    )
+    retrieval_child_window_chars: int = Field(
+        default=600, alias="RETRIEVAL_CHILD_WINDOW_CHARS"
+    )
+
+    # Context compression before prompt-build. "none" | "heuristic" | "llmlingua".
+    context_compression_mode: str = Field(default="none", alias="CONTEXT_COMPRESSION_MODE")
+    context_compression_target_tokens: int = Field(
+        default=2000, alias="CONTEXT_COMPRESSION_TARGET_TOKENS"
+    )
+
+    # Groundedness verifier (second-pass LLM call after generation).
+    groundedness_verifier_enabled: bool = Field(
+        default=False, alias="GROUNDEDNESS_VERIFIER_ENABLED"
+    )
+    groundedness_min_score: float = Field(default=0.5, alias="GROUNDEDNESS_MIN_SCORE")
+
+    # ---- Tracing (Langfuse, no-op when unset) ----
+    langfuse_public_key: str | None = Field(default=None, alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str | None = Field(default=None, alias="LANGFUSE_SECRET_KEY")
+    langfuse_host: str = Field(default="https://cloud.langfuse.com", alias="LANGFUSE_HOST")
+
+    @property
+    def langfuse_configured(self) -> bool:
+        return bool(self.langfuse_public_key and self.langfuse_secret_key)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
@@ -93,3 +174,4 @@ class Settings(BaseSettings):
         return bool(self.vertex_search_project and self.vertex_search_datastore_id)
 
 settings = Settings()
+ 

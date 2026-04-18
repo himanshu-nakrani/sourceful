@@ -1,0 +1,8 @@
+[tool.interrogate]
+# Repo-wide default when running `interrogate backend` locally; tests are excluded.
+# Baseline for `interrogate backend` (legacy modules are still being documented).
+fail-under = 30
+ignore-init-module = true
+ignore-semiprivate = true
+ignore-nested-functions = true
+exclude = ["backend/tests", "backend/tests/eval", "legacy"]

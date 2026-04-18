@@ -12,6 +12,8 @@ from backend.models import (
     DocumentResponse,
     DocumentStatusResponse,
     IngestResponse,
+    StructuredExtractRequest,
+    StructuredExtractResponse,
 )
 from backend.routers.deps import RequestContext, get_request_context
 from backend.services.provider_auth import MissingProviderApiKeyError
@@ -136,6 +138,92 @@ async def reprocess_document(
         job_id=job["id"],
         status="queued",
         embedding_model=job["embedding_model"],
+    )
+
+
+@router.post("/documents/{document_id}/extract", response_model=StructuredExtractResponse)
+async def extract_document_fields(
+    document_id: str,
+    body: StructuredExtractRequest,
+    request: Request,
+    x_provider_api_key: str | None = Header(default=None),
+    context: RequestContext = Depends(get_request_context),
+):
+    """Phase 2.6: Extract structured fields from a document via LLM.
+
+    Requires the document to be in ``ready`` state. Assembles the document
+    text from stored chunks and passes it through the structured extraction
+    service with the user-provided schema.
+    """
+    doc = await fetch_one(
+        "SELECT id, status, provider FROM documents WHERE id = ? AND owner_id = ?",
+        (document_id, context.owner_id),
+    )
+    if not doc:
+        return api_error_response(
+            request=request,
+            status_code=404,
+            error="Document not found.",
+            code="DOCUMENT_NOT_FOUND",
+            details={"document_id": document_id},
+        )
+    if doc["status"] != "ready":
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error=f"Document is not ready (status: {doc['status']}). Wait for processing to complete.",
+            code="DOCUMENT_NOT_READY",
+            details={"document_id": document_id, "status": doc["status"]},
+        )
+
+    api_key = (x_provider_api_key or "").strip()
+    if not api_key:
+        return api_error_response(
+            request=request,
+            status_code=401,
+            error="Missing X-Provider-Api-Key header.",
+            code="MISSING_PROVIDER_API_KEY",
+            details={"document_id": document_id},
+        )
+
+    # Assemble document text from chunks
+    chunk_rows = await fetch_all(
+        "SELECT content FROM document_chunks WHERE document_id = ? AND owner_id = ? ORDER BY chunk_index ASC",
+        (document_id, context.owner_id),
+    )
+    if not chunk_rows:
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error="Document has no chunks.",
+            code="NO_CHUNKS",
+            details={"document_id": document_id},
+        )
+
+    document_text = "\n\n".join(row["content"] for row in chunk_rows)
+
+    from backend.services.structured_extract import extract_fields
+
+    result = await extract_fields(
+        document_text=document_text,
+        schema=body.schema_fields,
+        provider=body.provider,
+        api_key=api_key,
+        model=body.model,
+    )
+
+    # Persist extracted fields on the document for downstream use
+    import json
+    await execute(
+        "UPDATE documents SET last_error = NULL WHERE id = ? AND owner_id = ?",
+        (document_id, context.owner_id),
+    )
+
+    return StructuredExtractResponse(
+        document_id=document_id,
+        fields=result.fields,
+        model=result.model,
+        token_usage=result.token_usage,
     )
 
 

@@ -5,10 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from backend.routers.deps import RequestContext, get_request_context
-from backend.services.provider_auth import normalize_provider_api_key
+from backend.routers.deps import RequestContext, get_request_context, require_provider_api_key
 
 logger = logging.getLogger("ragapp.models")
 router = APIRouter()
@@ -23,31 +22,6 @@ DEFAULT_EMBEDDING_MODELS: dict[str, list[str]] = {
     "openai": ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"],
     "gemini": ["models/gemini-embedding-001"],
 }
-
-
-def _require_provider_api_key(x_provider_api_key: str | None = Header(default=None)) -> str:
-    """
-    Validate and return a normalized provider API key from the X-Provider-Api-Key header.
-    
-    Parameters:
-        x_provider_api_key (str | None): Value of the `X-Provider-Api-Key` header (may be None).
-    
-    Returns:
-        str: The normalized provider API key.
-    
-    Raises:
-        fastapi.HTTPException: With status code 401 and code `MISSING_PROVIDER_API_KEY` when the header is missing or the normalized value is empty.
-    """
-    provider_api_key = normalize_provider_api_key(x_provider_api_key)
-    if not provider_api_key:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "error": "Missing X-Provider-Api-Key header.",
-                "code": "MISSING_PROVIDER_API_KEY",
-            },
-        )
-    return provider_api_key
 
 
 async def _fetch_openai_models(api_key: str) -> tuple[list[str], list[str]]:
@@ -143,7 +117,7 @@ async def list_models(
     request: Request,
     provider: str,
     context: RequestContext = Depends(get_request_context),
-    provider_api_key: str = Depends(_require_provider_api_key),
+    provider_api_key: str = Depends(require_provider_api_key),
 ) -> dict[str, Any]:
     """
     Get available chat and embedding model IDs for the specified provider.

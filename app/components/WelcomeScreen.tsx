@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { FileText, KeyRound, ArrowRight, Sparkles, UserCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowRight, FileText, KeyRound, Sparkles, UserCircle, Zap, Shield, MessageSquare } from "lucide-react";
 import { type Provider } from "../lib/api";
+import { EASE_OUT } from "../lib/motion";
 import { useStore, DEFAULT_CHAT, DEFAULT_EMBEDDING } from "../lib/store";
 
 interface WelcomeScreenProps {
@@ -15,6 +17,37 @@ interface WelcomeScreenProps {
  * @param onComplete - Callback invoked after settings are saved and setup is marked complete
  * @returns The welcome/setup screen as a JSX element
  */
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+  },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 16, filter: "blur(4px)" },
+  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.5, ease: EASE_OUT } },
+};
+
+const featureCards = [
+  {
+    icon: <Zap size={18} />,
+    title: "Lightning Fast",
+    desc: "Instant document indexing with intelligent chunking",
+  },
+  {
+    icon: <Shield size={18} />,
+    title: "Fully Private",
+    desc: "API keys never leave your browser session",
+  },
+  {
+    icon: <MessageSquare size={18} />,
+    title: "Source Grounded",
+    desc: "Every answer includes chunk-level citations",
+  },
+];
+
 export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
   const { dispatch } = useStore();
   const [provider, setProvider] = useState<Provider>("openai");
@@ -56,76 +89,119 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center px-4 py-10"
-      style={{
-        background:
-          "radial-gradient(circle at top left, rgba(59,130,246,0.15), transparent 30%), radial-gradient(circle at bottom right, rgba(16,185,129,0.12), transparent 25%), var(--bg-primary)",
-      }}
+      className="flex min-h-screen items-center justify-center px-4 py-10 relative overflow-hidden"
+      style={{ background: "var(--bg-primary)" }}
     >
-      <div className="w-full max-w-md">
+      {/* Ambient gradient orbs */}
+      <motion.div
+        className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full opacity-30 pointer-events-none"
+        style={{
+          background: "radial-gradient(circle, rgba(99,102,241,0.15), transparent 70%)",
+        }}
+        animate={{ scale: [1, 1.1, 1], x: [0, 30, 0], y: [0, -20, 0] }}
+        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute bottom-[-15%] right-[-10%] w-[400px] h-[400px] rounded-full opacity-20 pointer-events-none"
+        style={{
+          background: "radial-gradient(circle, rgba(34,197,94,0.12), transparent 70%)",
+        }}
+        animate={{ scale: [1, 1.15, 1], x: [0, -25, 0], y: [0, 15, 0] }}
+        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+      />
+
+      <motion.div
+        className="w-full max-w-md relative z-10"
+        variants={container}
+        initial="hidden"
+        animate="show"
+      >
         {/* Header */}
-        <div className="text-center mb-8">
-          <div
-            className="inline-flex items-center justify-center rounded-2xl mb-4"
+        <motion.div className="text-center mb-8" variants={item}>
+          <motion.div
+            className="inline-flex items-center justify-center rounded-2xl mb-5"
             style={{
-              width: 64,
-              height: 64,
-              background: "linear-gradient(135deg, var(--accent-soft), var(--bg-surface))",
-              border: "1px solid var(--border-accent)",
+              width: 56,
+              height: 56,
+              background: "var(--accent-brand-soft)",
+              border: "1px solid var(--border)",
             }}
+            whileHover={{ scale: 1.05, rotate: 2 }}
+            transition={{ type: "spring", stiffness: 300 }}
           >
-            <FileText size={28} style={{ color: "var(--accent)" }} />
-          </div>
-          <h1 className="text-2xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+            <FileText size={24} style={{ color: "var(--accent-brand)" }} />
+          </motion.div>
+          <h1
+            className="text-2xl font-semibold mb-2"
+            style={{ color: "var(--text-primary)", letterSpacing: "-0.03em" }}
+          >
             Document RAG
           </h1>
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
             Upload documents, ask questions, get grounded answers
           </p>
-        </div>
+        </motion.div>
+
+        {/* Feature chips */}
+        <motion.div className="flex flex-wrap justify-center gap-2 mb-8" variants={item}>
+          {featureCards.map((feat) => (
+            <motion.div
+              key={feat.title}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs"
+              style={{
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text-secondary)",
+              }}
+              whileHover={{
+                borderColor: "rgba(99,102,241,0.3)",
+                background: "var(--accent-brand-soft)",
+              }}
+              transition={{ duration: 0.2 }}
+            >
+              <span style={{ color: "var(--accent-brand)" }}>{feat.icon}</span>
+              {feat.title}
+            </motion.div>
+          ))}
+        </motion.div>
 
         {/* Setup Card */}
-        <div
-          className="rounded-2xl border p-6"
-          style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
+        <motion.div
+          className="rounded-2xl p-6 relative overflow-hidden"
+          style={{
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+          }}
+          variants={item}
         >
           <div className="flex items-center gap-2 mb-6">
-            <Sparkles size={16} style={{ color: "var(--accent)" }} />
-            <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+            <Sparkles size={14} style={{ color: "var(--accent-brand)" }} />
+            <span className="text-xs font-medium tracking-wide uppercase" style={{ color: "var(--text-tertiary)" }}>
               Quick Setup
             </span>
           </div>
 
           {/* Provider Selector */}
-          <div className="flex gap-2 mb-6 p-1 rounded-xl" style={{ background: "var(--bg-surface)" }}>
-            <button
-              type="button"
-              onClick={() => setProvider("openai")}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: provider === "openai" ? "var(--accent)" : "transparent",
-                color: provider === "openai" ? "var(--accent-fg)" : "var(--text-secondary)",
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M22.282 9.821c.55-.443.55-1.295 0-1.738l-8.936-7.192c-.55-.443-1.318-.332-1.768.246l-8.936 11.929c-.45.579-.45 1.43 0 2.008l8.936 11.929c.45.578 1.218.689 1.768.246l8.936-7.192c.55-.443.55-1.295 0-1.738l-8.936-7.192z" />
-              </svg>
-              OpenAI
-            </button>
-            <button
-              type="button"
-              onClick={() => setProvider("gemini")}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: provider === "gemini" ? "var(--accent)" : "transparent",
-                color: provider === "gemini" ? "var(--accent-fg)" : "var(--text-secondary)",
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-              </svg>
-              Gemini
-            </button>
+          <div
+            className="flex gap-1 mb-6 p-1 rounded-xl"
+            style={{ background: "var(--bg-surface)" }}
+          >
+            {(["openai", "gemini"] as const).map((p) => (
+              <motion.button
+                key={p}
+                type="button"
+                onClick={() => setProvider(p)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium"
+                style={{
+                  background: provider === p ? "var(--accent)" : "transparent",
+                  color: provider === p ? "var(--accent-fg)" : "var(--text-secondary)",
+                }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ duration: 0.15 }}
+              >
+                {p === "openai" ? "OpenAI" : "Gemini"}
+              </motion.button>
+            ))}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -142,7 +218,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
                   className="absolute left-3 top-1/2 -translate-y-1/2"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  <KeyRound size={16} />
+                  <KeyRound size={15} />
                 </div>
                 <input
                   type="password"
@@ -154,7 +230,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
                   placeholder={
                     provider === "openai" ? "sk-..." : "Google AI API key"
                   }
-                  className="w-full rounded-xl px-3 py-3 pl-10 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  className="w-full rounded-xl px-3 py-3 pl-10 text-sm outline-none transition-all duration-200"
                   style={{
                     background: "var(--bg-surface)",
                     border: "1px solid var(--border)",
@@ -164,46 +240,54 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
                 />
               </div>
               <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
-                Your API key is stored locally in your browser and never sent to our servers.
+                Stored locally — never sent to our servers.
               </p>
             </div>
 
-            {error && (
-              <div
-                className="rounded-lg px-3 py-2 text-sm"
-                style={{ background: "var(--error-soft)", color: "var(--error)" }}
-              >
-                {error}
-              </div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="rounded-xl px-3 py-2 text-sm overflow-hidden"
+                  style={{ background: "var(--error-soft)", color: "var(--error)" }}
+                >
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            <button
+            <motion.button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-all"
+              className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium"
               style={{
                 background: "var(--accent)",
                 color: "var(--accent-fg)",
               }}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
             >
               Get Started
-              <ArrowRight size={16} />
-            </button>
+              <ArrowRight size={15} />
+            </motion.button>
           </form>
-        </div>
+        </motion.div>
 
         {/* Optional Login */}
-        <div className="mt-6 text-center">
+        <motion.div className="mt-6 text-center" variants={item}>
           <button
             type="button"
             onClick={() => setShowLogin(true)}
             className="inline-flex items-center gap-2 text-sm"
-            style={{ color: "var(--text-secondary)" }}
+            style={{ color: "var(--text-tertiary)" }}
           >
-            <UserCircle size={16} />
+            <UserCircle size={15} />
             Sign in for cross-device sync
           </button>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
@@ -250,12 +334,14 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
   return (
     <div
       className="flex min-h-screen items-center justify-center px-4 py-10"
-      style={{
-        background:
-          "radial-gradient(circle at top left, rgba(59,130,246,0.15), transparent 30%), radial-gradient(circle at bottom right, rgba(16,185,129,0.12), transparent 25%), var(--bg-primary)",
-      }}
+      style={{ background: "var(--bg-primary)" }}
     >
-      <div className="w-full max-w-md">
+      <motion.div
+        className="w-full max-w-md"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: EASE_OUT }}
+      >
         <button
           type="button"
           onClick={onBack}
@@ -266,8 +352,11 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
         </button>
 
         <div
-          className="rounded-2xl border p-6"
-          style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
+          className="rounded-2xl p-6"
+          style={{
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+          }}
         >
           <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
             {mode === "login" ? "Sign In" : "Create Account"}
@@ -280,7 +369,7 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email"
               required
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-200"
               style={{
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border)",
@@ -294,7 +383,7 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
               placeholder="Password"
               required
               minLength={mode === "signup" ? 8 : undefined}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-200"
               style={{
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border)",
@@ -302,16 +391,21 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
               }}
             />
 
-            {error && (
-              <div
-                className="rounded-lg px-3 py-2 text-sm"
-                style={{ background: "var(--error-soft)", color: "var(--error)" }}
-              >
-                {error}
-              </div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="rounded-xl px-3 py-2 text-sm"
+                  style={{ background: "var(--error-soft)", color: "var(--error)" }}
+                >
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            <button
+            <motion.button
               type="submit"
               disabled={loading}
               className="w-full rounded-xl px-4 py-3 text-sm font-medium"
@@ -320,9 +414,11 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
                 color: "var(--accent-fg)",
                 opacity: loading ? 0.7 : 1,
               }}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
             >
               {loading ? "Working..." : mode === "login" ? "Sign In" : "Create Account"}
-            </button>
+            </motion.button>
           </form>
 
           <div className="mt-4 text-center">
@@ -336,7 +432,7 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
             </button>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

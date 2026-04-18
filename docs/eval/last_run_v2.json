@@ -1,0 +1,371 @@
+{
+  "recall_at_k": 1.0,
+  "hits": 31,
+  "total": 31,
+  "elapsed_seconds": 0.241,
+  "categories": {
+    "policy": {
+      "hits": 12,
+      "total": 12,
+      "recall": 1.0
+    },
+    "technical": {
+      "hits": 10,
+      "total": 10,
+      "recall": 1.0
+    },
+    "numeric": {
+      "hits": 5,
+      "total": 5,
+      "recall": 1.0
+    },
+    "multi-hop": {
+      "hits": 4,
+      "total": 4,
+      "recall": 1.0
+    }
+  },
+  "items": [
+    {
+      "id": "policy-vacation-days",
+      "question": "How many paid vacation days per year do employees get?",
+      "expected_substring": "20 paid vacation days",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-vacation-carryover",
+      "question": "Can I carry unused vacation into next year?",
+      "expected_substring": "carried over up to a maximum of 5 days",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-remote-days",
+      "question": "How many days per week can I work remotely?",
+      "expected_substring": "3 days per week",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-vpn-required",
+      "question": "Do I need a VPN when working from home?",
+      "expected_substring": "company-issued VPN",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-expense-timing",
+      "question": "How long do expense reimbursements take?",
+      "expected_substring": "10 business days",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-expense-receipt-deadline",
+      "question": "When do I have to submit receipts by?",
+      "expected_substring": "30 days of the expense date",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-parental-primary",
+      "question": "How much parental leave do primary caregivers get?",
+      "expected_substring": "16 weeks",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-parental-secondary",
+      "question": "What about secondary caregivers' leave?",
+      "expected_substring": "8 weeks for secondary",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-incident-channel",
+      "question": "Where should I report a suspected data breach?",
+      "expected_substring": "#sec-incidents",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-incident-window",
+      "question": "How quickly must a security incident be reported?",
+      "expected_substring": "within 1 hour",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-development-budget",
+      "question": "What's the professional development budget?",
+      "expected_substring": "$2,500",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "policy-preapproval-threshold",
+      "question": "When do I need pre-approval for development expenses?",
+      "expected_substring": "over $500",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "policy"
+    },
+    {
+      "id": "tech-staging-region",
+      "question": "Where is the staging environment hosted?",
+      "expected_substring": "us-east-1",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "tech-terraform-module",
+      "question": "Which Terraform module provisions staging?",
+      "expected_substring": "infra/staging",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "tech-backup-time",
+      "question": "When do Postgres backups run?",
+      "expected_substring": "02:00 UTC",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "tech-pitr-window",
+      "question": "How far back can we do point-in-time recovery?",
+      "expected_substring": "most recent 7 days",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "tech-worker-lock",
+      "question": "How does the ingestion worker claim jobs?",
+      "expected_substring": "SKIP LOCKED",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "tech-worker-heartbeat",
+      "question": "How often must the worker heartbeat?",
+      "expected_substring": "every 60 seconds",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "tech-redis-usage",
+      "question": "What is Redis used for?",
+      "expected_substring": "session tokens and rate-limit counters",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "tech-hnsw-reindex",
+      "question": "When should we reindex the HNSW index?",
+      "expected_substring": "10,000 chunks",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "tech-eval-gate",
+      "question": "What makes the CI build fail on retrieval quality?",
+      "expected_substring": "2 percentage points",
+      "hit": true,
+      "top_excerpts": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` modu"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "research-finetuning-gain",
+      "question": "How much does fine-tuning improve QA benchmarks?",
+      "expected_substring": "14.7%",
+      "hit": true,
+      "top_excerpts": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmark"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "numeric"
+    },
+    {
+      "id": "research-rrf-k",
+      "question": "What RRF k value was best?",
+      "expected_substring": "k=60",
+      "hit": true,
+      "top_excerpts": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmark"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "numeric"
+    },
+    {
+      "id": "research-rrf-winner",
+      "question": "Did RRF beat score-weighted fusion?",
+      "expected_substring": "Reciprocal rank fusion",
+      "hit": true,
+      "top_excerpts": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmark"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "technical"
+    },
+    {
+      "id": "research-contextual-gain",
+      "question": "How much did contextual retrieval reduce failures?",
+      "expected_substring": "49%",
+      "hit": true,
+      "top_excerpts": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmark"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "numeric"
+    },
+    {
+      "id": "research-rerank-latency",
+      "question": "What latency does a cross-encoder reranker add?",
+      "expected_substring": "120-280ms",
+      "hit": true,
+      "top_excerpts": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmark"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "numeric"
+    },
+    {
+      "id": "research-rerank-mrr",
+      "question": "By how much do rerankers improve MRR?",
+      "expected_substring": "8-15%",
+      "hit": true,
+      "top_excerpts": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmark"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "numeric"
+    },
+    {
+      "id": "research-graph-use-case",
+      "question": "When does graph retrieval help?",
+      "expected_substring": "multi-hop",
+      "hit": true,
+      "top_excerpts": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmark"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "multi-hop"
+    },
+    {
+      "id": "research-graph-no-help",
+      "question": "When does graph retrieval not help?",
+      "expected_substring": "single-document factoid",
+      "hit": true,
+      "top_excerpts": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmark"
+      ],
+      "answer": "(stubbed answer)",
+      "category": "multi-hop"
+    },
+    {
+      "id": "multi-breach-then-who",
+      "question": "If I see a data breach at 3am on a Saturday, who do I tell and how fast?",
+      "expected_substring": "within 1 hour",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "multi-hop"
+    },
+    {
+      "id": "multi-receipt-and-budget",
+      "question": "I bought a $600 training course \u2014 what approval and receipt rules apply?",
+      "expected_substring": "over $500",
+      "hit": true,
+      "top_excerpts": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a "
+      ],
+      "answer": "(stubbed answer)",
+      "category": "multi-hop"
+    }
+  ]
+}

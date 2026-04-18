@@ -1,0 +1,38 @@
+{
+  "recall_at_k": 1.0,
+  "hits": 3,
+  "total": 3,
+  "elapsed_seconds": 0.072,
+  "items": [
+    {
+      "id": "capital-france",
+      "question": "What is the capital of France?",
+      "expected_substring": "Paris is the capital",
+      "hit": true,
+      "top_excerpts": [
+        "Paris is the capital city of France and one of the largest cities in Europe.\n\nThe Eiffel Tower, located in Paris, was co"
+      ],
+      "answer": "(stubbed answer)"
+    },
+    {
+      "id": "eiffel-year",
+      "question": "When was the Eiffel Tower completed?",
+      "expected_substring": "1889",
+      "hit": true,
+      "top_excerpts": [
+        "Paris is the capital city of France and one of the largest cities in Europe.\n\nThe Eiffel Tower, located in Paris, was co"
+      ],
+      "answer": "(stubbed answer)"
+    },
+    {
+      "id": "multi-hop-eu",
+      "question": "Is France in the EU?",
+      "expected_substring": "European Union",
+      "hit": true,
+      "top_excerpts": [
+        "Paris is the capital city of France and one of the largest cities in Europe.\n\nThe Eiffel Tower, located in Paris, was co"
+      ],
+      "answer": "(stubbed answer)"
+    }
+  ]
+}

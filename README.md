@@ -38,7 +38,9 @@ The frontend now generates and stores the client session id automatically.
 - `POST /api/documents/{document_id}/reprocess`
   Queues re-embedding or retry processing.
 - `POST /api/chat`
-  Streams SSE events: `sources`, `token`, `message_saved`, `done`, and `error`.
+  Returns a grounded JSON answer `{conversation_id, message_id, sources, content}` in a single response. Keeps the synchronous contract used by most clients.
+- `POST /api/chat/stream`
+  Streams Server-Sent Events as the model generates. Event order: `sources` (with retrieval stage metadata) → many `token` events → `message_saved` → `done`. On error a single `error` event is emitted and the stream ends.
 - `PATCH /api/conversations/{conversation_id}`
   Renames a conversation.
 - `GET /api/conversations/{conversation_id}/export`
@@ -95,8 +97,25 @@ See [`.env.example`](./.env.example) for the full list. The most important ones 
 ```bash
 npm run lint
 npm run build
-pytest -q backend/tests
+pytest -q backend/tests           # unit + integration tests
+pytest -m eval backend/tests/eval  # golden-set retrieval benchmark -> docs/eval/last_run.json
 ```
+
+## Advanced Retrieval (Phase 0/1)
+All advanced-retrieval stages are behind feature flags and default OFF so the
+baseline behavior is unchanged:
+
+- `RETRIEVAL_HYBRID_ENABLED=true` — adds a Postgres `tsvector` lexical lane
+  fused with the dense lane via Reciprocal Rank Fusion (RRF). Postgres-only.
+- `RETRIEVAL_RERANKER_ENABLED=true` — over-fetches `top_k * RERANKER_OVERFETCH_FACTOR`
+  candidates and reorders them with a cross-encoder reranker. Providers:
+  `cohere`, `jina`, `bge-local` (requires `sentence-transformers`), `noop`.
+- Optional tracing: set `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` to export
+  per-stage spans; otherwise tracing is a zero-cost no-op.
+
+Schema migration v5 adds a generated `content_tsv` column plus a GIN index, and
+an HNSW index on `document_chunks.embedding` (IVFFlat fallback on older pgvector).
+
 
 ## Production Operations
 ### Health and readiness

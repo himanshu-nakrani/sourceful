@@ -133,6 +133,11 @@ def compress_chunks(
     mode: str,
     target_tokens: int,
 ) -> tuple[list[RetrievedChunk], dict[str, int | str]]:
+    """Shrink retrieved chunk excerpts to fit a token budget before RAG prompt assembly.
+
+    Returns a new list of chunks (inputs are not mutated) plus stats describing
+    the compression mode and approximate token counts before/after.
+    """
     chunks_list = list(chunks)
     if not chunks_list or mode == "none":
         return chunks_list, {"mode": "none", "before_tokens": 0, "after_tokens": 0}

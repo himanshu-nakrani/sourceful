@@ -37,11 +37,14 @@ _LINE_SPLIT_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s*", re.MULTILINE)
 
 @dataclass(slots=True)
 class TransformedQuery:
+    """One alternative query string produced by a named transform (e.g. HyDE, multi-query)."""
+
     text: str
     kind: str  # "multi_query" | "hyde" | "step_back"
 
 
 def parse_transforms(raw: str) -> list[str]:
+    """Parse a comma-separated `RETRIEVAL_QUERY_TRANSFORMS` setting into normalized kind names."""
     return [t.strip().lower() for t in (raw or "").split(",") if t.strip()]
 
 
@@ -99,6 +102,7 @@ async def _call_llm(provider: str, api_key: str, model: str, prompt: str) -> str
 async def multi_query(
     question: str, *, provider: str, api_key: str, model: str, count: int
 ) -> list[TransformedQuery]:
+    """Generate paraphrased questions to widen dense retrieval recall."""
     if count <= 0:
         return []
     prompt = (

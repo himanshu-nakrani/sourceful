@@ -142,6 +142,11 @@ async def verify_groundedness(
     api_key: str,
     model: str,
 ) -> dict[str, Any]:
+    """Run the optional second-pass LLM check that scores sentence-level grounding in sources.
+
+    On failure or when disabled, returns a fail-open payload so the primary answer
+    is never blocked.
+    """
     if not settings.groundedness_verifier_enabled:
         return {"enabled": False, "verified": None, "score": None, "sentences": []}
     if not answer.strip() or not sources:

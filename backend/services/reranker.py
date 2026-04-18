@@ -33,7 +33,7 @@ logger = logging.getLogger("ragapp.reranker")
 
 
 class RerankerError(RuntimeError):
-    pass
+    """Raised when a configured reranker provider cannot return scores (missing key, bad response)."""
 
 
 async def rerank(
@@ -42,6 +42,10 @@ async def rerank(
     *,
     top_k: int,
 ) -> list[RetrievedChunk]:
+    """Re-score and reorder retrieval chunks using the configured cross-encoder provider.
+
+    Fails open: on any error the original dense order is preserved up to ``top_k``.
+    """
     if not chunks or top_k <= 0:
         return chunks[:top_k]
 

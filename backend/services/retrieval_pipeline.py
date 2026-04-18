@@ -29,6 +29,8 @@ from backend.settings import settings
 
 @dataclass(slots=True)
 class RetrievalRequest:
+    """Inputs for a single retrieval call: embeddings, scope, and optional stage overrides."""
+
     query: str
     document_ids: list[str]
     owner_id: str
@@ -46,6 +48,8 @@ class RetrievalRequest:
 
 @dataclass(slots=True)
 class RetrievalResult:
+    """Final ranked chunks plus a ``stages`` dict for observability (counts, flags, timings)."""
+
     chunks: list[RetrievedChunk]
     stages: dict[str, Any] = field(default_factory=dict)
 
@@ -63,6 +67,7 @@ async def _dense_search(
 
 
 async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = None) -> RetrievalResult:
+    """Run dense (+ optional hybrid, rerank, MMR) retrieval and return ranked chunks."""
     hybrid_on = (
         settings.retrieval_hybrid_enabled if req.hybrid_enabled is None else req.hybrid_enabled
     )

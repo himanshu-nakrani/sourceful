@@ -30,6 +30,7 @@ import {
 } from "../lib/api";
 import { useServerState } from "../lib/server-state";
 import { useStore } from "../lib/store";
+import { EASE_OUT } from "../lib/motion";
 
 interface ChatAreaProps {
   onUploadClick: () => void;
@@ -357,7 +358,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         className="flex flex-col items-center justify-center py-20"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.6, ease: EASE_OUT }}
       >
         <motion.div
           className="flex items-center justify-center rounded-2xl mb-5"
@@ -398,7 +399,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
               }}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + i * 0.05, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ delay: 0.1 + i * 0.05, duration: 0.4, ease: EASE_OUT }}
               whileHover={{
                 borderColor: "var(--border-hover)",
                 background: "var(--bg-surface-hover)",
@@ -521,7 +522,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: idx * 0.02, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.3, delay: idx * 0.02, ease: EASE_OUT }}
                   >
                     <MessageBubble
                       message={message}
@@ -574,15 +575,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ background: "var(--bg-primary)" }}>
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto relative">
             <motion.div
-              className="flex items-end rounded-2xl overflow-hidden"
-              style={{
-                background: "var(--bg-secondary)",
-                border: "1px solid var(--border)",
-              }}
-              whileFocusWithin={{
-                borderColor: "var(--border-hover)",
-                boxShadow: "0 0 0 3px rgba(99,102,241,0.06)",
-              }}
+              className="flex items-end rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--bg-secondary)] transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--border-hover)] focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.06)]"
             >
               <textarea
                 ref={textareaRef}
@@ -673,7 +666,7 @@ function RetrievalDebugPanel({
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.2, ease: EASE_OUT }}
           style={{
             borderBottom: "1px solid var(--border)",
             background: "var(--bg-secondary)",
@@ -878,7 +871,7 @@ function StateCard({
       className="flex flex-col items-center justify-center py-20"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.6, ease: EASE_OUT }}
     >
       <motion.div
         className="flex items-center justify-center rounded-2xl mb-5"

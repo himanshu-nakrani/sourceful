@@ -6,6 +6,7 @@ import { CheckCircle2, Loader2, Upload, X, FileUp } from "lucide-react";
 import { getJob, ingestDocument, type JobInfo } from "../lib/api";
 import { useServerState } from "../lib/server-state";
 import { useStore } from "../lib/store";
+import { EASE_OUT } from "../lib/motion";
 
 interface UploadModalProps {
   open: boolean;
@@ -151,7 +152,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
           initial={{ opacity: 0, scale: 0.95, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 8 }}
-          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.25, ease: EASE_OUT }}
         >
           <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
             <div>

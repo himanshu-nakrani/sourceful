@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { LockKeyhole, Users } from "lucide-react";
 
 import { getGoogleOAuthClientId, googleLogin, login, signup } from "../lib/api";
+import { EASE_OUT } from "../lib/motion";
 import { useStore } from "../lib/store";
 
 const container = {
@@ -14,7 +15,7 @@ const container = {
 
 const item = {
   hidden: { opacity: 0, y: 16, filter: "blur(4px)" },
-  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.5, ease: EASE_OUT } },
 };
 
 export default function AuthScreen() {

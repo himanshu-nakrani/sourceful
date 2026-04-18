@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, FileText, KeyRound, Sparkles, UserCircle, Zap, Shield, MessageSquare } from "lucide-react";
 import { type Provider } from "../lib/api";
+import { EASE_OUT } from "../lib/motion";
 import { useStore, DEFAULT_CHAT, DEFAULT_EMBEDDING } from "../lib/store";
 
 interface WelcomeScreenProps {
@@ -26,7 +27,7 @@ const container = {
 
 const item = {
   hidden: { opacity: 0, y: 16, filter: "blur(4px)" },
-  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.5, ease: EASE_OUT } },
 };
 
 const featureCards = [
@@ -339,7 +340,7 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
         className="w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.5, ease: EASE_OUT }}
       >
         <button
           type="button"

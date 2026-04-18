@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Activity, BarChart3, Database, MessagesSquare, RefreshCcw, Users } from "lucide-react";
 
 import { getAnalyticsOverview, type AnalyticsOverview } from "../lib/api";
+import { EASE_OUT } from "../lib/motion";
 
 const container = {
   hidden: { opacity: 0 },
@@ -13,7 +14,7 @@ const container = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE_OUT } },
 };
 
 export default function InsightsDashboard() {
@@ -140,7 +141,7 @@ export default function InsightsDashboard() {
                 style={{ color: "var(--text-primary)", letterSpacing: "-0.03em" }}
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2 + i * 0.05, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ delay: 0.2 + i * 0.05, duration: 0.4, ease: EASE_OUT }}
               >
                 {card.value}
               </motion.p>

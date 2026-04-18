@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Box, CheckCircle2, Cpu, KeyRound, RotateCcw, Sparkles, Zap } from "lucide-react";
 
 import { type Provider } from "../lib/api";
+import { EASE_OUT } from "../lib/motion";
 import { DEFAULT_CHAT, DEFAULT_EMBEDDING, useStore } from "../lib/store";
 
 const CHAT_MODEL_OPTIONS: Record<Provider, string[]> = {
@@ -47,7 +48,7 @@ const container = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE_OUT } },
 };
 
 export default function ModelManagement() {

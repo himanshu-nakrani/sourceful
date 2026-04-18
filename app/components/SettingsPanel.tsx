@@ -13,6 +13,7 @@ import {
   type ModelsResponse,
 } from "../lib/api";
 import { DEFAULT_CHAT, DEFAULT_EMBEDDING, useStore } from "../lib/store";
+import { EASE_OUT } from "../lib/motion";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -110,7 +111,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         }}
         initial={{ opacity: 0, scale: 0.96, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.25, ease: EASE_OUT }}
       >
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
           <div>
@@ -466,7 +467,7 @@ function CollapsibleSection({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.25, ease: EASE_OUT }}
             className="overflow-hidden"
           >
             <div className="px-4 py-4" style={{ background: "var(--bg-secondary)" }}>

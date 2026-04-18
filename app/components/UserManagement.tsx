@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Loader2, RefreshCcw, Shield, ShieldCheck, UserCheck, UserX, Users } from "lucide-react";
 
 import { listUsers, updateUser, type AuthUser } from "../lib/api";
+import { EASE_OUT } from "../lib/motion";
 import { useStore } from "../lib/store";
 
 const container = {
@@ -14,7 +15,7 @@ const container = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE_OUT } },
 };
 
 export default function UserManagement() {
@@ -269,7 +270,7 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
         style={{ color: "var(--text-primary)", letterSpacing: "-0.03em" }}
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.2, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ delay: 0.2, duration: 0.4, ease: EASE_OUT }}
       >
         {value}
       </motion.p>

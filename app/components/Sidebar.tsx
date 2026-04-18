@@ -25,6 +25,7 @@ import {
   renameConversation,
   reprocessDocument,
 } from "../lib/api";
+import { EASE_OUT } from "../lib/motion";
 import { useServerState } from "../lib/server-state";
 import { useStore } from "../lib/store";
 
@@ -45,7 +46,7 @@ interface SidebarProps {
  */
 const listItem = {
   hidden: { opacity: 0, x: -8 },
-  show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: EASE_OUT } },
 };
 
 export default function Sidebar({ onUploadClick }: SidebarProps) {
@@ -492,7 +493,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.25, ease: EASE_OUT }}
                     className="ml-6 mt-1 pl-3 overflow-hidden"
                     style={{ borderLeft: "1px solid var(--border)" }}
                   >

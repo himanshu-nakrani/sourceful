@@ -142,9 +142,10 @@ export default function AuthScreen() {
           </div>
 
           <form className="mt-6 flex flex-col gap-4" onSubmit={submit}>
-            <label className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            <label htmlFor="auth-email" className="text-sm" style={{ color: "var(--text-secondary)" }}>
               Email
               <input
+                id="auth-email"
                 required
                 type="email"
                 value={email}
@@ -155,9 +156,10 @@ export default function AuthScreen() {
                 autoComplete="email"
               />
             </label>
-            <label className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            <label htmlFor="auth-password" className="text-sm" style={{ color: "var(--text-secondary)" }}>
               Password
               <input
+                id="auth-password"
                 required
                 minLength={mode === "signup" ? 8 : undefined}
                 type="password"

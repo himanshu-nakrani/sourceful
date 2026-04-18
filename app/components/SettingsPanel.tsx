@@ -300,7 +300,9 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 ) : (
                   <div className="flex flex-col gap-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label htmlFor="settings-email" className="sr-only">Email</label>
                       <input
+                        id="settings-email"
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
                         placeholder="Email"
@@ -309,7 +311,9 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                         className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                       />
+                      <label htmlFor="settings-password" className="sr-only">Password</label>
                       <input
+                        id="settings-password"
                         type="password"
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}

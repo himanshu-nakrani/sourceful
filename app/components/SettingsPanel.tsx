@@ -304,6 +304,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
                         placeholder="Email"
+                        type="email"
                         aria-label="Email"
                         className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}

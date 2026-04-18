@@ -1,0 +1,11 @@
+{
+  "note": "Phase 0 baseline for the golden-set retrieval harness. This file is committed as the reference number. Run `pytest -m eval` to generate docs/eval/last_run.json and diff against this baseline.",
+  "recall_at_k": 1.0,
+  "top_k": 3,
+  "embedding": "sha1-bucketed token TF (EMBED_DIM=64)",
+  "retrieval": {
+    "hybrid_enabled": false,
+    "reranker_enabled": false,
+    "notes": "Phase 1 flips these flags ON for the follow-up report; the baseline deliberately reflects the pre-Phase-1 pipeline so quality deltas are attributable."
+  }
+}

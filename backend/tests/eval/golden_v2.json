@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "description": "Expanded golden retrieval dataset covering policy/technical/numeric/multi-hop categories.  Each item ingests a text document with multiple sections; the harness asserts that the chunk containing `expected_substring` appears in the top-K retrieval.",
+  "documents": {
+    "company_policy": {
+      "filename": "policy.txt",
+      "sections": [
+        "All employees are entitled to 20 paid vacation days per calendar year. Unused vacation days may be carried over up to a maximum of 5 days into the next year.",
+        "Remote work is permitted up to 3 days per week with manager approval. Employees working remotely must maintain a secure home office environment and use a company-issued VPN.",
+        "Expense reimbursements are processed within 10 business days of submission. Receipts must be uploaded via the Expensify integration within 30 days of the expense date.",
+        "Parental leave provides 16 weeks of paid time off for primary caregivers and 8 weeks for secondary caregivers, effective from the child's birth or adoption placement.",
+        "The security incident response team must be notified within 1 hour of any suspected data breach via the #sec-incidents Slack channel or a page to the on-call rotation.",
+        "Professional development budget is $2,500 per employee per year, covering courses, books, and conference attendance. Pre-approval is required for any single expense over $500."
+      ]
+    },
+    "technical_guide": {
+      "filename": "infra.txt",
+      "sections": [
+        "The staging environment runs on a Kubernetes cluster in us-east-1, provisioned via Terraform in the `infra/staging` module. Node pools auto-scale between 3 and 12 nodes.",
+        "Postgres backups run nightly at 02:00 UTC using pg_dump, with a 30-day retention policy. Point-in-time recovery is available for the most recent 7 days via continuous WAL archiving.",
+        "The ingestion worker reads jobs from the `document_jobs` table using a SKIP LOCKED row-level lock. Heartbeats must refresh every 60 seconds or the job is considered orphaned.",
+        "Redis is used only as a cache for session tokens and rate-limit counters. Any data that must survive a restart should live in Postgres, not Redis.",
+        "pgvector HNSW indexes should be rebuilt after bulk ingests of more than 10,000 chunks. Use `REINDEX INDEX CONCURRENTLY idx_document_chunks_embedding_hnsw` to avoid downtime.",
+        "The CI pipeline runs backend pytest + frontend `npm run build` + `pytest -m eval` in parallel. The eval job compares `docs/eval/last_run.json` against `docs/eval/baseline.json` and fails the build if recall drops by more than 2 percentage points."
+      ]
+    },
+    "research_abstract": {
+      "filename": "research.txt",
+      "sections": [
+        "Large language models fine-tuned on domain-specific corpora show a 14.7% absolute improvement on downstream QA benchmarks compared to zero-shot baselines, measured across 12 tasks.",
+        "Reciprocal rank fusion with k=60 produced the best overall retrieval quality in our ablation study, outperforming linear-weighted score fusion by 3.2 points on mean recall@10.",
+        "Contextual retrieval, which prepends a one-sentence document-level summary to each chunk before embedding, reduced retrieval failures by up to 49% in the evaluations we conducted.",
+        "Cross-encoder rerankers added 120-280ms of latency at p95 but improved MRR by 8-15% depending on corpus. We recommend gating rerank behind a feature flag for latency-sensitive paths.",
+        "Graph-based retrieval complemented dense retrieval for multi-hop questions requiring synthesis across 3+ documents, but provided no benefit for single-document factoid questions."
+      ]
+    }
+  },
+  "items": [
+    {"id": "policy-vacation-days", "document": "company_policy", "question": "How many paid vacation days per year do employees get?", "expected_substring": "20 paid vacation days", "category": "policy"},
+    {"id": "policy-vacation-carryover", "document": "company_policy", "question": "Can I carry unused vacation into next year?", "expected_substring": "carried over up to a maximum of 5 days", "category": "policy"},
+    {"id": "policy-remote-days", "document": "company_policy", "question": "How many days per week can I work remotely?", "expected_substring": "3 days per week", "category": "policy"},
+    {"id": "policy-vpn-required", "document": "company_policy", "question": "Do I need a VPN when working from home?", "expected_substring": "company-issued VPN", "category": "policy"},
+    {"id": "policy-expense-timing", "document": "company_policy", "question": "How long do expense reimbursements take?", "expected_substring": "10 business days", "category": "policy"},
+    {"id": "policy-expense-receipt-deadline", "document": "company_policy", "question": "When do I have to submit receipts by?", "expected_substring": "30 days of the expense date", "category": "policy"},
+    {"id": "policy-parental-primary", "document": "company_policy", "question": "How much parental leave do primary caregivers get?", "expected_substring": "16 weeks", "category": "policy"},
+    {"id": "policy-parental-secondary", "document": "company_policy", "question": "What about secondary caregivers' leave?", "expected_substring": "8 weeks for secondary", "category": "policy"},
+    {"id": "policy-incident-channel", "document": "company_policy", "question": "Where should I report a suspected data breach?", "expected_substring": "#sec-incidents", "category": "policy"},
+    {"id": "policy-incident-window", "document": "company_policy", "question": "How quickly must a security incident be reported?", "expected_substring": "within 1 hour", "category": "policy"},
+    {"id": "policy-development-budget", "document": "company_policy", "question": "What's the professional development budget?", "expected_substring": "$2,500", "category": "policy"},
+    {"id": "policy-preapproval-threshold", "document": "company_policy", "question": "When do I need pre-approval for development expenses?", "expected_substring": "over $500", "category": "policy"},
+
+    {"id": "tech-staging-region", "document": "technical_guide", "question": "Where is the staging environment hosted?", "expected_substring": "us-east-1", "category": "technical"},
+    {"id": "tech-terraform-module", "document": "technical_guide", "question": "Which Terraform module provisions staging?", "expected_substring": "infra/staging", "category": "technical"},
+    {"id": "tech-backup-time", "document": "technical_guide", "question": "When do Postgres backups run?", "expected_substring": "02:00 UTC", "category": "technical"},
+    {"id": "tech-pitr-window", "document": "technical_guide", "question": "How far back can we do point-in-time recovery?", "expected_substring": "most recent 7 days", "category": "technical"},
+    {"id": "tech-worker-lock", "document": "technical_guide", "question": "How does the ingestion worker claim jobs?", "expected_substring": "SKIP LOCKED", "category": "technical"},
+    {"id": "tech-worker-heartbeat", "document": "technical_guide", "question": "How often must the worker heartbeat?", "expected_substring": "every 60 seconds", "category": "technical"},
+    {"id": "tech-redis-usage", "document": "technical_guide", "question": "What is Redis used for?", "expected_substring": "session tokens and rate-limit counters", "category": "technical"},
+    {"id": "tech-hnsw-reindex", "document": "technical_guide", "question": "When should we reindex the HNSW index?", "expected_substring": "10,000 chunks", "category": "technical"},
+    {"id": "tech-eval-gate", "document": "technical_guide", "question": "What makes the CI build fail on retrieval quality?", "expected_substring": "2 percentage points", "category": "technical"},
+
+    {"id": "research-finetuning-gain", "document": "research_abstract", "question": "How much does fine-tuning improve QA benchmarks?", "expected_substring": "14.7%", "category": "numeric"},
+    {"id": "research-rrf-k", "document": "research_abstract", "question": "What RRF k value was best?", "expected_substring": "k=60", "category": "numeric"},
+    {"id": "research-rrf-winner", "document": "research_abstract", "question": "Did RRF beat score-weighted fusion?", "expected_substring": "Reciprocal rank fusion", "category": "technical"},
+    {"id": "research-contextual-gain", "document": "research_abstract", "question": "How much did contextual retrieval reduce failures?", "expected_substring": "49%", "category": "numeric"},
+    {"id": "research-rerank-latency", "document": "research_abstract", "question": "What latency does a cross-encoder reranker add?", "expected_substring": "120-280ms", "category": "numeric"},
+    {"id": "research-rerank-mrr", "document": "research_abstract", "question": "By how much do rerankers improve MRR?", "expected_substring": "8-15%", "category": "numeric"},
+    {"id": "research-graph-use-case", "document": "research_abstract", "question": "When does graph retrieval help?", "expected_substring": "multi-hop", "category": "multi-hop"},
+    {"id": "research-graph-no-help", "document": "research_abstract", "question": "When does graph retrieval not help?", "expected_substring": "single-document factoid", "category": "multi-hop"},
+
+    {"id": "multi-breach-then-who", "document": "company_policy", "question": "If I see a data breach at 3am on a Saturday, who do I tell and how fast?", "expected_substring": "within 1 hour", "category": "multi-hop"},
+    {"id": "multi-receipt-and-budget", "document": "company_policy", "question": "I bought a $600 training course — what approval and receipt rules apply?", "expected_substring": "over $500", "category": "multi-hop"}
+  ]
+}

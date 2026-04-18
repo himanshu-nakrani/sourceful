@@ -51,6 +51,90 @@ async def create_openai_text(api_key: str, model: str, messages: list[dict[str, 
     return response.choices[0].message.content or ""
 
 
+async def stream_openai_text(api_key: str, model: str, messages: list[dict[str, str]]):
+    """Yield OpenAI chat completion tokens as they arrive."""
+    client = AsyncOpenAI(api_key=api_key, timeout=settings.request_timeout_seconds)
+    stream = await client.chat.completions.create(
+        model=model,
+        messages=messages,  # type: ignore[arg-type]
+        stream=True,
+    )
+    async for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        if delta is None:
+            continue
+        piece = getattr(delta, "content", None)
+        if piece:
+            yield piece
+            continue
+        refusal = getattr(delta, "refusal", None)
+        if refusal:
+            yield refusal
+
+
+def stream_gemini_text(api_key: str, model_name: str, messages: list[dict[str, str]]):
+    """Synchronous generator yielding Gemini tokens; caller runs in a thread."""
+    import google.generativeai as genai
+
+    genai.configure(api_key=api_key)
+
+    system_instruction = None
+    history: list[dict] = []
+
+    for message in messages:
+        if message["role"] == "system":
+            system_instruction = message["content"]
+        elif message["role"] == "assistant":
+            history.append({"role": "model", "parts": [message["content"]]})
+        elif message["role"] == "user":
+            if history and history[-1]["role"] == "user":
+                history[-1]["parts"][0] += "\n\n" + message["content"]
+            else:
+                history.append({"role": "user", "parts": [message["content"]]})
+
+    prompt = ""
+    if history and history[-1]["role"] == "user":
+        prompt = history.pop()["parts"][0]
+
+    model = genai.GenerativeModel(model_name=model_name, system_instruction=system_instruction)
+    if history:
+        chat = model.start_chat(history=history)
+        response_iter = chat.send_message(prompt, stream=True)
+    else:
+        response_iter = model.generate_content(prompt, stream=True)
+
+    for chunk in response_iter:
+        text = _extract_gemini_stream_text(chunk)
+        if text:
+            yield text
+
+
+def _extract_gemini_stream_text(chunk) -> str:
+    """Incremental stream chunks often lack `.text` (it raises until the stream completes).
+
+    Prefer structured candidates/parts, then fall back to `.text` when available.
+    """
+    parts_out: list[str] = []
+    candidates = getattr(chunk, "candidates", None) or []
+    for cand in candidates:
+        content = getattr(cand, "content", None)
+        if content is None:
+            continue
+        for part in getattr(content, "parts", None) or []:
+            t = getattr(part, "text", None)
+            if t:
+                parts_out.append(t)
+    if parts_out:
+        return "".join(parts_out)
+    try:
+        t2 = chunk.text
+    except (ValueError, AttributeError):
+        return ""
+    return t2 or ""
+
+
 
 def gemini_text(api_key: str, model_name: str, messages: list[dict[str, str]]) -> str:
     import google.generativeai as genai

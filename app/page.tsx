@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useState } from "react";
+import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import WelcomeScreen from "./components/WelcomeScreen";
 import Sidebar from "./components/Sidebar";
@@ -47,9 +48,19 @@ function AppShell() {
 
   if (state.authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center gap-3" style={{ background: "var(--bg-primary)", color: "var(--text-secondary)" }}>
-        <Loader2 size={20} className="animate-spin" />
-        Loading...
+      <div
+        className="flex min-h-screen items-center justify-center gap-3"
+        style={{ background: "var(--bg-primary)", color: "var(--text-muted)" }}
+      >
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          className="flex items-center gap-3"
+        >
+          <Loader2 size={16} className="animate-spin" />
+          <span className="text-sm">Loading</span>
+        </motion.div>
       </div>
     );
   }
@@ -72,9 +83,14 @@ function AppShell() {
       onDrop={handleGlobalDrop}
     >
       {state.sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity"
+        <motion.div
+          className="fixed inset-0 bg-black/40 z-30 md:hidden"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
           onClick={() => dispatch({ type: "SET_SIDEBAR", payload: false })}
+          style={{ backdropFilter: "blur(4px)" }}
         />
       )}
       <Sidebar onUploadClick={() => openUpload()} />

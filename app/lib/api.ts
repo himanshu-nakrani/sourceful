@@ -375,11 +375,25 @@ export async function deleteConversation(
   if (!res.ok) throw new Error(await errorMessage(res));
 }
 
+export interface RetrievalStages {
+  hybrid_enabled?: boolean;
+  reranker_enabled?: boolean;
+  dense_k?: number;
+  requested_top_k?: number;
+  dense_hits?: number;
+  fts_hits?: number;
+  fused_hits?: number;
+  rerank_reordered?: number;
+  final_hits?: number;
+  [key: string]: unknown;
+}
+
 export interface ChatResponse {
   conversation_id: string;
   message_id: string;
   sources: Citation[];
   content: string;
+  stages?: RetrievalStages;
 }
 
 /**
@@ -428,6 +442,158 @@ export async function sendChat(
   }
 
   return res.json();
+}
+
+// ---- SSE streaming chat ------------------------------------------------
+
+export interface ChatStreamEvent {
+  type: "sources" | "token" | "message_saved" | "done" | "grounding" | "error";
+  data: unknown;
+}
+
+export interface GroundingSummary {
+  enabled: boolean;
+  verified: boolean | null;
+  score: number | null;
+  sentences?: Array<{ text: string; citations: number[]; supported: boolean }>;
+}
+
+export interface SendChatStreamCallbacks {
+  onSources?: (payload: { conversation_id: string; sources: Citation[]; stages?: RetrievalStages }) => void;
+  onToken?: (delta: string) => void;
+  onMessageSaved?: (payload: { conversation_id: string; message_id: string }) => void;
+  onDone?: (payload: { content: string }) => void;
+  onGrounding?: (payload: GroundingSummary) => void;
+  onError?: (payload: { error: string; code?: string }) => void;
+}
+
+/** Parse one SSE frame into {event, data}. Returns null on malformed input. */
+function parseSseFrame(frame: string): { event: string; data: string } | null {
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const rawLine of frame.split("\n")) {
+    const line = rawLine.replace(/\r$/, "");
+    if (!line) continue;
+    if (line.startsWith(":")) continue; // comment/heartbeat
+    const idx = line.indexOf(":");
+    if (idx === -1) continue;
+    const field = line.slice(0, idx);
+    const value = line.slice(idx + 1).replace(/^ /, "");
+    if (field === "event") event = value;
+    else if (field === "data") dataLines.push(value);
+  }
+  if (dataLines.length === 0) return null;
+  return { event, data: dataLines.join("\n") };
+}
+
+export async function sendChatStream(
+  auth: ClientAuthContext,
+  provider: Provider,
+  model: string,
+  documentId: string,
+  question: string,
+  conversationId: string | null,
+  callbacks: SendChatStreamCallbacks,
+  signal?: AbortSignal,
+  topK?: number,
+  similarityThreshold?: number,
+  documentIds?: string[]
+): Promise<void> {
+  const res = await apiFetch("/api/chat/stream", {
+    method: "POST",
+    headers: baseHeaders(auth, { includeJson: true, includeProviderKey: true }),
+    body: JSON.stringify({
+      provider,
+      model: model.trim(),
+      document_id: documentId,
+      document_ids: documentIds && documentIds.length > 1 ? documentIds : undefined,
+      question: question.trim(),
+      conversation_id: conversationId,
+      top_k: topK,
+      similarity_threshold: similarityThreshold,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    // When the server returns a non-2xx (e.g. auth / validation), there's
+    // no SSE stream — surface the JSON error like the non-streaming path.
+    throw new Error(await errorMessage(res));
+  }
+  const body = res.body;
+  if (!body) {
+    throw new Error("Streaming response has no body.");
+  }
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  const dispatchFrame = (frame: string) => {
+    const parsed = parseSseFrame(frame);
+    if (!parsed) return;
+    let payload: unknown = parsed.data;
+    try {
+      payload = JSON.parse(parsed.data);
+    } catch {
+      // Keep payload as the raw string.
+    }
+    switch (parsed.event) {
+      case "sources":
+        callbacks.onSources?.(payload as { conversation_id: string; sources: Citation[]; stages?: RetrievalStages });
+        break;
+      case "token":
+        callbacks.onToken?.((payload as { delta: string }).delta ?? "");
+        break;
+      case "message_saved":
+        callbacks.onMessageSaved?.(payload as { conversation_id: string; message_id: string });
+        break;
+      case "grounding":
+        callbacks.onGrounding?.(payload as GroundingSummary);
+        break;
+      case "done":
+        callbacks.onDone?.(payload as { content: string });
+        break;
+      case "error":
+        callbacks.onError?.(payload as { error: string; code?: string });
+        break;
+    }
+  };
+
+  const consumeCompleteFrames = () => {
+    // Uvicorn uses \n\n; some proxies use \r\n\r\n.
+    while (true) {
+      const m = buffer.match(/^([\s\S]*?)(\r\n\r\n|\n\n)/);
+      if (!m) break;
+      dispatchFrame(m[1]);
+      buffer = buffer.slice(m[0].length);
+    }
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (value?.byteLength) {
+        buffer += decoder.decode(value, { stream: !done });
+      } else if (done) {
+        buffer += decoder.decode(new Uint8Array(), { stream: false });
+      }
+      consumeCompleteFrames();
+      if (done) {
+        const tail = buffer.trim();
+        if (tail) {
+          dispatchFrame(tail);
+        }
+        break;
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 /**

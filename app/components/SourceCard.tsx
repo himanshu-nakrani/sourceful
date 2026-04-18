@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { BookOpen, ChevronDown, ChevronUp } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { BookOpen, ChevronDown } from "lucide-react";
 import type { Citation } from "../lib/api";
 
 interface SourceCardProps {
@@ -17,13 +18,15 @@ const SourceCard = React.memo(function SourceCard({ sources }: SourceCardProps) 
   if (!sources.length) return null;
 
   return (
-    <div
-      className="rounded-xl animate-fade-in"
+    <motion.div
+      className="rounded-2xl overflow-hidden"
       style={{
         background: "var(--bg-surface)",
         border: "1px solid var(--border)",
-        overflow: "hidden",
       }}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
     >
       {/* [a11y] Added aria-expanded to communicate toggle state to assistive technology */}
       <button
@@ -33,53 +36,74 @@ const SourceCard = React.memo(function SourceCard({ sources }: SourceCardProps) 
         className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors"
         style={{ background: expanded ? "var(--bg-tertiary)" : "transparent" }}
       >
-        <BookOpen size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
-        <span className="text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+        <BookOpen size={13} style={{ color: "var(--accent-brand)", flexShrink: 0 }} />
+        <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
           {sources.length} source{sources.length !== 1 ? "s" : ""} retrieved
         </span>
         <div className="flex-1" />
-        {expanded ? (
-          <ChevronUp size={14} style={{ color: "var(--text-tertiary)" }} />
-        ) : (
-          <ChevronDown size={14} style={{ color: "var(--text-tertiary)" }} />
-        )}
+        <motion.div
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <ChevronDown size={13} style={{ color: "var(--text-muted)" }} />
+        </motion.div>
       </button>
 
-      {expanded && (
-        <div className="px-4 pb-3 flex flex-col gap-3" style={{ borderTop: "1px solid var(--border)" }}>
-          {sources.map((source, index) => (
-            <div
-              key={source.chunk_id}
-              className="rounded-lg px-3 py-3 mt-3"
-              style={{
-                background: "var(--bg-tertiary)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              {/* [typography] Changed text-[11px] to text-xs for minimum readable size */}
-              <div className="flex items-center gap-2 mb-2 text-xs uppercase tracking-wider">
-                <span
-                  className="px-1.5 py-0.5 rounded"
-                  style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-3 flex flex-col gap-2" style={{ borderTop: "1px solid var(--border)" }}>
+              {sources.map((source, index) => (
+                <motion.div
+                  key={source.chunk_id}
+                  className="rounded-xl px-3 py-3 mt-2"
+                  style={{
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                  }}
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.04, duration: 0.25 }}
+                  whileHover={{ borderColor: "var(--border-hover)" }}
                 >
-                  [{index + 1}]
-                </span>
-                <span style={{ color: "var(--text-tertiary)" }}>{source.chunk_id}</span>
-                {source.page_number ? (
-                  <span style={{ color: "var(--text-tertiary)" }}>Page {source.page_number}</span>
-                ) : null}
-                <span style={{ color: "var(--text-tertiary)" }}>
-                  {Math.max(0, Math.min(100, Math.round(source.score * 100)))}% match
-                </span>
-              </div>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                {source.excerpt}
-              </p>
+                  {/* [typography] Changed text-[11px] to text-xs for minimum readable size */}
+                  <div className="flex items-center gap-2 mb-1.5 text-[10px] uppercase tracking-widest flex-wrap">
+                    <span
+                      className="px-1.5 py-0.5 rounded-md font-medium"
+                      style={{ background: "var(--accent-brand-soft)", color: "var(--accent-brand)" }}
+                    >
+                      [{index + 1}]
+                    </span>
+                    <span style={{ color: "var(--text-muted)" }}>{source.chunk_id}</span>
+                    {source.page_number ? (
+                      <span style={{ color: "var(--text-muted)" }}>p.{source.page_number}</span>
+                    ) : null}
+                    <span
+                      className="px-1.5 py-0.5 rounded-md"
+                      style={{
+                        background: source.score >= 0.8 ? "var(--success-soft)" : "var(--warning-soft)",
+                        color: source.score >= 0.8 ? "var(--success)" : "var(--warning)",
+                      }}
+                    >
+                      {Math.max(0, Math.min(100, Math.round(source.score * 100)))}%
+                    </span>
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                    {source.excerpt}
+                  </p>
+                </motion.div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
-    </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 });
 

@@ -29,6 +29,8 @@ class RetrievedChunk:
     excerpt: str
     score: float
     page_number: int | None = None
+    chunk_type: str = "text"
+    metadata_json: str | None = None
 
 
 
@@ -56,14 +58,18 @@ async def replace_chunks(
                 chunk.chunk_index,
                 chunk.content,
                 chunk.page_number,
+                chunk.parent_content,
+                chunk.chunk_type,
+                chunk.metadata_json,
                 _vector_literal(embedding),
             )
             for chunk, embedding in zip(chunks, embeddings, strict=True)
         ]
         await execute_many(
             """
-            INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, embedding)
-            VALUES (?, ?, ?, ?, ?, ?, ?::vector)
+            INSERT INTO document_chunks
+                (id, document_id, owner_id, chunk_index, content, page_number, parent_content, chunk_type, metadata_json, embedding)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::vector)
             """,
             params_list,
         )
@@ -76,14 +82,18 @@ async def replace_chunks(
                 chunk.chunk_index,
                 chunk.content,
                 chunk.page_number,
+                chunk.parent_content,
+                chunk.chunk_type,
+                chunk.metadata_json,
                 orjson.dumps(embedding).decode("utf-8") if orjson is not None else _embedding_adapter.dump_json(embedding).decode("utf-8"),
             )
             for chunk, embedding in zip(chunks, embeddings, strict=True)
         ]
         await execute_many(
             """
-            INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, embedding_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO document_chunks
+                (id, document_id, owner_id, chunk_index, content, page_number, parent_content, chunk_type, metadata_json, embedding_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             params_list,
         )
@@ -117,6 +127,20 @@ def _load_embedding_json(payload: str) -> list[float]:
             payload = payload.encode("utf-8")
         return orjson.loads(payload)
     return json.loads(payload)
+
+
+def _excerpt_from_row(row: dict) -> str:
+    """Prefer parent_content when parent-doc retrieval is enabled."""
+    if settings.retrieval_parent_doc_enabled:
+        parent = row.get("parent_content") if hasattr(row, "get") else None
+        if parent is None:
+            try:
+                parent = row["parent_content"]
+            except (KeyError, IndexError):
+                parent = None
+        if parent:
+            return parent
+    return row["content"]
 
 
 def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float], top_k: int, min_score: float = 0.0) -> list[RetrievedChunk]:
@@ -160,7 +184,7 @@ def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float],
             RetrievedChunk(
                 chunk_id=row["id"],
                 document_id=row["document_id"],
-                excerpt=row["content"],
+                excerpt=_excerpt_from_row(row),
                 score=score,
                 page_number=row.get("page_number"),
             )
@@ -191,7 +215,7 @@ async def query_similar(
     if settings.using_postgres:
         rows = await fetch_all(
             """
-            SELECT id, document_id, content, page_number,
+            SELECT id, document_id, content, page_number, parent_content,
                    1 - (embedding <=> ?::vector) AS score
             FROM document_chunks
             WHERE document_id = ? AND owner_id = ?
@@ -204,7 +228,7 @@ async def query_similar(
             RetrievedChunk(
                 chunk_id=row["id"],
                 document_id=row["document_id"],
-                excerpt=row["content"],
+                excerpt=_excerpt_from_row(row),
                 score=float(row["score"] or 0.0),
                 page_number=row.get("page_number"),
             )
@@ -213,7 +237,7 @@ async def query_similar(
         ]
 
     rows = await fetch_all(
-        "SELECT id, document_id, content, page_number, embedding_json FROM document_chunks WHERE document_id = ? AND owner_id = ?",
+        "SELECT id, document_id, content, page_number, parent_content, embedding_json FROM document_chunks WHERE document_id = ? AND owner_id = ?",
         (document_id, owner_id),
     )
     if not rows:

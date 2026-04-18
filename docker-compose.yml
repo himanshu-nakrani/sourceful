@@ -22,7 +22,7 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql://document_rag:document_rag@postgres:5432/document_rag
-      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002
       LOG_LEVEL: INFO
       RATE_LIMIT_RPM: 120
       REQUEST_TIMEOUT_SECONDS: 60

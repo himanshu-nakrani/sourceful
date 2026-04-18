@@ -176,6 +176,53 @@ def test_full_ingest_chat_and_conversation_flow(client):
     assert analytics.json()["totals"]["users"] >= 1
 
 
+def test_chat_stream_sse_emits_token_and_done_events(client):
+    login_superuser(client)
+    response = client.post(
+        "/api/ingest",
+        data={"provider": "openai"},
+        files={"file": ("stream.txt", b"The capital of France is Paris.", "text/plain")},
+        headers=PROVIDER_HEADERS,
+    )
+    assert response.status_code == 202
+    ingest_payload = response.json()
+
+    with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
+        mock_embed_texts.return_value = [[0.1] * 3]
+        job = asyncio.run(claim_next_job())
+        assert job is not None
+        asyncio.run(process_job(job))
+
+    async def fake_openai_stream(*_a, **_k):
+        yield "Paris"
+        yield " "
+        yield "ok."
+
+    with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
+        "backend.routers.chat.stream_openai_text", fake_openai_stream
+    ):
+        mock_embed_query.return_value = [0.1] * 3
+
+        stream_resp = client.post(
+            "/api/chat/stream",
+            headers=PROVIDER_HEADERS,
+            json={
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "question": "What is the capital of France?",
+                "document_id": ingest_payload["document_id"],
+            },
+        )
+        assert stream_resp.status_code == 200
+        assert "text/event-stream" in (stream_resp.headers.get("content-type") or "")
+        body = stream_resp.text
+        assert "event: sources" in body
+        assert body.count("event: token") >= 3
+        assert "Paris" in body and "ok." in body
+        assert "event: message_saved" in body
+        assert "event: done" in body
+
+
 def test_job_retries_then_terminal_failure(client):
     login_superuser(client)
     response = client.post(

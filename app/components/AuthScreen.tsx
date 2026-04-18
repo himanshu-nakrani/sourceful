@@ -1,10 +1,21 @@
 "use client";
 
 import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { LockKeyhole, Users } from "lucide-react";
 
 import { getGoogleOAuthClientId, googleLogin, login, signup } from "../lib/api";
 import { useStore } from "../lib/store";
+
+const container = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.15 } },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 16, filter: "blur(4px)" },
+  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
+};
 
 export default function AuthScreen() {
   const { dispatch } = useStore();
@@ -80,26 +91,48 @@ export default function AuthScreen() {
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center px-4 py-10"
-      style={{
-        background:
-          "radial-gradient(circle at top left, rgba(59,130,246,0.18), transparent 28%), radial-gradient(circle at bottom right, rgba(16,185,129,0.14), transparent 24%), var(--bg-primary)",
-      }}
+      className="flex min-h-screen items-center justify-center px-4 py-10 relative overflow-hidden"
+      style={{ background: "var(--bg-primary)" }}
     >
-      <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <section
-          className="rounded-[32px] border px-5 sm:px-7 py-6 sm:py-8"
-          style={{ borderColor: "var(--border)", background: "rgba(14,14,17,0.9)" }}
+      {/* Ambient orbs */}
+      <motion.div
+        className="absolute top-[-15%] left-[-8%] w-[450px] h-[450px] rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, rgba(99,102,241,0.12), transparent 70%)" }}
+        animate={{ scale: [1, 1.1, 1], x: [0, 20, 0] }}
+        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute bottom-[-10%] right-[-8%] w-[400px] h-[400px] rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, rgba(34,197,94,0.08), transparent 70%)" }}
+        animate={{ scale: [1, 1.12, 1], x: [0, -15, 0] }}
+        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+      />
+
+      <motion.div
+        className="grid w-full max-w-5xl gap-6 lg:grid-cols-[1.2fr_0.8fr] relative z-10"
+        variants={container}
+        initial="hidden"
+        animate="show"
+      >
+        <motion.section
+          className="rounded-2xl px-5 sm:px-7 py-6 sm:py-8"
+          style={{
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+          }}
+          variants={item}
         >
-          {/* [typography] Standardized tracking to tracking-wider for consistency */}
-          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
             Secure Workspace
           </p>
-          <h1 className="mt-3 text-2xl sm:text-4xl font-semibold leading-tight" style={{ color: "var(--text-primary)" }}>
+          <h1
+            className="mt-3 text-2xl sm:text-3xl font-semibold leading-tight"
+            style={{ color: "var(--text-primary)", letterSpacing: "-0.03em" }}
+          >
             Sign in to manage documents, ask grounded questions, and track shared insights.
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-7" style={{ color: "var(--text-secondary)" }}>
-            Email and password auth is now the default entry point. Every signed-in user gets access to the same high-level analytics dashboard, while document and chat data stay tied to authenticated accounts.
+            Email and password auth is the default entry point. Every signed-in user gets access to analytics, while document and chat data stay tied to authenticated accounts.
           </p>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -115,29 +148,34 @@ export default function AuthScreen() {
               description="Admins can manage users, roles, and permissions from the settings panel."
             />
           </div>
-        </section>
+        </motion.section>
 
-        <section
-          className="rounded-[32px] border px-5 sm:px-6 py-6 sm:py-7"
-          style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
+        <motion.section
+          className="rounded-2xl px-5 sm:px-6 py-6 sm:py-7"
+          style={{
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+          }}
+          variants={item}
         >
           {/* [a11y] Added role="tablist" and role="tab" with aria-selected for screen reader support */}
           <div className="inline-flex rounded-full p-1" role="tablist" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-            {(["login", "signup"] as const).map((item) => (
-              <button
-                key={item}
+            {(["login", "signup"] as const).map((tabItem) => (
+              <motion.button
+                key={tabItem}
                 type="button"
                 role="tab"
-                aria-selected={mode === item}
-                onClick={() => setMode(item)}
+                aria-selected={mode === tabItem}
+                onClick={() => setMode(tabItem)}
                 className="rounded-full px-4 py-2 text-sm"
                 style={{
-                  background: mode === item ? "var(--accent)" : "transparent",
-                  color: mode === item ? "var(--accent-fg)" : "var(--text-secondary)",
+                  background: mode === tabItem ? "var(--accent)" : "transparent",
+                  color: mode === tabItem ? "var(--accent-fg)" : "var(--text-secondary)",
                 }}
+                whileTap={{ scale: 0.95 }}
               >
-                {item === "login" ? "Login" : "Sign up"}
-              </button>
+                {tabItem === "login" ? "Login" : "Sign up"}
+              </motion.button>
             ))}
           </div>
 
@@ -149,7 +187,7 @@ export default function AuthScreen() {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="mt-2 w-full rounded-xl px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                className="mt-2 w-full rounded-xl px-4 py-3 outline-none transition-all duration-200"
                 style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                 placeholder="you@example.com"
                 autoComplete="email"
@@ -163,20 +201,28 @@ export default function AuthScreen() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="mt-2 w-full rounded-xl px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                className="mt-2 w-full rounded-xl px-4 py-3 outline-none transition-all duration-200"
                 style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                 placeholder={mode === "login" ? "Enter your password" : "Minimum 8 characters"}
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
               />
             </label>
 
-            {error ? (
-              <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--error-soft)", color: "var(--error)" }}>
-                {error}
-              </div>
-            ) : null}
+            <AnimatePresence>
+              {error ? (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="rounded-xl px-4 py-3 text-sm overflow-hidden"
+                  style={{ background: "var(--error-soft)", color: "var(--error)" }}
+                >
+                  {error}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
 
-            <button
+            <motion.button
               type="submit"
               disabled={loading}
               className="rounded-xl px-4 py-3 text-sm font-medium"
@@ -185,32 +231,34 @@ export default function AuthScreen() {
                 color: "var(--accent-fg)",
                 opacity: loading ? 0.7 : 1,
               }}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.97 }}
             >
               {loading ? "Working..." : mode === "login" ? "Login" : "Create account"}
-            </button>
+            </motion.button>
           </form>
 
           {googleClientId ? (
             <>
-              {/* ---- Divider ---- */}
               <div className="flex items-center gap-3 my-5">
                 <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>or</span>
+                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>or</span>
                 <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
               </div>
 
-              {/* ---- Google Sign-In ---- */}
-              <button
+              <motion.button
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all"
+                className="w-full flex items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-medium"
                 style={{
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border)",
                   color: "var(--text-primary)",
                   opacity: loading ? 0.7 : 1,
                 }}
+                whileHover={{ borderColor: "var(--border-hover)" }}
+                whileTap={{ scale: 0.97 }}
               >
                 <svg width="18" height="18" viewBox="0 0 48 48">
                   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -219,11 +267,11 @@ export default function AuthScreen() {
                   <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
                 </svg>
                 Continue with Google
-              </button>
+              </motion.button>
             </>
           ) : null}
-        </section>
-      </div>
+        </motion.section>
+      </motion.div>
     </div>
   );
 }
@@ -238,16 +286,21 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="rounded-2xl px-4 py-4" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-      <div className="inline-flex rounded-lg p-2" style={{ background: "rgba(59,130,246,0.14)", color: "#93c5fd" }}>
+    <motion.div
+      className="rounded-xl px-4 py-4"
+      style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+      whileHover={{ borderColor: "var(--border-hover)", y: -2 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="inline-flex rounded-lg p-2" style={{ background: "var(--accent-brand-soft)", color: "var(--accent-brand)" }}>
         {icon}
       </div>
-      <h2 className="mt-4 text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+      <h2 className="mt-4 text-sm font-semibold" style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
         {title}
       </h2>
-      <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
+      <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
         {description}
       </p>
-    </div>
+    </motion.div>
   );
 }

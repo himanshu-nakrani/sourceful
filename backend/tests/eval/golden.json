@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "description": "Golden retrieval dataset. Each item ingests a single text document, fixes a deterministic embedding per chunk via monkeypatched embed_texts/embed_query, and asserts that the expected chunk(s) appear in the top-K retrieval.",
+  "items": [
+    {
+      "id": "capital-france",
+      "document": {
+        "filename": "france.txt",
+        "sections": [
+          "Paris is the capital city of France and one of the largest cities in Europe.",
+          "The Eiffel Tower, located in Paris, was completed in 1889 for the World's Fair.",
+          "France is a founding member of the European Union and hosts many international bodies."
+        ]
+      },
+      "question": "What is the capital of France?",
+      "expected_substring": "Paris is the capital"
+    },
+    {
+      "id": "eiffel-year",
+      "document": {
+        "filename": "france.txt",
+        "sections": [
+          "Paris is the capital city of France and one of the largest cities in Europe.",
+          "The Eiffel Tower, located in Paris, was completed in 1889 for the World's Fair.",
+          "France is a founding member of the European Union and hosts many international bodies."
+        ]
+      },
+      "question": "When was the Eiffel Tower completed?",
+      "expected_substring": "1889"
+    },
+    {
+      "id": "multi-hop-eu",
+      "document": {
+        "filename": "france.txt",
+        "sections": [
+          "Paris is the capital city of France and one of the largest cities in Europe.",
+          "The Eiffel Tower, located in Paris, was completed in 1889 for the World's Fair.",
+          "France is a founding member of the European Union and hosts many international bodies."
+        ]
+      },
+      "question": "Is France in the EU?",
+      "expected_substring": "European Union"
+    }
+  ]
+}

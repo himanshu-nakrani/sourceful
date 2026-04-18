@@ -45,6 +45,7 @@ class JobResponse(BaseModel):
     status: str
     stage: str
     progress: float
+    progress_detail: str | None = None
     attempt_count: int
     max_attempts: int
     next_retry_at: datetime | None = None
@@ -201,3 +202,21 @@ class AnalyticsOverviewResponse(BaseModel):
     totals: AnalyticsTotals
     recent: AnalyticsRecent
     provider_breakdown: list[AnalyticsProviderBreakdown]
+
+
+class StructuredExtractRequest(BaseModel):
+    """Request body for structured field extraction (Phase 2.6)."""
+    provider: Literal["openai", "gemini"]
+    model: str = Field(max_length=128)
+    schema_fields: dict = Field(
+        ...,
+        description='JSON schema describing fields to extract. Example: {"title": "string", "author": "string"}',
+    )
+
+
+class StructuredExtractResponse(BaseModel):
+    """Response from structured field extraction."""
+    document_id: str
+    fields: dict
+    model: str
+    token_usage: dict | None = None

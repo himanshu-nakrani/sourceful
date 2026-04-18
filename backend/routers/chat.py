@@ -265,16 +265,18 @@ async def _save_turn(
     sources_json: str,
 ) -> None:
     user_message_id = str(uuid.uuid4())
-    await execute(
-        "INSERT INTO messages (id, owner_id, conversation_id, role, content) VALUES (?, ?, ?, 'user', ?)",
-        (user_message_id, context.owner_id, conversation_id, user_question),
-    )
-    await execute(
+    # ⚡ BOLT OPTIMIZATION:
+    # Batch insert user and assistant messages in a single query using execute_many
+    # Reduces network roundtrips and database overhead compared to sequential await execute() calls
+    await execute_many(
         """
         INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json)
-        VALUES (?, ?, ?, 'assistant', ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (assistant_message_id, context.owner_id, conversation_id, answer, sources_json),
+        [
+            (user_message_id, context.owner_id, conversation_id, "user", user_question, None),
+            (assistant_message_id, context.owner_id, conversation_id, "assistant", answer, sources_json),
+        ],
     )
     await execute(
         f"UPDATE conversations SET updated_at = {TIMESTAMP_SQL} WHERE id = ? AND owner_id = ?",

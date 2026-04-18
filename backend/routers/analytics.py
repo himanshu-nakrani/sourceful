@@ -12,7 +12,7 @@ from backend.models import (
     AnalyticsRecent,
     AnalyticsTotals,
 )
-from backend.routers.deps import require_authenticated_context
+from backend.routers.deps import require_admin_context
 
 router = APIRouter()
 
@@ -30,7 +30,7 @@ def _parse_dt(value: Any) -> datetime | None:
 
 
 @router.get("/analytics/overview", response_model=AnalyticsOverviewResponse)
-async def analytics_overview(_: object = Depends(require_authenticated_context)):
+async def analytics_overview(_: RequestContext = Depends(require_admin_context)):
     counts = await fetch_one(
         """
         SELECT

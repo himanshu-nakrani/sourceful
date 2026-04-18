@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from openai import APIError
 from pydantic import TypeAdapter
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, execute_many, fetch_all, fetch_one
 from backend.errors import api_error_response
 from backend.metrics import metrics
 from backend.models import ChatRequest, Citation, RerunMessageRequest
@@ -832,20 +832,27 @@ async def rerun_chat_message(
         "INSERT INTO conversations (id, owner_id, document_id, title) VALUES (?, ?, ?, ?)",
         (next_conversation_id, context.owner_id, body.document_id, title),
     )
-    for row in prior_messages:
-        await execute(
+    # ⚡ BOLT OPTIMIZATION:
+    # Use execute_many to batch insert prior messages instead of executing a query in a loop.
+    # This reduces network roundtrips and database overhead by converting N inserts into 1 bulk insert.
+    params_list = [
+        (
+            str(uuid.uuid4()),
+            context.owner_id,
+            next_conversation_id,
+            row["role"],
+            row["content"],
+            row.get("sources_json"),
+        )
+        for row in prior_messages
+    ]
+    if params_list:
+        await execute_many(
             """
             INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (
-                str(uuid.uuid4()),
-                context.owner_id,
-                next_conversation_id,
-                row["role"],
-                row["content"],
-                row.get("sources_json"),
-            ),
+            params_list,
         )
 
     history = [

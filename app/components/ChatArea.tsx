@@ -8,7 +8,6 @@ import {
   MessageSquarePlus,
   PanelLeftOpen,
   RefreshCcw,
-  Send,
   Settings,
   Sparkles,
   StopCircle,

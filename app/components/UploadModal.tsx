@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, Loader2, Upload, X, FileUp } from "lucide-react";
+import { CheckCircle2, Loader2, X, FileUp } from "lucide-react";
 import { getJob, ingestDocument, type JobInfo } from "../lib/api";
 import { useServerState } from "../lib/server-state";
 import { useStore } from "../lib/store";

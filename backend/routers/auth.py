@@ -137,6 +137,7 @@ async def google_oauth_callback(request: Request, response: Response):
                 "redirect_uri": redirect_uri,
                 "grant_type": "authorization_code",
             },
+            timeout=10.0,
         )
     if token_res.status_code != 200:
         logger.warning(

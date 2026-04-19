@@ -508,9 +508,10 @@ function Field({
   help: string;
   icon: React.ReactNode;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+      <label htmlFor={id} className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
         {label}
       </label>
       <div className="relative">
@@ -518,6 +519,7 @@ function Field({
           {icon}
         </div>
         <input
+          id={id}
           type="password"
           autoComplete="off"
           value={value}
@@ -562,13 +564,15 @@ function SelectField({
   loading?: boolean;
   disabled?: boolean;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+      <label htmlFor={id} className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
         {label}
       </label>
       <div className="relative">
         <select
+          id={id}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled || loading}
@@ -638,10 +642,11 @@ function SliderField({
   format: (v: number) => string;
   help: string;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+        <label htmlFor={id} className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
           {label}
         </label>
         <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
@@ -649,6 +654,7 @@ function SliderField({
         </span>
       </div>
       <input
+        id={id}
         type="range"
         min={min}
         max={max}

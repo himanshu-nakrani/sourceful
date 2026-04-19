@@ -7,3 +7,6 @@
 ## 2026-04-15 - Consistent Keyboard Focus Indicators for Buttons
 **Learning:** While inputs had consistent focus rings, interactive buttons (like those on the AuthScreen) relied on default browser outlines which were inconsistent or hidden due to existing styles.
 **Action:** Ensure all interactive elements, especially primary buttons, include `outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]` to provide a clear and accessible visual indicator for keyboard users.
+## 2026-04-19 - Added proper ID linking for form accessibility
+**Learning:** Screen readers and keyboard users rely heavily on the explicit relationship between a label and an input, which is established using the 'id' and 'htmlFor' attributes. React's 'useId()' hook simplifies this process significantly without generating conflicts in components that appear multiple times.
+**Action:** When creating reusable form components, immediately assign `const id = React.useId()` and link the `label htmlFor={id}` and `input id={id}` for full accessibility support.

@@ -18,3 +18,7 @@
 **Vulnerability:** The Google OAuth token exchange request in `backend/routers/auth.py` lacked an explicit timeout configuration on the `httpx.AsyncClient`.
 **Learning:** Unbounded network calls can hang indefinitely if the upstream service is slow or unresponsive. In asynchronous frameworks like FastAPI, this can tie up worker threads, leading to resource exhaustion and potential Denial of Service (DoS) conditions.
 **Prevention:** Always configure an explicit, reasonable timeout (e.g., `timeout=10.0`) on all outbound HTTP requests made by the backend service.
+## 2025-05-18 - Rate Limit Bypass in Middleware
+**Vulnerability:** The rate limiter in RateLimitMiddleware combined the user's IP address with the first 24 characters of the Authorization header to form the rate limit bucket ID.
+**Learning:** Because the Authorization header is client-controlled, an attacker could generate arbitrary unique bucket IDs by randomizing the Authorization header, completely bypassing the rate limits.
+**Prevention:** Always use secure, trusted identifiers for rate limiting. Unauthenticated requests should be rate-limited strictly by the client IP address (or by combined IP + user agent if desired but IP is standard). Do not incorporate arbitrary untrusted client input into rate limit bucket generation.

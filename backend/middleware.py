@@ -36,9 +36,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         window_start = int(time.time() // 60)
-        auth_token = request.headers.get("authorization", "anonymous")[:24]
         client_ip = request.client.host if request.client else "unknown"
-        bucket_id = f"{auth_token}:{client_ip}"
+        # Rate limit solely by IP to prevent bypass via random Authorization headers
+        bucket_id = client_ip
         try:
             count = await upsert_rate_limit(bucket_id, window_start)
             await cleanup_rate_limits(window_start - 2)

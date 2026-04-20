@@ -22,11 +22,15 @@ import {
   reprocessDocument,
   rerunMessage,
   sendChatStream,
+  submitFeedback,
+  type ActiveLearningHint,
   type Citation,
+  type FeedbackRating,
   type GroundingSummary,
   type Message,
   type RetrievalStages,
 } from "../lib/api";
+import type { MessageFeedbackState } from "./MessageBubble";
 import { useServerState } from "../lib/server-state";
 import { useStore } from "../lib/store";
 import { EASE_OUT } from "../lib/motion";
@@ -56,6 +60,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     refreshConversations,
     selectConversation,
     updateLastAssistantSources,
+    updateLastAssistantId,
     setMessages,
   } = useServerState();
   const { settings, activeConversationId, activeDocumentId, activeDocumentIds, sidebarOpen } = state;
@@ -78,6 +83,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
   const [lastGrounding, setLastGrounding] = useState<GroundingSummary | null>(null);
   const [streamEvents, setStreamEvents] = useState<Array<{ at: number; label: string; detail?: string }>>([]);
+  const [feedbackState, setFeedbackState] = useState<Record<string, MessageFeedbackState>>({});
+  const [lastHint, setLastHint] = useState<ActiveLearningHint | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -96,6 +103,31 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     "What evidence supports the core conclusion?",
     "What should I pay attention to first?",
   ];
+
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+  activeConversationIdRef.current = activeConversationId;
+
+  const handleFeedback = useCallback(
+    async (message: Message, rating: FeedbackRating) => {
+      const conversationId = activeConversationIdRef.current;
+      if (!conversationId || !message.id || message.role !== "assistant") {
+        return;
+      }
+      setFeedbackState((prev) => ({ ...prev, [message.id]: "pending" }));
+      try {
+        await submitFeedback(auth, {
+          conversation_id: conversationId,
+          message_id: message.id,
+          rating,
+        });
+        setFeedbackState((prev) => ({ ...prev, [message.id]: rating }));
+      } catch (err) {
+        console.error("feedback_failed", err);
+        setFeedbackState((prev) => ({ ...prev, [message.id]: "error" }));
+      }
+    },
+    [auth]
+  );
 
   const canAsk = Boolean(
     activeDocumentId &&
@@ -126,6 +158,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       setQuestion("");
       setError(null);
       setCurrentSources([]);
+      setLastHint(null);
       setStreaming(true);
 
       const userMessage: Message = {
@@ -174,6 +207,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
               appendEvent("sources", `${payload.sources?.length ?? 0} chunks`);
               setCurrentSources(payload.sources);
               setLastStages(payload.stages ?? null);
+              setLastHint((payload.stages?.active_learning_hint as ActiveLearningHint | undefined) ?? null);
               updateLastAssistantSources(payload.sources);
               activeConversation = payload.conversation_id;
               dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: payload.conversation_id });
@@ -188,8 +222,11 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
               );
               setLastGrounding(grounding);
             },
-            onMessageSaved: () => {
+            onMessageSaved: (payload) => {
               appendEvent("message_saved");
+              if (payload?.message_id) {
+                updateLastAssistantId(payload.message_id);
+              }
             },
             onDone: () => {
               appendEvent("done");
@@ -242,6 +279,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       settings.topK,
       settings.similarityThreshold,
       updateLastAssistantSources,
+      updateLastAssistantId,
     ]
   );
 
@@ -534,6 +572,12 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                         message.role === "assistant" &&
                         idx === messages.length - 1
                       }
+                      onFeedback={
+                        message.role === "assistant" && activeConversationId
+                          ? handleFeedback
+                          : undefined
+                      }
+                      feedbackState={feedbackState[message.id] ?? "idle"}
                     />
                   </motion.div>
                   {message.role === "assistant" && message.sources?.length ? (
@@ -542,6 +586,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                 </React.Fragment>
               ))}
               {streaming && currentSources.length ? <SourceCard sources={currentSources} /> : null}
+              {!streaming && lastHint ? (
+                <ActiveLearningHintBanner hint={lastHint} />
+              ) : null}
               {messagesLoading ? (
                 <div className="flex items-center gap-2 pl-11" style={{ color: "var(--text-muted)" }}>
                   <Loader2 size={12} className="animate-spin" />
@@ -929,6 +976,45 @@ function StateCard({
             {secondaryLabel}
           </motion.button>
         ) : null}
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * Banner surfacing the Phase-3.9 ``active_learning_hint`` returned by
+ * the backend when retrieval confidence is low or the planner
+ * abstained. Rendered inline with the chat scroll so the suggestion
+ * sits next to the answer it applies to rather than floating over
+ * the input area.
+ */
+function ActiveLearningHintBanner({ hint }: { hint: ActiveLearningHint }) {
+  const isExpand = hint.action === "expand_search";
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: EASE_OUT }}
+      className="mx-auto w-full rounded-xl px-3 py-2 text-xs flex items-start gap-2"
+      style={{
+        background: "var(--accent-brand-soft)",
+        color: "var(--accent-brand)",
+        border: "1px solid var(--border)",
+      }}
+      role="note"
+      aria-label="Retrieval suggestion"
+    >
+      <Sparkles size={12} style={{ marginTop: 2 }} />
+      <div className="flex-1 leading-snug">
+        <div style={{ fontWeight: 500 }}>{hint.suggestion}</div>
+        <div style={{ color: "var(--text-muted)" }}>
+          {isExpand
+            ? "Try adding another document to the conversation or rephrasing with more specific terms."
+            : "The agent could not ground an answer in your documents — consider rephrasing or trying a different source."}
+          {typeof hint.best_score === "number"
+            ? ` (best score: ${hint.best_score.toFixed(2)})`
+            : ""}
+        </div>
       </div>
     </motion.div>
   );

@@ -1,0 +1,131 @@
+name: Nightly Eval
+
+on:
+  schedule:
+    # Run at 04:00 UTC every day (off-peak, after most US/EU work hours)
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-eval
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
+          # Optional RAGAS for metrics (best-effort)
+          pip install ragas datasets || echo "RAGAS install skipped (optional)"
+
+      - name: Run eval (SQLite fallback)
+        env:
+          SKIP_EVAL: "0"
+          # Use SQLite to avoid needing Postgres for basic eval
+          DATABASE_URL: ""
+        run: |
+          cd backend
+          python -m pytest tests/eval/test_retrieval_eval.py -m eval -v --tb=short 2>&1 | tee eval_output.txt
+
+      - name: Run eval (Postgres)
+        env:
+          SKIP_EVAL: "0"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/test"
+        run: |
+          cd backend
+          python -m pytest tests/eval/test_retrieval_eval.py::test_retrieval_recall_v2 -m eval -v --tb=short 2>&1 | tee eval_output_pg.txt
+
+      - name: Upload eval reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-reports
+          path: |
+            docs/eval/last_run.json
+            docs/eval/last_run_v2.json
+            backend/eval_output.txt
+            backend/eval_output_pg.txt
+
+      - name: Comment on PR or commit
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const v2Path = 'docs/eval/last_run_v2.json';
+            let summary = 'Eval report not found';
+            try {
+              const raw = fs.readFileSync(v2Path, 'utf8');
+              const data = JSON.parse(raw);
+              const recall = (data.recall_at_k * 100).toFixed(1);
+              const hits = data.hits;
+              const total = data.total;
+              const elapsed = data.elapsed_seconds;
+              summary = `**Nightly Eval (v2)**\n- Recall@3: ${recall}% (${hits}/${total})\n- Elapsed: ${elapsed}s`;
+              if (data.categories) {
+                const cats = Object.entries(data.categories)
+                  .map(([k, v]) => `${k}: ${(v*100).toFixed(0)}%`)
+                  .join(', ');
+                summary += `\n- By category: ${cats}`;
+              }
+              if (data.ragas && data.ragas.context_precision !== undefined && data.ragas.context_precision !== null) {
+                summary += `\n- RAGAS context_precision: ${data.ragas.context_precision.toFixed(2)}`;
+              }
+            } catch (e) {
+              summary = `Could not read eval report: ${e.message}`;
+            }
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: summary,
+            });
+
+      - name: Check for regression
+        run: |
+          cd backend
+          python3 << 'PYEOF'
+          import json, sys
+          from pathlib import Path
+          path = Path('../../docs/eval/last_run_v2.json')
+          if not path.exists():
+              print('No v2 report found; skipping regression check.')
+              sys.exit(0)
+          data = json.loads(path.read_text())
+          recall = data.get('recall_at_k', 0)
+          print(f'Recall@3 = {recall:.2f}')
+          if recall < 0.70:
+              print('REGRESSION: recall@3 < 0.70')
+              sys.exit(1)
+          print('Recall OK.')
+          PYEOF

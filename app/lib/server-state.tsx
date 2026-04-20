@@ -43,6 +43,10 @@ interface ServerStateValue {
   addMessage: (message: Message) => void;
   appendToLastAssistant: (token: string) => void;
   updateLastAssistantSources: (sources: Citation[]) => void;
+  /** Swap the temp client-side id on the last assistant message for the
+   *  durable id returned by the backend, so downstream actions like
+   *  feedback writes (Phase 3.8) reference the persisted message. */
+  updateLastAssistantId: (messageId: string) => void;
 }
 
 const ServerStateContext = createContext<ServerStateValue | null>(null);
@@ -214,6 +218,18 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateLastAssistantId = useCallback((messageId: string) => {
+    if (!messageId) return;
+    setMessages((current) => {
+      const next = [...current];
+      const last = next[next.length - 1];
+      if (last && last.role === "assistant" && last.id !== messageId) {
+        next[next.length - 1] = { ...last, id: messageId };
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!auth.clientSessionId) return;
     void refreshDocuments();
@@ -257,6 +273,7 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
       addMessage,
       appendToLastAssistant,
       updateLastAssistantSources,
+      updateLastAssistantId,
     }),
     [
       addMessage,
@@ -278,6 +295,7 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
       selectConversation,
       selectDocument,
       updateLastAssistantSources,
+      updateLastAssistantId,
     ]
   );
 

@@ -251,6 +251,8 @@ async def process_job(job: dict) -> None:
         )
         await replace_chunks(document_id, owner_id, chunks, embeddings)
 
+        await _maybe_build_graph(job, chunks)
+
         page_count = await _resolve_page_count(job, chunks)
         await execute(
             f"""
@@ -481,6 +483,81 @@ async def _resolve_page_count(job: dict, chunks) -> int | None:
         return extracted.page_count
     pages = [chunk.page_number for chunk in chunks if chunk.page_number is not None]
     return max(pages) if pages else None
+
+
+async def _maybe_build_graph(job: dict, chunks) -> None:
+    """Phase 3.3 + 3.4: extract entities/relations + detect communities.
+
+    Runs right after chunk embeddings land. Every failure degrades
+    silently so the primary ingestion path succeeds even when the LLM
+    misbehaves — the graph is always a secondary index. The whole
+    function short-circuits when ``RETRIEVAL_GRAPH_ENABLED`` is false.
+    """
+    if not settings.retrieval_graph_enabled:
+        return
+
+    provider = job["provider"]
+    api_key = job.get("provider_api_key")
+    # The ingestion job tracks embedding_model but we need a chat model
+    # for extraction; fall back to the provider's default chat model.
+    chat_model = (
+        job.get("chat_model")
+        or (
+            settings.default_chat_model_openai
+            if provider == "openai"
+            else settings.default_chat_model_gemini
+        )
+    )
+    job_id = job["id"]
+    document_id = job["document_id"]
+    owner_id = job["owner_id"]
+
+    try:
+        await execute(
+            f"UPDATE document_jobs SET progress_detail = 'building graph', updated_at = {TIMESTAMP_SQL} WHERE id = ?",
+            (job_id,),
+        )
+        from backend.services import graph as graph_mod
+        from backend.services import graph_communities as community_mod
+
+        chunk_texts = [c.content for c in chunks if getattr(c, "content", None)]
+        extraction = await graph_mod.extract_from_chunks(
+            chunk_texts,
+            provider=provider,
+            api_key=api_key or "",
+            model=chat_model,
+            max_chunks=settings.graph_extract_max_chunks,
+            max_chunk_chars=settings.graph_extract_max_chunk_chars,
+            concurrency=settings.graph_extract_concurrency,
+        )
+        if not extraction.entities:
+            # Lexical fallback so the graph layer always has *some* nodes.
+            full_text = "\n\n".join(chunk_texts[: settings.graph_extract_max_chunks])
+            extraction = graph_mod.extract_from_text(full_text)
+
+        persist_counts = await graph_mod.persist_extraction(
+            owner_id=owner_id,
+            document_id=document_id,
+            extraction=extraction,
+            replace=True,
+        )
+        community_counts = await community_mod.build_and_persist(
+            owner_id=owner_id,
+            document_id=document_id,
+            provider=provider,
+            api_key=api_key or "",
+            model=chat_model,
+        )
+        logger.info(
+            "graph_ingest_done document_id=%s entities=%d relations=%d communities=%d",
+            document_id,
+            persist_counts.get("entities", 0),
+            persist_counts.get("relations", 0),
+            community_counts.get("communities", 0),
+        )
+    except Exception:  # noqa: BLE001
+        # A graph-build failure must never block document readiness.
+        logger.exception("graph_ingest_failed document_id=%s", document_id)
 
 
 async def worker_forever(stop_event: asyncio.Event | None = None) -> None:

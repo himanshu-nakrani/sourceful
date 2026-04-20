@@ -220,3 +220,32 @@ class StructuredExtractResponse(BaseModel):
     fields: dict
     model: str
     token_usage: dict | None = None
+
+
+class FeedbackRequest(BaseModel):
+    """Phase 3.8: thumbs-up/down per assistant message."""
+
+    conversation_id: str = Field(min_length=1)
+    message_id: str = Field(min_length=1)
+    rating: Literal["up", "down"]
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class FeedbackResponse(BaseModel):
+    """Envelope returned after recording feedback."""
+
+    id: str
+    conversation_id: str
+    message_id: str
+    rating: Literal["up", "down"]
+    comment: str | None = None
+    created_at: datetime
+
+
+class FeedbackSummaryResponse(BaseModel):
+    """Aggregate feedback counts surfaced to the admin analytics page."""
+
+    total: int
+    up: int
+    down: int
+    recent: list[FeedbackResponse] = []

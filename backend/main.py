@@ -13,7 +13,7 @@ from backend.errors import api_error_payload
 from backend.logging_utils import configure_logging
 from backend.metrics import metrics
 from backend.middleware import RateLimitMiddleware, RequestIdMiddleware, RequestLoggingMiddleware, SecurityHeadersMiddleware
-from backend.routers import analytics, auth, chat, conversations, documents, ingest, models, users
+from backend.routers import analytics, auth, chat, conversations, documents, feedback, ingest, models, users
 from backend.routers import jobs as jobs_router
 from backend.settings import settings
 
@@ -187,3 +187,4 @@ app.include_router(conversations.router, prefix="/api")
 app.include_router(jobs_router.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(models.router, prefix="/api")
+app.include_router(feedback.router, prefix="/api")

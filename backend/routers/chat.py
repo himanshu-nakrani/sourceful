@@ -18,7 +18,9 @@ from backend.errors import api_error_response
 from backend.metrics import metrics
 from backend.models import ChatRequest, Citation, RerunMessageRequest
 from backend.routers.deps import RequestContext, get_request_context, require_provider_api_key
+from backend.services import memory as memory_service
 from backend.services import tracing
+from backend.services.agent import run_agent
 from backend.services.compression import compress_chunks
 from backend.services.embeddings import embed_query
 from backend.services.grounding import verify_groundedness
@@ -125,6 +127,99 @@ async def _maybe_transform_queries(
     return lanes, [tq.kind for tq in transformed]
 
 
+def _compute_active_learning_hint(
+    stages: dict[str, Any],
+    chunks: list,
+) -> dict[str, Any] | None:
+    """Phase 3.9: surface a one-line nudge when retrieval looks weak.
+
+    The rule is deliberately conservative so the UI isn't noisy:
+
+    - honors ``ACTIVE_LEARNING_HINT_ENABLED``
+    - triggers only when the best retrieved score is below
+      ``ACTIVE_LEARNING_SCORE_FLOOR`` or the agent abstained
+
+    Returns ``None`` when no hint should fire (preferred: UI hides the
+    element rather than rendering an empty state).
+    """
+    if not settings.active_learning_hint_enabled:
+        return None
+    stopped_reason = stages.get("stopped_reason") if isinstance(stages, dict) else None
+    best_score = 0.0
+    if chunks:
+        best_score = max((getattr(c, "score", 0.0) or 0.0) for c in chunks)
+
+    if stopped_reason == "planner_abstain":
+        return {
+            "suggestion": "The agent couldn't ground this question in your documents.",
+            "action": "rephrase",
+            "reason": "planner_abstain",
+        }
+    if not chunks:
+        return {
+            "suggestion": "No matching passages were found.",
+            "action": "rephrase",
+            "reason": "no_chunks",
+        }
+    if best_score < settings.active_learning_score_floor:
+        return {
+            "suggestion": "Retrieval confidence is low — try rephrasing or widening the document set.",
+            "action": "expand_search",
+            "reason": "low_confidence",
+            "best_score": round(float(best_score), 4),
+        }
+    return None
+
+
+async def _run_agent_retrieval(
+    *,
+    request: Request,
+    context: RequestContext,
+    provider: str,
+    provider_api_key: str,
+    document: dict,
+    question: str,
+    top_k: int | None,
+    similarity_threshold: float | None,
+    extra_document_ids: list[str] | None,
+    trace_span: tracing._Span | None,
+    chat_model: str | None,
+):
+    """Phase 3.1 dispatch: plan → tools → chunks, replacing the linear pipeline.
+
+    Returns the same ``(chunks, stages, error_response)`` tuple as
+    :func:`_embed_and_retrieve` so the calling sites stay oblivious to
+    which retrieval path ran.
+    """
+    effective_top_k = top_k if top_k is not None else settings.rag_top_k
+    effective_min_score = similarity_threshold if similarity_threshold is not None else 0.0
+    allowed = [document["id"]] + list(extra_document_ids or [])
+
+    result = await run_agent(
+        question=question,
+        owner_id=context.owner_id,
+        provider=provider,
+        provider_api_key=provider_api_key,
+        chat_model=(chat_model or "").strip(),
+        embedding_model=document["embedding_model"],
+        primary_document_id=document["id"],
+        allowed_document_ids=allowed,
+        top_k=effective_top_k,
+        min_score=effective_min_score,
+        trace_span=trace_span,
+    )
+    stages = {"retrieval_path": "agent", **result.stages}
+    if not result.chunks:
+        return None, stages, api_error_response(
+            request=request,
+            status_code=400,
+            error="The agent could not gather any grounded context for this question.",
+            code="AGENT_NO_CONTEXT",
+        )
+    metrics.observe("chat_citations_count", float(len(result.chunks)), provider=provider)
+    return result.chunks, stages, None
+
+
 async def _embed_and_retrieve(
     *,
     request: Request,
@@ -219,6 +314,7 @@ async def _embed_and_retrieve(
             error="No matching context found. Try re-indexing the document.",
             code="NO_MATCHING_CONTEXT",
         )
+    retrieval.stages["retrieval_path"] = "pipeline"
     metrics.observe("chat_citations_count", float(len(retrieval.chunks)), provider=provider)
 
     # Optional context compression — shrinks each chunk's excerpt before
@@ -325,25 +421,56 @@ async def _generate_chat_response(
         document_id=document["id"],
         owner_id=context.owner_id,
     ) as trace_span:
-        chunks, stages, err = await _embed_and_retrieve(
-            request=request,
-            context=context,
-            provider=provider,
-            provider_api_key=provider_api_key,
-            document=document,
-            question=trimmed_question,
-            top_k=top_k,
-            similarity_threshold=similarity_threshold,
-            extra_document_ids=extra_document_ids,
-            trace_span=trace_span,
-            chat_model=model,
-        )
+        if settings.retrieval_agent_enabled:
+            chunks, stages, err = await _run_agent_retrieval(
+                request=request,
+                context=context,
+                provider=provider,
+                provider_api_key=provider_api_key,
+                document=document,
+                question=trimmed_question,
+                top_k=top_k,
+                similarity_threshold=similarity_threshold,
+                extra_document_ids=extra_document_ids,
+                trace_span=trace_span,
+                chat_model=model,
+            )
+        else:
+            chunks, stages, err = await _embed_and_retrieve(
+                request=request,
+                context=context,
+                provider=provider,
+                provider_api_key=provider_api_key,
+                document=document,
+                question=trimmed_question,
+                top_k=top_k,
+                similarity_threshold=similarity_threshold,
+                extra_document_ids=extra_document_ids,
+                trace_span=trace_span,
+                chat_model=model,
+            )
         if err is not None:
             return err
 
+        hint = _compute_active_learning_hint(stages or {}, chunks or [])
+        if hint is not None and isinstance(stages, dict):
+            stages["active_learning_hint"] = hint
+
+        memory_ctx = await memory_service.build_context(
+            conversation_id=conversation_id,
+            owner_id=context.owner_id,
+            history=history,
+            provider=provider,
+            api_key=provider_api_key,
+            model=model,
+        )
+        if isinstance(stages, dict):
+            stages["memory"] = memory_ctx.stages
+
         source_payload = _citations_from_chunks(chunks)
         source_payload_json = _citation_list_adapter.dump_json(source_payload).decode("utf-8")
-        prompt = build_rag_prompt(chunks, trimmed_question, history=history)
+        prompt = build_rag_prompt(chunks, trimmed_question, history=memory_ctx.recent)
+        prompt = memory_service.inject_summary_into_messages(prompt, memory_ctx.summary)
         assistant_message_id = str(uuid.uuid4())
 
         try:
@@ -435,19 +562,34 @@ async def _stream_chat_response(
 
     async def generator():
         with trace_span_cm as trace_span:
-            chunks, stages, err = await _embed_and_retrieve(
-                request=request,
-                context=context,
-                provider=provider,
-                provider_api_key=provider_api_key,
-                document=document,
-                question=trimmed_question,
-                top_k=top_k,
-                similarity_threshold=similarity_threshold,
-                extra_document_ids=extra_document_ids,
-                trace_span=trace_span,
-                chat_model=model,
-            )
+            if settings.retrieval_agent_enabled:
+                chunks, stages, err = await _run_agent_retrieval(
+                    request=request,
+                    context=context,
+                    provider=provider,
+                    provider_api_key=provider_api_key,
+                    document=document,
+                    question=trimmed_question,
+                    top_k=top_k,
+                    similarity_threshold=similarity_threshold,
+                    extra_document_ids=extra_document_ids,
+                    trace_span=trace_span,
+                    chat_model=model,
+                )
+            else:
+                chunks, stages, err = await _embed_and_retrieve(
+                    request=request,
+                    context=context,
+                    provider=provider,
+                    provider_api_key=provider_api_key,
+                    document=document,
+                    question=trimmed_question,
+                    top_k=top_k,
+                    similarity_threshold=similarity_threshold,
+                    extra_document_ids=extra_document_ids,
+                    trace_span=trace_span,
+                    chat_model=model,
+                )
             if err is not None:
                 # Serialize the error response's body through SSE.
                 body = err.body if hasattr(err, "body") else b"{}"
@@ -457,6 +599,21 @@ async def _stream_chat_response(
                     payload = {"error": "chat failed", "code": "UNKNOWN"}
                 yield _sse_event("error", payload)
                 return
+
+            hint = _compute_active_learning_hint(stages or {}, chunks or [])
+            if hint is not None and isinstance(stages, dict):
+                stages["active_learning_hint"] = hint
+
+            memory_ctx = await memory_service.build_context(
+                conversation_id=conversation_id,
+                owner_id=context.owner_id,
+                history=history,
+                provider=provider,
+                api_key=provider_api_key,
+                model=model,
+            )
+            if isinstance(stages, dict):
+                stages["memory"] = memory_ctx.stages
 
             source_payload = _citations_from_chunks(chunks)
             source_payload_json = _citation_list_adapter.dump_json(source_payload).decode("utf-8")
@@ -469,7 +626,8 @@ async def _stream_chat_response(
                 },
             )
 
-            prompt = build_rag_prompt(chunks, trimmed_question, history=history)
+            prompt = build_rag_prompt(chunks, trimmed_question, history=memory_ctx.recent)
+            prompt = memory_service.inject_summary_into_messages(prompt, memory_ctx.summary)
             assistant_message_id = str(uuid.uuid4())
             collected: list[str] = []
 

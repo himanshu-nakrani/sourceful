@@ -148,6 +148,74 @@ class Settings(BaseSettings):
     )
     groundedness_min_score: float = Field(default=0.5, alias="GROUNDEDNESS_MIN_SCORE")
 
+    # ---- Phase 3: agent loop + conversation memory + feedback ----
+    # Maximum planner iterations before the agent truncates with a partial
+    # answer. Keep small; each iteration is one LLM call + 1 tool call.
+    retrieval_agent_max_iterations: int = Field(
+        default=4, alias="RETRIEVAL_AGENT_MAX_ITERATIONS"
+    )
+    # Cap the total number of chunks the agent will accumulate across all
+    # `search_chunks` calls so the final answer prompt stays bounded.
+    retrieval_agent_max_chunks: int = Field(
+        default=12, alias="RETRIEVAL_AGENT_MAX_CHUNKS"
+    )
+    # Hard ceiling on tools that can be called per turn (defence in depth
+    # against pathological loops).
+    retrieval_agent_max_tool_calls: int = Field(
+        default=8, alias="RETRIEVAL_AGENT_MAX_TOOL_CALLS"
+    )
+
+    # Rolling conversation memory. When disabled, the legacy last-N slice is
+    # used. When enabled, turns older than `memory_recent_turns` are
+    # summarized into a single system prefix before each generate call.
+    memory_enabled: bool = Field(default=False, alias="MEMORY_ENABLED")
+    memory_recent_turns: int = Field(default=6, alias="MEMORY_RECENT_TURNS")
+    memory_summary_max_chars: int = Field(
+        default=1200, alias="MEMORY_SUMMARY_MAX_CHARS"
+    )
+
+    # Active-learning hint. When the retrieval signal is weak we surface a
+    # short "try rephrasing / expand search" suggestion to the client.
+    active_learning_hint_enabled: bool = Field(
+        default=True, alias="ACTIVE_LEARNING_HINT_ENABLED"
+    )
+    active_learning_score_floor: float = Field(
+        default=0.35, alias="ACTIVE_LEARNING_SCORE_FLOOR"
+    )
+
+    # ---- Phase 3: GraphRAG ingestion + traversal (3.3–3.5) ----
+    # Cap on chunks fed into the LLM extractor per document. Each chunk
+    # is one LLM round-trip so this is also the hard ceiling on graph
+    # ingest cost.
+    graph_extract_max_chunks: int = Field(default=30, alias="GRAPH_EXTRACT_MAX_CHUNKS")
+    graph_extract_max_chunk_chars: int = Field(
+        default=3500, alias="GRAPH_EXTRACT_MAX_CHUNK_CHARS"
+    )
+    graph_extract_concurrency: int = Field(default=4, alias="GRAPH_EXTRACT_CONCURRENCY")
+
+    # Community detection tuning. When `leidenalg` / `python-igraph`
+    # aren't installed we fall back to weakly-connected components so
+    # there's always *some* grouping available.
+    graph_community_min_size: int = Field(default=2, alias="GRAPH_COMMUNITY_MIN_SIZE")
+    graph_community_max_entities: int = Field(
+        default=20, alias="GRAPH_COMMUNITY_MAX_ENTITIES"
+    )
+
+    # Graph-traversal retrieval lane (Phase 3.5). Surfaces entities in
+    # the user's question, expands N hops, and pulls chunks tied to
+    # those documents into the fusion pool.
+    retrieval_graph_traversal_enabled: bool = Field(
+        default=False, alias="RETRIEVAL_GRAPH_TRAVERSAL_ENABLED"
+    )
+    retrieval_graph_hops: int = Field(default=1, alias="RETRIEVAL_GRAPH_HOPS")
+    retrieval_graph_seed_limit: int = Field(default=6, alias="RETRIEVAL_GRAPH_SEED_LIMIT")
+    retrieval_graph_chunk_limit: int = Field(
+        default=10, alias="RETRIEVAL_GRAPH_CHUNK_LIMIT"
+    )
+    retrieval_graph_lane_weight: float = Field(
+        default=0.5, alias="RETRIEVAL_GRAPH_LANE_WEIGHT"
+    )
+
     # ---- Tracing (Langfuse, no-op when unset) ----
     langfuse_public_key: str | None = Field(default=None, alias="LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: str | None = Field(default=None, alias="LANGFUSE_SECRET_KEY")

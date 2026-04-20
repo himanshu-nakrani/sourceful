@@ -3,14 +3,14 @@
 import React, { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import WelcomeScreen from "./components/WelcomeScreen";
-import Sidebar from "./components/Sidebar";
-import ChatArea from "./components/ChatArea";
-import SettingsPanel from "./components/SettingsPanel";
-import UploadModal from "./components/UploadModal";
-import { ServerStateProvider } from "./lib/server-state";
-import { StoreProvider, useStore } from "./lib/store";
-import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
+import WelcomeScreen from "../components/WelcomeScreen";
+import Sidebar from "../components/Sidebar";
+import ChatArea from "../components/ChatArea";
+import SettingsPanel from "../components/SettingsPanel";
+import UploadModal from "../components/UploadModal";
+import { ServerStateProvider } from "../lib/server-state";
+import { StoreProvider, useStore } from "../lib/store";
+import { useKeyboardShortcuts } from "../lib/useKeyboardShortcuts";
 
 /**
  * Top-level application shell that manages global UI state, keyboard shortcuts, drag-and-drop uploads, and conditional screens.

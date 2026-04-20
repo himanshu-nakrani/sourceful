@@ -72,6 +72,8 @@ async def init_db() -> None:
                         await _apply_postgres_v5_migration(cur)
                         await _apply_postgres_v6_migration(cur)
                         await _apply_postgres_v7_migration(cur)
+                        await _apply_postgres_v8_migration(cur)
+                        await _apply_postgres_v9_migration(cur)
                 logger.info("Postgres initialized.")
                 return
             except Exception:
@@ -93,13 +95,21 @@ async def init_db() -> None:
             await _sqlite.execute("PRAGMA journal_mode=WAL")
             await _sqlite.execute("PRAGMA foreign_keys=ON")
             for statement in migration_statements():
-                await _sqlite.execute(statement)
+                try:
+                    await _sqlite.execute(statement)
+                except Exception as e:
+                    # Skip duplicate column errors (column already exists from fresh schema)
+                    if "duplicate column name" in str(e).lower():
+                        continue
+                    raise
             await _apply_sqlite_v2_migration(_sqlite)
             await _apply_sqlite_v3_migration(_sqlite)
             await _apply_sqlite_v4_migration(_sqlite)
             await _apply_sqlite_v5_migration(_sqlite)
             await _apply_sqlite_v6_migration(_sqlite)
             await _apply_sqlite_v7_migration(_sqlite)
+            await _apply_sqlite_v8_migration(_sqlite)
+            await _apply_sqlite_v9_migration(_sqlite)
             await _sqlite.commit()
             logger.info("SQLite initialized.")
         except Exception:
@@ -513,6 +523,266 @@ async def _apply_sqlite_v7_migration(conn: aiosqlite.Connection) -> None:
         await conn.execute("ALTER TABLE document_jobs ADD COLUMN progress_detail TEXT")
 
     await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)")
+
+
+async def _apply_postgres_v8_migration(cur) -> None:
+    """v8: Phase 3 — feedback table + conversation memory + GraphRAG scaffold.
+
+    - `feedback`: thumbs-up/down per assistant message with optional free-form
+      comment. Consumed by the eval harness as an online quality signal (3.8)
+      and by the UI to drive rephrase / expand-search hints (3.9).
+    - `conversation_memory`: rolling summary per conversation so chat history
+      older than ``MEMORY_RECENT_TURNS`` is collapsed instead of truncated
+      (3.7).
+    - `graph_entities` / `graph_relations`: scaffolding for GraphRAG ingestion
+      (3.3). Populated by a follow-up worker job; kept empty and flag-gated
+      (`RETRIEVAL_GRAPH_ENABLED`) until then so it's safe to ship the schema
+      now.
+    """
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS feedback (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            message_id TEXT NOT NULL,
+            rating SMALLINT NOT NULL,
+            comment TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback (message_id)"
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_feedback_owner_created ON feedback (owner_id, created_at DESC)"
+    )
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS conversation_memory (
+            conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+            owner_id TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            turn_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS graph_entities (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            entity_type TEXT,
+            description TEXT,
+            metadata_json TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_entities_name ON graph_entities (owner_id, LOWER(name))"
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_entities_document ON graph_entities (document_id)"
+    )
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS graph_relations (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            source_entity_id TEXT NOT NULL REFERENCES graph_entities(id) ON DELETE CASCADE,
+            target_entity_id TEXT NOT NULL REFERENCES graph_entities(id) ON DELETE CASCADE,
+            relation_type TEXT NOT NULL,
+            description TEXT,
+            weight REAL NOT NULL DEFAULT 1.0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_relations_source ON graph_relations (source_entity_id)"
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_relations_target ON graph_relations (target_entity_id)"
+    )
+    await cur.execute(
+        """
+        INSERT INTO schema_migrations (version)
+        VALUES (8)
+        ON CONFLICT (version) DO NOTHING
+        """
+    )
+
+
+async def _apply_sqlite_v8_migration(conn: aiosqlite.Connection) -> None:
+    """SQLite parity for v8 — same tables + indexes, TEXT timestamps."""
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS feedback (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            comment TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback (message_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_feedback_owner_created ON feedback (owner_id, created_at DESC)"
+    )
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS conversation_memory (
+            conversation_id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            turn_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS graph_entities (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            entity_type TEXT,
+            description TEXT,
+            metadata_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_entities_document ON graph_entities (document_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_entities_owner_name ON graph_entities (owner_id, name)"
+    )
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS graph_relations (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            source_entity_id TEXT NOT NULL,
+            target_entity_id TEXT NOT NULL,
+            relation_type TEXT NOT NULL,
+            description TEXT,
+            weight REAL NOT NULL DEFAULT 1.0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+            FOREIGN KEY (source_entity_id) REFERENCES graph_entities(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_entity_id) REFERENCES graph_entities(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_relations_source ON graph_relations (source_entity_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_relations_target ON graph_relations (target_entity_id)"
+    )
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (8)")
+
+
+async def _apply_postgres_v9_migration(cur) -> None:
+    """v9: GraphRAG community layer (Phase 3.4).
+
+    A ``graph_communities`` row is an owner/document-scoped cluster of
+    entities with an LLM-written summary that the graph-traversal
+    retrieval lane can dereference as an additional citation. The
+    ``community_entities`` junction table is intentionally append-only
+    — we drop and re-insert when a document is reprocessed via
+    :func:`backend.services.graph.clear_document_graph`.
+    """
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS graph_communities (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            label TEXT NOT NULL,
+            summary TEXT,
+            entity_count INTEGER NOT NULL DEFAULT 0,
+            algorithm TEXT NOT NULL DEFAULT 'connected_components',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_communities_document ON graph_communities (owner_id, document_id)"
+    )
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS community_entities (
+            community_id TEXT NOT NULL REFERENCES graph_communities(id) ON DELETE CASCADE,
+            entity_id TEXT NOT NULL REFERENCES graph_entities(id) ON DELETE CASCADE,
+            PRIMARY KEY (community_id, entity_id)
+        )
+        """
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_community_entities_entity ON community_entities (entity_id)"
+    )
+    await cur.execute(
+        """
+        INSERT INTO schema_migrations (version)
+        VALUES (9)
+        ON CONFLICT (version) DO NOTHING
+        """
+    )
+
+
+async def _apply_sqlite_v9_migration(conn: aiosqlite.Connection) -> None:
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS graph_communities (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            label TEXT NOT NULL,
+            summary TEXT,
+            entity_count INTEGER NOT NULL DEFAULT 0,
+            algorithm TEXT NOT NULL DEFAULT 'connected_components',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_graph_communities_document ON graph_communities (owner_id, document_id)"
+    )
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS community_entities (
+            community_id TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            PRIMARY KEY (community_id, entity_id),
+            FOREIGN KEY (community_id) REFERENCES graph_communities(id) ON DELETE CASCADE,
+            FOREIGN KEY (entity_id) REFERENCES graph_entities(id) ON DELETE CASCADE
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_community_entities_entity ON community_entities (entity_id)"
+    )
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (9)")
 
 
 async def close_db() -> None:

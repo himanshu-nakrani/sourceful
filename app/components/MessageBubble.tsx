@@ -6,8 +6,10 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { motion } from "framer-motion";
-import { Bot, Check, Copy, RefreshCcw, User } from "lucide-react";
+import { Bot, Check, Copy, RefreshCcw, ThumbsDown, ThumbsUp, User } from "lucide-react";
 import type { Citation, Message } from "../lib/api";
+
+export type MessageFeedbackState = "idle" | "up" | "down" | "pending" | "error";
 
 interface MessageBubbleProps {
   message: Message;
@@ -15,6 +17,9 @@ interface MessageBubbleProps {
   rerunDisabled?: boolean;
   /** When false but the assistant message is empty, show a placeholder instead of infinite typing dots. */
   isStreaming?: boolean;
+  /** Called when the user clicks thumbs-up / thumbs-down. Omitting disables the UI. */
+  onFeedback?: (message: Message, rating: "up" | "down") => void;
+  feedbackState?: MessageFeedbackState;
 }
 
 // Match inline citation markers like [1], [ 2 ], or ranges like [1,3,5].
@@ -102,8 +107,14 @@ const MessageBubble = React.memo(function MessageBubble({
   onRerun,
   rerunDisabled = false,
   isStreaming = false,
+  onFeedback,
+  feedbackState = "idle",
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const canShowFeedback =
+    !isUser && !isStreaming && Boolean(onFeedback) && Boolean(message.content);
+  const feedbackPending = feedbackState === "pending";
+  const feedbackRecorded = feedbackState === "up" || feedbackState === "down";
 
   return (
     <div
@@ -209,6 +220,15 @@ const MessageBubble = React.memo(function MessageBubble({
                 {message.content}
               </ReactMarkdown>
             )}
+            {canShowFeedback ? (
+              <FeedbackControls
+                message={message}
+                state={feedbackState}
+                pending={feedbackPending}
+                recorded={feedbackRecorded}
+                onFeedback={onFeedback!}
+              />
+            ) : null}
           </div>
         )}
       </div>
@@ -291,6 +311,78 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     </div>
   );
 }
+function FeedbackControls({
+  message,
+  state,
+  pending,
+  recorded,
+  onFeedback,
+}: {
+  message: Message;
+  state: MessageFeedbackState;
+  pending: boolean;
+  recorded: boolean;
+  onFeedback: (message: Message, rating: "up" | "down") => void;
+}) {
+  const up = state === "up";
+  const down = state === "down";
+  const label = pending
+    ? "Saving feedback…"
+    : up
+    ? "Thanks — recorded."
+    : down
+    ? "Thanks — recorded."
+    : state === "error"
+    ? "Couldn't save feedback."
+    : null;
+  return (
+    <div
+      className="flex items-center gap-2 pt-3 mt-3"
+      style={{
+        borderTop: "1px dashed var(--border)",
+        color: "var(--text-muted)",
+      }}
+    >
+      <span className="text-[11px]">Was this helpful?</span>
+      <motion.button
+        type="button"
+        aria-label="Thumbs up"
+        disabled={pending || recorded}
+        onClick={() => onFeedback(message, "up")}
+        whileTap={{ scale: 0.9 }}
+        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px]"
+        style={{
+          background: up ? "var(--accent-brand-soft)" : "transparent",
+          color: up ? "var(--accent-brand)" : "var(--text-muted)",
+          border: "1px solid var(--border)",
+          cursor: pending || recorded ? "default" : "pointer",
+          opacity: pending ? 0.6 : 1,
+        }}
+      >
+        <ThumbsUp size={11} />
+      </motion.button>
+      <motion.button
+        type="button"
+        aria-label="Thumbs down"
+        disabled={pending || recorded}
+        onClick={() => onFeedback(message, "down")}
+        whileTap={{ scale: 0.9 }}
+        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px]"
+        style={{
+          background: down ? "var(--error-soft)" : "transparent",
+          color: down ? "var(--error)" : "var(--text-muted)",
+          border: "1px solid var(--border)",
+          cursor: pending || recorded ? "default" : "pointer",
+          opacity: pending ? 0.6 : 1,
+        }}
+      >
+        <ThumbsDown size={11} />
+      </motion.button>
+      {label ? <span className="text-[11px]">{label}</span> : null}
+    </div>
+  );
+}
+
 function TypingIndicator() {
   return (
     <div className="flex gap-1.5 items-center py-1">

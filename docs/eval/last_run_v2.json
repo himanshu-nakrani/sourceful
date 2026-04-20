@@ -2,7 +2,7 @@
   "recall_at_k": 1.0,
   "hits": 31,
   "total": 31,
-  "elapsed_seconds": 0.241,
+  "elapsed_seconds": 0.231,
   "categories": {
     "policy": {
       "hits": 12,

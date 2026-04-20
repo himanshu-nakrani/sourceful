@@ -190,6 +190,166 @@ def test_retrieval_recall_on_golden_set(client):
     assert recall >= 0.66, f"Retrieval recall@3 regressed: {recall:.2f} < 0.66"
 
 
+# ---- Expanded golden set (v2) ------------------------------------------------
+
+@pytest.mark.eval
+@pytest.mark.asyncio
+async def test_retrieval_recall_v2(client: AsyncClient, monkeypatch):  # noqa: ARG001
+    """Expanded golden retrieval set covering policy/technical/numeric/multi-hop."""
+    spec = json.loads(GOLDEN_V2_PATH.read_text())
+    documents = spec["documents"]
+    items = spec["items"]
+
+    # Ingest all documents once.
+    doc_ids: dict[str, str] = {}
+    for doc_key, doc in documents.items():
+        content = "\n\n".join(doc["sections"])
+        resp = await client.post(
+            "/api/documents",
+            headers=PROVIDER_HEADERS,
+            json={
+                "filename": doc["filename"],
+                "provider": "mock",
+                "embedding_model": "mock-embedding",
+            },
+            content=content.encode(),
+        )
+        assert resp.status_code == 201, f"Upload failed for {doc_key}: {resp.text}"
+        doc_ids[doc_key] = resp.json()["id"]
+
+    # Poll jobs to completion (simplified: sequential claim).
+    for _ in range(200):
+        job = await claim_next_job()
+        if job is None:
+            break
+        with monkeypatch.context() as m:
+            m.setattr(
+                "backend.services.embeddings.embed_texts",
+                AsyncMock(side_effect=lambda _p, _k, _m, texts: [_token_vector(t) for t in texts]),
+            )
+            await process_job(job)
+
+    # Run queries and check hits.
+    hits = 0
+    results = []
+    started = time.perf_counter()
+
+    for item in items:
+        doc_id = doc_ids[item["document"]]
+        r = await client.post(
+            "/api/chat",
+            headers=PROVIDER_HEADERS,
+            json={
+                "provider": "mock",
+                "model": "mock-model",
+                "document_id": doc_id,
+                "question": item["question"],
+            },
+        )
+        body = r.json()
+        sources = body.get("sources", [])
+        expected = item["expected_substring"].lower()
+        hit = any(expected in (s.get("excerpt") or "").lower() for s in sources)
+        results.append(
+            {
+                "id": item["id"],
+                "question": item["question"],
+                "expected_substring": item["expected_substring"],
+                "category": item.get("category", "unknown"),
+                "hit": hit,
+                "top_excerpts": [s.get("excerpt", "")[:120] for s in sources],
+            }
+        )
+        if hit:
+            hits += 1
+
+    recall = hits / max(1, len(items))
+    elapsed = time.perf_counter() - started
+
+    # Optional RAGAS scoring (best-effort; skip if not installed).
+    ragas_report = _maybe_compute_ragas(results, documents)
+
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    report = {
+        "version": 2,
+        "recall_at_k": recall,
+        "hits": hits,
+        "total": len(items),
+        "elapsed_seconds": round(elapsed, 3),
+        "categories": _by_category(results),
+        "ragas": ragas_report,
+        "items": results,
+    }
+    REPORT_V2_PATH.write_text(json.dumps(report, indent=2))
+    print(f"\n[eval-v2] recall@3 = {recall:.2f} ({hits}/{len(items)}) in {elapsed:.2f}s")
+    print(f"[eval-v2] report written to {REPORT_V2_PATH}")
+    if ragas_report:
+        print(f"[eval-v2] RAGAS context_precision={ragas_report.get('context_precision', 'n/a')}")
+
+    # Baseline for expanded set (30 items) — intentionally achievable bar.
+    assert recall >= 0.70, f"Retrieval recall@3 regressed: {recall:.2f} < 0.70"
+
+
+def _by_category(results: list[dict]) -> dict[str, float]:
+    cats: dict[str, list[bool]] = {}
+    for r in results:
+        cat = r.get("category", "unknown")
+        cats.setdefault(cat, []).append(r["hit"])
+    return {cat: sum(hits) / max(1, len(hits)) for cat, hits in cats.items()}
+
+
+def _maybe_compute_ragas(results: list[dict], documents: dict) -> dict | None:
+    """If ragas is installed and OPENAI_API_KEY is present, compute context precision.
+
+    This is best-effort: failures log a warning and return None so CI doesn't
+    break when RAGAS isn't available.
+    """
+    try:
+        from ragas import evaluate  # type: ignore
+        from ragas.metrics import context_precision  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        print(f"[eval-v2] RAGAS not available ({exc}); skipping RAGAS metrics.")
+        return None
+
+    key = os.getenv("OPENAI_API_KEY") or os.getenv("RAGAS_OPENAI_API_KEY")
+    if not key:
+        print("[eval-v2] RAGAS skipped: no OPENAI_API_KEY or RAGAS_OPENAI_API_KEY.")
+        return None
+
+    from datasets import Dataset  # type: ignore
+
+    # Build minimal eval inputs: question + retrieved contexts + ground_truth
+    # We treat `expected_substring` presence as a proxy for "correct" context.
+    eval_rows = []
+    for r in results:
+        question = r["question"]
+        contexts = r.get("top_excerpts", [])
+        # Synthetic ground truth: if hit, we say the first excerpt is relevant.
+        ground_truth = r["expected_substring"] if r["hit"] else ""
+        eval_rows.append(
+            {
+                "question": question,
+                "contexts": contexts,
+                "ground_truth": ground_truth,
+            }
+        )
+
+    if not eval_rows:
+        return None
+
+    try:
+        ds = Dataset.from_list(eval_rows)
+        scores = evaluate(
+            ds,
+            metrics=[context_precision],
+            raise_exceptions=False,
+        )
+        return {"context_precision": scores.get("context_precision")}
+    except Exception as exc:  # noqa: BLE001
+        print(f"[eval-v2] RAGAS evaluation failed: {exc}")
+        return None
+
+
 @pytest.mark.eval
 def test_retrieval_recall_on_golden_v2(client):
     """Expanded golden-set eval (31 items across policy/technical/numeric/multi-hop)."""

@@ -2,7 +2,7 @@
   "recall_at_k": 1.0,
   "hits": 3,
   "total": 3,
-  "elapsed_seconds": 0.072,
+  "elapsed_seconds": 0.059,
   "items": [
     {
       "id": "capital-france",

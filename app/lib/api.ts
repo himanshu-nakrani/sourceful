@@ -375,6 +375,21 @@ export async function deleteConversation(
   if (!res.ok) throw new Error(await errorMessage(res));
 }
 
+export interface ActiveLearningHint {
+  suggestion: string;
+  action: "rephrase" | "expand_search" | string;
+  reason: string;
+  best_score?: number;
+}
+
+export interface AgentToolTraceStep {
+  tool: string;
+  args?: Record<string, unknown>;
+  new_chunks?: number;
+  total_chunks?: number;
+  error?: string;
+}
+
 export interface RetrievalStages {
   hybrid_enabled?: boolean;
   reranker_enabled?: boolean;
@@ -385,6 +400,21 @@ export interface RetrievalStages {
   fused_hits?: number;
   rerank_reordered?: number;
   final_hits?: number;
+  // Phase 3 additions (agentic retrieval, memory, hint)
+  retrieval_path?: "pipeline" | "agent";
+  agent_enabled?: boolean;
+  planner_iterations?: number;
+  stopped_reason?: string;
+  tool_trace?: AgentToolTraceStep[];
+  agent_confidence?: number;
+  per_document_confidence?: Record<string, number>;
+  active_learning_hint?: ActiveLearningHint;
+  memory?: {
+    memory_enabled?: boolean;
+    memory_state?: string;
+    memory_turn_count?: number;
+    [k: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -764,6 +794,60 @@ export async function fetchModels(
 ): Promise<ModelsResponse> {
   const res = await apiFetch(`/api/models?provider=${encodeURIComponent(provider)}`, {
     headers: baseHeaders(auth, { includeProviderKey: true }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+// ---- Feedback (Phase 3.8) ---------------------------------------------
+
+export type FeedbackRating = "up" | "down";
+
+export interface FeedbackRecord {
+  id: string;
+  conversation_id: string;
+  message_id: string;
+  rating: FeedbackRating;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface FeedbackSummary {
+  total: number;
+  up: number;
+  down: number;
+  recent: FeedbackRecord[];
+}
+
+/**
+ * Record a thumbs-up / thumbs-down reaction plus an optional comment for an
+ * assistant message. Feedback is scoped to the caller's owner id and the
+ * referenced message must live in a conversation owned by that caller.
+ */
+export async function submitFeedback(
+  auth: ClientAuthContext,
+  payload: {
+    conversation_id: string;
+    message_id: string;
+    rating: FeedbackRating;
+    comment?: string;
+  }
+): Promise<FeedbackRecord> {
+  const res = await apiFetch("/api/feedback", {
+    method: "POST",
+    headers: baseHeaders(auth, { includeJson: true }),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function getFeedbackSummary(
+  auth: ClientAuthContext,
+  limit = 20
+): Promise<FeedbackSummary> {
+  const res = await apiFetch(`/api/feedback/summary?limit=${limit}`, {
+    headers: baseHeaders(auth),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();

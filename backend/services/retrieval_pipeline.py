@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.services import hybrid, mmr as mmr_mod, reranker, tracing
+from backend.services import graph_retrieval, hybrid, mmr as mmr_mod, reranker, tracing
 from backend.services.vectorstore import (
     RetrievedChunk,
     query_similar,
@@ -124,9 +124,28 @@ async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = 
             xq_span.update(hits=total_hits)
         stages["extra_lane_hits"] = sum(len(h) for h, _ in extra_lanes)
 
+    # --- Optional graph-traversal lane (Phase 3.5) ---
+    graph_hits: list[RetrievedChunk] = []
+    graph_on = (
+        settings.retrieval_graph_traversal_enabled
+        and settings.retrieval_graph_enabled
+    )
+    if graph_on:
+        with tracing.span(trace_span, "graph_retrieval", k=dense_k) as graph_span:
+            graph_result = await graph_retrieval.graph_lane_search(
+                owner_id=req.owner_id,
+                document_ids=req.document_ids,
+                question=req.query,
+                top_k=dense_k,
+            )
+            graph_hits = graph_result.chunks
+            graph_span.update(hits=len(graph_hits), seeds=len(graph_result.stats.get("seeds", []) or []))
+        stages["graph_hits"] = len(graph_hits)
+        stages["graph_stats"] = graph_result.stats
+
     # --- Optional FTS lane + RRF fusion ---
     candidates: list[RetrievedChunk]
-    if hybrid_on or extra_lanes:
+    if hybrid_on or extra_lanes or graph_hits:
         fusion_inputs: list[tuple[list[RetrievedChunk], float]] = [
             (dense_hits, settings.hybrid_vector_weight)
         ]
@@ -139,6 +158,10 @@ async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = 
             stages["fts_hits"] = len(fts_hits)
             fusion_inputs.append((fts_hits, settings.hybrid_fts_weight))
         fusion_inputs.extend(extra_lanes)
+        if graph_hits:
+            fusion_inputs.append(
+                (graph_hits, settings.retrieval_graph_lane_weight)
+            )
 
         with tracing.span(trace_span, "rrf_fusion", lanes=len(fusion_inputs)) as fuse_span:
             fused = hybrid.reciprocal_rank_fusion(fusion_inputs, top_k=dense_k)

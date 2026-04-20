@@ -444,9 +444,11 @@ function CollapsibleSection({
 }) {
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+      {/* [a11y] Added aria-expanded to communicate toggle state to assistive technology */}
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={open}
         className="w-full flex items-center justify-between px-4 py-3 text-sm"
         style={{ background: "var(--bg-surface)" }}
       >

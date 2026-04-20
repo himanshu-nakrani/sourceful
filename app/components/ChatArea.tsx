@@ -731,9 +731,11 @@ function RetrievalDebugPanel({
 
             {streamEvents.length > 0 ? (
               <div>
+                {/* [a11y] Added aria-expanded to communicate toggle state to assistive technology */}
                 <button
                   type="button"
                   onClick={() => setEventsExpanded((v) => !v)}
+                  aria-expanded={eventsExpanded}
                   className="flex items-center gap-1 text-[11px] font-medium"
                   style={{ color: "var(--text-tertiary)" }}
                 >
@@ -766,9 +768,11 @@ function RetrievalDebugPanel({
 
             {sources.length ? (
               <div>
+                {/* [a11y] Added aria-expanded to communicate toggle state to assistive technology */}
                 <button
                   type="button"
                   onClick={() => setSourcesExpanded((v) => !v)}
+                  aria-expanded={sourcesExpanded}
                   className="flex items-center gap-1 text-[11px] font-medium"
                   style={{ color: "var(--text-tertiary)" }}
                 >

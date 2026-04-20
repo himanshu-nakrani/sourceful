@@ -10,3 +10,7 @@
 ## 2026-04-19 - Added proper ID linking for form accessibility
 **Learning:** Screen readers and keyboard users rely heavily on the explicit relationship between a label and an input, which is established using the 'id' and 'htmlFor' attributes. React's 'useId()' hook simplifies this process significantly without generating conflicts in components that appear multiple times.
 **Action:** When creating reusable form components, immediately assign `const id = React.useId()` and link the `label htmlFor={id}` and `input id={id}` for full accessibility support.
+
+## 2026-04-20 - aria-expanded on toggle buttons
+**Learning:** When building collapsible UI sections or accordions, setting the `aria-expanded` attribute on the toggle button is essential for screen reader users to understand the current state and predict the action of the button.
+**Action:** Always bind the `aria-expanded` attribute to the boolean state tracking the visibility of the corresponding collapsible content section.

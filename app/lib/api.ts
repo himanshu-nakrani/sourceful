@@ -232,6 +232,17 @@ export async function listDocuments(auth: ClientAuthContext): Promise<DocumentIn
   return data.documents ?? [];
 }
 
+export async function getDocument(
+  auth: ClientAuthContext,
+  documentId: string
+): Promise<DocumentInfo> {
+  const res = await apiFetch(`/api/documents/${documentId}`, {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
 export async function getDocumentStatus(
   auth: ClientAuthContext,
   documentId: string
@@ -252,6 +263,17 @@ export async function getDocumentChunks(
   });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
+}
+
+export async function getDocumentContent(
+  auth: ClientAuthContext,
+  documentId: string
+): Promise<Blob> {
+  const res = await apiFetch(`/api/documents/${documentId}/content`, {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.blob();
 }
 
 export async function deleteDocument(

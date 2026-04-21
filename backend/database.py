@@ -74,6 +74,7 @@ async def init_db() -> None:
                         await _apply_postgres_v7_migration(cur)
                         await _apply_postgres_v8_migration(cur)
                         await _apply_postgres_v9_migration(cur)
+                        await _apply_postgres_v11_migration(cur)
                 logger.info("Postgres initialized.")
                 return
             except Exception:
@@ -110,6 +111,7 @@ async def init_db() -> None:
             await _apply_sqlite_v7_migration(_sqlite)
             await _apply_sqlite_v8_migration(_sqlite)
             await _apply_sqlite_v9_migration(_sqlite)
+            await _apply_sqlite_v11_migration(_sqlite)
             await _sqlite.commit()
             logger.info("SQLite initialized.")
         except Exception:
@@ -783,6 +785,27 @@ async def _apply_sqlite_v9_migration(conn: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_community_entities_entity ON community_entities (entity_id)"
     )
     await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (9)")
+
+
+async def _apply_postgres_v11_migration(cur) -> None:
+    await cur.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_bytes BYTEA")
+    await cur.execute(
+        """
+        INSERT INTO schema_migrations (version)
+        VALUES (11)
+        ON CONFLICT (version) DO NOTHING
+        """
+    )
+
+
+async def _apply_sqlite_v11_migration(conn: aiosqlite.Connection) -> None:
+    cursor = await conn.execute("PRAGMA table_info(documents)")
+    rows = await cursor.fetchall()
+    await cursor.close()
+    columns = {row[1] for row in rows}
+    if "file_bytes" not in columns:
+        await conn.execute("ALTER TABLE documents ADD COLUMN file_bytes BLOB")
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (11)")
 
 
 async def close_db() -> None:

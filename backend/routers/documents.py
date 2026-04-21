@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import Response
 
 from backend.database import execute, fetch_all, fetch_one
 from backend.errors import api_error_response
@@ -99,6 +102,60 @@ async def get_document_status(
 async def get_document_chunks(document_id: str, context: RequestContext = Depends(get_request_context)):
     rows = await preview_chunks(document_id, context.owner_id)
     return [ChunkPreviewResponse(**row) for row in rows]
+
+
+@router.get("/documents/{document_id}/content")
+async def get_document_content(
+    document_id: str,
+    request: Request,
+    context: RequestContext = Depends(get_request_context),
+):
+    row = await fetch_one(
+        """
+        SELECT id, filename, mime_type, file_bytes
+        FROM documents
+        WHERE id = ? AND owner_id = ?
+        """,
+        (document_id, context.owner_id),
+    )
+    if not row:
+        return api_error_response(
+            request=request,
+            status_code=404,
+            error="Document not found.",
+            code="DOCUMENT_NOT_FOUND",
+            details={"document_id": document_id},
+        )
+
+    raw = row.get("file_bytes")
+    if raw is None:
+        latest_job = await fetch_one(
+            """
+            SELECT payload_bytes
+            FROM document_jobs
+            WHERE document_id = ? AND owner_id = ? AND payload_bytes IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (document_id, context.owner_id),
+        )
+        raw = latest_job.get("payload_bytes") if latest_job else None
+    if raw is None:
+        return api_error_response(
+            request=request,
+            status_code=404,
+            error="Document content is unavailable. Re-upload the document to make notebook viewing available.",
+            code="DOCUMENT_CONTENT_UNAVAILABLE",
+            details={"document_id": document_id},
+        )
+
+    filename = str(row.get("filename") or "document")
+    content_disposition = f"inline; filename*=UTF-8''{quote(filename)}"
+    return Response(
+        content=bytes(raw),
+        media_type=str(row.get("mime_type") or "application/octet-stream"),
+        headers={"Content-Disposition": content_disposition},
+    )
 
 
 @router.post("/documents/{document_id}/reprocess", response_model=IngestResponse, status_code=202)

@@ -1,8 +1,25 @@
 "use client";
 
-import React from "react";
-import NotebookView from "../../../components/NotebookView";
+import { use } from "react";
+import { useRouter } from "next/navigation";
+import { NotebookView } from "../../../components/NotebookView";
+import { StoreProvider } from "../../../lib/store";
 
-export default function NotebookPage({ params }: { params: { id: string } }) {
-  return <NotebookView documentId={params.id} />;
+interface NotebookPageProps {
+  params: Promise<{ id: string }>;
+}
+
+function NotebookPageContent({ documentId }: { documentId: string }) {
+  const router = useRouter();
+  return <NotebookView documentId={documentId} onClose={() => router.push("/dashboard")} />;
+}
+
+export default function NotebookPage({ params }: NotebookPageProps) {
+  const { id } = use(params);
+
+  return (
+    <StoreProvider>
+      <NotebookPageContent documentId={id} />
+    </StoreProvider>
+  );
 }

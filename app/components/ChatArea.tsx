@@ -773,7 +773,7 @@ function RetrievalDebugPanel({
                   type="button"
                   onClick={() => setSourcesExpanded((v) => !v)}
                   aria-expanded={sourcesExpanded}
-                  className="flex items-center gap-1 text-[11px] font-medium"
+                  className="flex items-center gap-1 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-sm"
                   style={{ color: "var(--text-tertiary)" }}
                 >
                   {sourcesExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

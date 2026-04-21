@@ -14,3 +14,6 @@
 ## 2026-04-20 - aria-expanded on toggle buttons
 **Learning:** When building collapsible UI sections or accordions, setting the `aria-expanded` attribute on the toggle button is essential for screen reader users to understand the current state and predict the action of the button.
 **Action:** Always bind the `aria-expanded` attribute to the boolean state tracking the visibility of the corresponding collapsible content section.
+## 2024-04-21 - Added explicit focus rings to elements with outline-none
+**Learning:** Using `outline-none` on interactive elements without an explicit focus replacement breaks keyboard accessibility by completely hiding the default browser focus indicator. This is particularly prevalent in modern web apps that style inputs cleanly.
+**Action:** When using Tailwind's `outline-none` on interactive elements, always pair it with an explicit focus ring such as `focus-visible:ring-2 focus-visible:ring-[var(--accent)]` (or equivalent based on the design system) to provide a clear visual indicator for keyboard navigation.

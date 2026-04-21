@@ -291,7 +291,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="Email"
-                    className="rounded-xl px-3 py-2 text-sm outline-none"
+                    className="rounded-xl px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                   />
                   <input
@@ -299,7 +299,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Password"
-                    className="rounded-xl px-3 py-2 text-sm outline-none"
+                    className="rounded-xl px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                   />
                 </div>
@@ -527,7 +527,7 @@ function Field({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-xl px-3 py-2.5 pl-9 text-sm outline-none transition-all duration-200"
+          className="w-full rounded-xl px-3 py-2.5 pl-9 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-all duration-200"
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
@@ -578,7 +578,7 @@ function SelectField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled || loading}
-          className="w-full rounded-xl px-3 py-2.5 text-sm outline-none appearance-none cursor-pointer disabled:opacity-50 transition-all duration-200"
+          className="w-full rounded-xl px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] appearance-none cursor-pointer disabled:opacity-50 transition-all duration-200"
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",

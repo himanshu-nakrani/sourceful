@@ -288,7 +288,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
             onBlur={() => setSearchFocused(false)}
             placeholder="Search documents"
             aria-label="Search documents"
-            className="w-full bg-transparent text-xs outline-none"
+            className="w-full bg-transparent text-xs outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{ color: "var(--text-primary)" }}
           />
         </motion.div>

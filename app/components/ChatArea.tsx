@@ -594,7 +594,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                 disabled={!settings.providerApiKey.trim() || streaming}
                 rows={1}
                 aria-label="Ask a question about your document"
-                className="flex-1 resize-none bg-transparent px-4 py-3.5 text-sm outline-none"
+                className="flex-1 resize-none bg-transparent px-4 py-3.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
                 style={{ color: "var(--text-primary)", maxHeight: 160, minHeight: 44 }}
               />
               <div className="flex items-center gap-1 p-1.5">

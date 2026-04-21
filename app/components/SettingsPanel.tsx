@@ -449,7 +449,7 @@ function CollapsibleSection({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm"
+        className="w-full flex items-center justify-between px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
         style={{ background: "var(--bg-surface)" }}
       >
         <span className="flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>

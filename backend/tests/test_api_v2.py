@@ -36,6 +36,11 @@ def test_ingest_document_and_list(client):
     assert documents.status_code == 200
     assert documents.json()["documents"][0]["id"] == payload["document_id"]
 
+    content = client.get(f"/api/documents/{payload['document_id']}/content", headers=HEADERS)
+    assert content.status_code == 200
+    assert content.content == b"hello document"
+    assert content.headers["content-type"].startswith("text/plain")
+
 
 # def test_vertex_search_ingest_allows_missing_provider_key(client):
 #     login_superuser(client)
@@ -107,6 +112,10 @@ def test_full_ingest_chat_and_conversation_flow(client):
     )
     assert status.status_code == 200
     assert status.json()["status"] == "ready"
+
+    content = client.get(f"/api/documents/{ingest_payload['document_id']}/content", headers=HEADERS)
+    assert content.status_code == 200
+    assert content.content == b"The capital of France is Paris."
 
     with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
         "backend.routers.chat.create_openai_text", new_callable=AsyncMock

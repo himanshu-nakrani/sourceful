@@ -50,18 +50,18 @@ async def enqueue_ingest_job(
     if existing:
         document_id = existing["id"]
         await execute(
-            "UPDATE documents SET status = 'queued', current_job_id = NULL, last_error = NULL WHERE id = ? AND owner_id = ?",
-            (document_id, owner_id),
+            "UPDATE documents SET status = 'queued', current_job_id = NULL, last_error = NULL, file_bytes = ? WHERE id = ? AND owner_id = ?",
+            (raw, document_id, owner_id),
         )
     else:
         document_id = str(uuid.uuid4())
         await execute(
             """
             INSERT INTO documents (
-                id, owner_id, filename, provider, embedding_model, mime_type, checksum, file_size, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+                id, owner_id, filename, provider, embedding_model, mime_type, checksum, file_bytes, file_size, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
             """,
-            (document_id, owner_id, filename, provider, embedding_model, mime_type, checksum, len(raw)),
+            (document_id, owner_id, filename, provider, embedding_model, mime_type, checksum, raw, len(raw)),
         )
 
     job_id = str(uuid.uuid4())

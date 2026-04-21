@@ -3,8 +3,8 @@ from collections.abc import Iterable
 from backend.settings import settings
 
 
-SQLITE_MIGRATION_VERSION = 10
-POSTGRES_MIGRATION_VERSION = 10
+SQLITE_MIGRATION_VERSION = 11
+POSTGRES_MIGRATION_VERSION = 11
 
 
 def _split_statements(script: str) -> list[str]:
@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS documents (
     embedding_model TEXT NOT NULL,
     mime_type TEXT NOT NULL,
     checksum TEXT NOT NULL,
+    file_bytes BLOB,
     chunk_count INTEGER NOT NULL DEFAULT 0,
     file_size INTEGER NOT NULL DEFAULT 0,
     page_count INTEGER,
@@ -251,7 +252,7 @@ CREATE TABLE IF NOT EXISTS connector_syncs (
 );
 CREATE INDEX IF NOT EXISTS idx_connector_syncs_connector ON connector_syncs(connector_id);
 
-INSERT OR IGNORE INTO schema_migrations (version) VALUES (1), (10);
+INSERT OR IGNORE INTO schema_migrations (version) VALUES (1), (11);
 """
 
 
@@ -278,6 +279,7 @@ CREATE TABLE IF NOT EXISTS documents (
     embedding_model TEXT NOT NULL,
     mime_type TEXT NOT NULL,
     checksum TEXT NOT NULL,
+    file_bytes BYTEA,
     chunk_count INTEGER NOT NULL DEFAULT 0,
     file_size INTEGER NOT NULL DEFAULT 0,
     page_count INTEGER,
@@ -482,7 +484,7 @@ CREATE TABLE IF NOT EXISTS connector_syncs (
 );
 CREATE INDEX IF NOT EXISTS idx_connector_syncs_connector ON connector_syncs(connector_id);
 
-INSERT INTO schema_migrations (version) VALUES (1), (10) ON CONFLICT (version) DO NOTHING;
+INSERT INTO schema_migrations (version) VALUES (1), (11) ON CONFLICT (version) DO NOTHING;
 """
 
 

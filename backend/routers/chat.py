@@ -8,6 +8,11 @@ import uuid
 import asyncio
 from typing import Any
 
+try:
+    import orjson
+except ImportError:
+    orjson = None
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from openai import APIError
@@ -532,8 +537,14 @@ async def _generate_chat_response(
 
 
 def _sse_event(event: str, data: dict | str) -> bytes:
-    payload = data if isinstance(data, str) else json.dumps(data, default=str)
-    return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
+    if isinstance(data, str):
+        payload = data.encode("utf-8")
+    elif orjson is not None:
+        payload = orjson.dumps(data, option=orjson.OPT_PASSTHROUGH_DATETIME, default=str)
+    else:
+        payload = json.dumps(data, default=str).encode("utf-8")
+
+    return b"event: " + event.encode("utf-8") + b"\ndata: " + payload + b"\n\n"
 
 
 async def _stream_chat_response(

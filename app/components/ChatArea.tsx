@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText,
@@ -15,6 +16,7 @@ import {
   Bug,
   ChevronDown,
   ChevronRight,
+  BookOpen,
 } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
@@ -64,6 +66,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     setMessages,
   } = useServerState();
   const { settings, activeConversationId, activeDocumentId, activeDocumentIds, sidebarOpen } = state;
+  const router = useRouter();
   const activeDocument = useMemo(
     () => documents.find((document) => document.id === activeDocumentId) ?? null,
     [documents, activeDocumentId]
@@ -506,6 +509,21 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           </span>
         )}
         <div className="flex-1" />
+        {activeDocument && !isMultiDoc && (
+          <motion.button
+            type="button"
+            onClick={() => router.push(`/documents/${activeDocument.id}/notebook`)}
+            className="p-1.5 rounded-lg flex items-center gap-1.5 mr-2"
+            style={{ color: "var(--text-muted)" }}
+            aria-label="Open notebook view"
+            title="Open notebook view"
+            whileHover={{ color: "var(--text-secondary)" }}
+            whileTap={{ scale: 0.92 }}
+          >
+            <BookOpen size={14} />
+            <span className="text-[11px] font-medium hidden sm:inline">Notebook</span>
+          </motion.button>
+        )}
         <motion.button
           type="button"
           onClick={() => setDebugOpen((v) => !v)}

@@ -193,8 +193,7 @@ def test_retrieval_recall_on_golden_set(client):
 # ---- Expanded golden set (v2) ------------------------------------------------
 
 @pytest.mark.eval
-@pytest.mark.asyncio
-async def test_retrieval_recall_v2(client: AsyncClient, monkeypatch):  # noqa: ARG001
+def test_retrieval_recall_v2(client, monkeypatch):
     """Expanded golden retrieval set covering policy/technical/numeric/multi-hop."""
     spec = json.loads(GOLDEN_V2_PATH.read_text())
     documents = spec["documents"]
@@ -203,65 +202,69 @@ async def test_retrieval_recall_v2(client: AsyncClient, monkeypatch):  # noqa: A
     # Ingest all documents once.
     doc_ids: dict[str, str] = {}
     for doc_key, doc in documents.items():
-        content = "\n\n".join(doc["sections"])
-        resp = await client.post(
-            "/api/documents",
+        content = "\n\n".join(doc["sections"]).encode("utf-8")
+        resp = client.post(
+            "/api/ingest",
             headers=PROVIDER_HEADERS,
-            json={
-                "filename": doc["filename"],
-                "provider": "mock",
-                "embedding_model": "mock-embedding",
-            },
-            content=content.encode(),
+            data={"provider": "openai"},
+            files={"file": (doc["filename"], content, "text/plain")},
         )
-        assert resp.status_code == 201, f"Upload failed for {doc_key}: {resp.text}"
-        doc_ids[doc_key] = resp.json()["id"]
+        assert resp.status_code == 202, f"Upload failed for {doc_key}: {resp.text}"
+        doc_ids[doc_key] = resp.json()["document_id"]
 
     # Poll jobs to completion (simplified: sequential claim).
     for _ in range(200):
-        job = await claim_next_job()
+        job = asyncio.run(claim_next_job())
         if job is None:
             break
         with monkeypatch.context() as m:
             m.setattr(
-                "backend.services.embeddings.embed_texts",
+                "backend.services.jobs.embed_texts",
                 AsyncMock(side_effect=lambda _p, _k, _m, texts: [_token_vector(t) for t in texts]),
             )
-            await process_job(job)
+            asyncio.run(process_job(job))
 
     # Run queries and check hits.
     hits = 0
     results = []
     started = time.perf_counter()
 
-    for item in items:
-        doc_id = doc_ids[item["document"]]
-        r = await client.post(
-            "/api/chat",
-            headers=PROVIDER_HEADERS,
-            json={
-                "provider": "mock",
-                "model": "mock-model",
-                "document_id": doc_id,
-                "question": item["question"],
-            },
-        )
-        body = r.json()
-        sources = body.get("sources", [])
-        expected = item["expected_substring"].lower()
-        hit = any(expected in (s.get("excerpt") or "").lower() for s in sources)
-        results.append(
-            {
-                "id": item["id"],
-                "question": item["question"],
-                "expected_substring": item["expected_substring"],
-                "category": item.get("category", "unknown"),
-                "hit": hit,
-                "top_excerpts": [s.get("excerpt", "")[:120] for s in sources],
-            }
-        )
-        if hit:
-            hits += 1
+    with patch(
+        "backend.routers.chat.embed_query",
+        new=AsyncMock(side_effect=lambda _p, _k, _m, text: _token_vector(text)),
+    ), patch(
+        "backend.routers.chat.create_openai_text",
+        new=AsyncMock(return_value="(stubbed answer)"),
+    ):
+        for item in items:
+            doc_id = doc_ids[item["document"]]
+            r = client.post(
+                "/api/chat",
+                headers=PROVIDER_HEADERS,
+                json={
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "document_id": doc_id,
+                    "question": item["question"],
+                },
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            sources = body.get("sources", [])
+            expected = item["expected_substring"].lower()
+            hit = any(expected in (s.get("excerpt") or "").lower() for s in sources)
+            results.append(
+                {
+                    "id": item["id"],
+                    "question": item["question"],
+                    "expected_substring": item["expected_substring"],
+                    "category": item.get("category", "unknown"),
+                    "hit": hit,
+                    "top_excerpts": [s.get("excerpt", "")[:120] for s in sources],
+                }
+            )
+            if hit:
+                hits += 1
 
     recall = hits / max(1, len(items))
     elapsed = time.perf_counter() - started

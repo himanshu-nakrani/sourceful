@@ -13,3 +13,12 @@
 **Vulnerability:** The `/api/analytics/overview` endpoint was only enforcing `require_authenticated_context`, allowing any authenticated user to access system-wide analytics data (including user counts, signups, document metrics, etc.).
 **Learning:** Endpoints returning aggregated or system-wide data must enforce role-based access control (RBAC), not just authentication. Relying solely on `Depends(require_authenticated_context)` is insufficient for admin-only functionality.
 **Prevention:** Always verify that administrative and reporting endpoints use `Depends(require_admin_context)` to enforce the principle of least privilege.
+
+## 2025-04-20 - Missing Timeout on External OAuth Token Exchange
+**Vulnerability:** The Google OAuth token exchange request in `backend/routers/auth.py` lacked an explicit timeout configuration on the `httpx.AsyncClient`.
+**Learning:** Unbounded network calls can hang indefinitely if the upstream service is slow or unresponsive. In asynchronous frameworks like FastAPI, this can tie up worker threads, leading to resource exhaustion and potential Denial of Service (DoS) conditions.
+**Prevention:** Always configure an explicit, reasonable timeout (e.g., `timeout=10.0`) on all outbound HTTP requests made by the backend service.
+## 2025-05-18 - Rate Limit Bypass in Middleware
+**Vulnerability:** The rate limiter in RateLimitMiddleware combined the user's IP address with the first 24 characters of the Authorization header to form the rate limit bucket ID.
+**Learning:** Because the Authorization header is client-controlled, an attacker could generate arbitrary unique bucket IDs by randomizing the Authorization header, completely bypassing the rate limits.
+**Prevention:** Always use secure, trusted identifiers for rate limiting. Unauthenticated requests should be rate-limited strictly by the client IP address (or by combined IP + user agent if desired but IP is standard). Do not incorporate arbitrary untrusted client input into rate limit bucket generation.

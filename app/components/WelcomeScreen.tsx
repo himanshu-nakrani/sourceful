@@ -230,7 +230,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
                   placeholder={
                     provider === "openai" ? "sk-..." : "Google AI API key"
                   }
-                  className="w-full rounded-xl px-3 py-3 pl-10 text-sm outline-none transition-all duration-200"
+                  className="w-full rounded-xl px-3 py-3 pl-10 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-all duration-200"
                   style={{
                     background: "var(--bg-surface)",
                     border: "1px solid var(--border)",
@@ -369,7 +369,7 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email"
               required
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-200"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-all duration-200"
               style={{
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border)",
@@ -383,7 +383,7 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
               placeholder="Password"
               required
               minLength={mode === "signup" ? 8 : undefined}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-200"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-all duration-200"
               style={{
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border)",

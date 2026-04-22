@@ -291,7 +291,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="Email"
-                    className="rounded-xl px-3 py-2 text-sm outline-none"
+                    className="rounded-xl px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                   />
                   <input
@@ -299,7 +299,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Password"
-                    className="rounded-xl px-3 py-2 text-sm outline-none"
+                    className="rounded-xl px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                   />
                 </div>
@@ -444,10 +444,12 @@ function CollapsibleSection({
 }) {
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+      {/* [a11y] Added aria-expanded to communicate toggle state to assistive technology */}
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm"
+        aria-expanded={open}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
         style={{ background: "var(--bg-surface)" }}
       >
         <span className="flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
@@ -508,9 +510,10 @@ function Field({
   help: string;
   icon: React.ReactNode;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+      <label htmlFor={id} className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
         {label}
       </label>
       <div className="relative">
@@ -518,12 +521,13 @@ function Field({
           {icon}
         </div>
         <input
+          id={id}
           type="password"
           autoComplete="off"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-xl px-3 py-2.5 pl-9 text-sm outline-none transition-all duration-200"
+          className="w-full rounded-xl px-3 py-2.5 pl-9 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-all duration-200"
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
@@ -562,17 +566,19 @@ function SelectField({
   loading?: boolean;
   disabled?: boolean;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+      <label htmlFor={id} className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
         {label}
       </label>
       <div className="relative">
         <select
+          id={id}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled || loading}
-          className="w-full rounded-xl px-3 py-2.5 text-sm outline-none appearance-none cursor-pointer disabled:opacity-50 transition-all duration-200"
+          className="w-full rounded-xl px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] appearance-none cursor-pointer disabled:opacity-50 transition-all duration-200"
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
@@ -638,10 +644,11 @@ function SliderField({
   format: (v: number) => string;
   help: string;
 }) {
+  const id = React.useId();
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+        <label htmlFor={id} className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
           {label}
         </label>
         <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
@@ -649,6 +656,7 @@ function SliderField({
         </span>
       </div>
       <input
+        id={id}
         type="range"
         min={min}
         max={max}

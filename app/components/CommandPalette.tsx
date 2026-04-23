@@ -148,7 +148,7 @@ export default function CommandPalette({ open, onClose, onUpload, onSettings }: 
   ], [settings, onUpload, onSettings, onClose, dispatch]);
 
   const docCommands: CommandItem[] = useMemo(() =>
-    documents.slice(0, 10).map((doc) => ({
+    documents.map((doc) => ({
       id: `doc-${doc.id}`,
       label: doc.filename,
       description: `${doc.chunk_count} chunks · ${doc.status}`,

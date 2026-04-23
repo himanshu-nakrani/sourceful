@@ -79,7 +79,6 @@ async def test_step_back_returns_generalized_question(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_transform_runs_enabled_kinds(monkeypatch, tmp_path):
-    import json as _json
 
     calls = []
 

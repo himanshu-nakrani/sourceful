@@ -53,7 +53,6 @@ class ConfluenceConnector(BaseConnector):
 
     async def test_connection(self) -> tuple[bool, str | None]:
         """Test by fetching current user or spaces list."""
-        import asyncio
 
         try:
             import httpx
@@ -86,7 +85,6 @@ class ConfluenceConnector(BaseConnector):
         self, since: datetime | None = None
     ) -> AsyncIterator[RemoteDocument]:
         """List all pages from configured spaces."""
-        import asyncio
 
         try:
             import httpx
@@ -202,7 +200,6 @@ class ConfluenceConnector(BaseConnector):
 
     async def download_document(self, remote_doc: RemoteDocument) -> bytes:
         """Download page content as HTML."""
-        import asyncio
 
         try:
             import httpx

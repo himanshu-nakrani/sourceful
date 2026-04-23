@@ -214,20 +214,24 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         </motion.button>
       </div>
 
-      {/* Action buttons */}
-      <div className="relative px-3 py-2 flex gap-1.5 flex-shrink-0">
+      {/* Primary action */}
+      <div className="relative px-3 pt-2 pb-1 flex-shrink-0">
         <motion.button
           type="button"
           onClick={onUploadClick}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
           style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
           transition={{ type: "spring", stiffness: 400, damping: 17 }}
         >
           <Upload size={13} />
-          Upload
+          Upload Document
         </motion.button>
+      </div>
+
+      {/* Maintenance actions — separated visually */}
+      <div className="relative px-3 pb-2 flex gap-1.5 flex-shrink-0">
         <motion.button
           type="button"
           onClick={() =>
@@ -236,35 +240,37 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
               payload: { theme: settings.theme === "dark" ? "light" : "dark" },
             })
           }
-          className="flex items-center justify-center px-2.5 py-2 rounded-xl"
+          className="flex items-center justify-center px-2.5 py-1.5 rounded-lg"
           style={{
             background: "var(--bg-surface)",
-            color: "var(--text-tertiary)",
+            color: "var(--text-secondary)",
             border: "1px solid var(--border)",
           }}
           aria-label="Toggle theme"
           title={settings.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          whileHover={{ borderColor: "var(--border-hover)" }}
+          whileHover={{ borderColor: "var(--border-hover)", color: "var(--text-primary)" }}
           whileTap={{ scale: 0.92 }}
         >
-          {settings.theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+          {settings.theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
         </motion.button>
         <motion.button
           type="button"
           onClick={() => dispatch({ type: "TOGGLE_SETTINGS" })}
-          className="flex items-center justify-center px-2.5 py-2 rounded-xl"
+          className="flex items-center justify-center px-2.5 py-1.5 rounded-lg"
           style={{
             background: "var(--bg-surface)",
-            color: "var(--text-tertiary)",
+            color: "var(--text-secondary)",
             border: "1px solid var(--border)",
           }}
           aria-label="Open settings"
           title="Open settings"
-          whileHover={{ borderColor: "var(--border-hover)" }}
+          whileHover={{ borderColor: "var(--border-hover)", color: "var(--text-primary)" }}
           whileTap={{ scale: 0.92 }}
         >
-          <Settings size={14} />
+          <Settings size={13} />
         </motion.button>
+        <div className="flex-1" />
+        <span className="self-center text-[10px]" style={{ color: "var(--text-muted)" }}>⌘U upload</span>
       </div>
 
       {/* Search */}
@@ -396,12 +402,16 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
               <motion.div
                 role="button"
                 tabIndex={0}
-                className="group rounded-xl px-3 py-2.5 cursor-pointer w-full text-left"
+                className="group rounded-xl px-3 py-2.5 cursor-pointer w-full text-left relative overflow-hidden"
                 style={{
-                  background: isSelected ? "var(--accent-soft)" : "transparent",
+                  background: isActive
+                    ? "var(--accent-brand-soft)"
+                    : isSelected
+                    ? "var(--accent-soft)"
+                    : "transparent",
                   border: `1px solid ${isActive ? "var(--border-accent)" : "transparent"}`,
                 }}
-                whileHover={{ background: "var(--bg-surface)" }}
+                whileHover={{ background: isActive ? "var(--accent-brand-soft)" : "var(--bg-surface)" }}
                 onClick={(e) => {
                   if (e.shiftKey || e.ctrlKey || e.metaKey) {
                     dispatch({ type: "TOGGLE_DOCUMENT_SELECTION", payload: document.id });
@@ -432,11 +442,19 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                       style={{ background: statusColor }}
                     />
                   )}
+                  {/* Active left-edge rail */}
+                  {isActive && (
+                    <span
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full"
+                      style={{ height: "60%", background: "var(--accent-brand)" }}
+                      aria-hidden="true"
+                    />
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
                       {document.filename}
                     </p>
-                    <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    <p className="text-[11px] mt-0.5" style={{ color: isActive ? "var(--text-secondary)" : "var(--text-muted)" }}>
                       {document.status}
                       {document.current_stage ? ` · ${document.current_stage}` : ""}
                       {" · "}

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookOpen, ChevronDown } from "lucide-react";
+import { BookOpen, ChevronDown, CheckCircle2, AlertCircle, MinusCircle } from "lucide-react";
 import type { Citation } from "../lib/api";
 import { EASE_OUT } from "../lib/motion";
 
@@ -63,7 +63,7 @@ const SourceCard = React.memo(function SourceCard({ sources }: SourceCardProps) 
               {sources.map((source, index) => (
                 <motion.div
                   key={source.chunk_id}
-                  className="rounded-xl px-3 py-3 mt-2"
+                  className="relative rounded-xl px-3 py-3 mt-2 overflow-hidden"
                   style={{
                     background: "var(--bg-tertiary)",
                     border: "1px solid var(--border)",
@@ -74,27 +74,45 @@ const SourceCard = React.memo(function SourceCard({ sources }: SourceCardProps) 
                   whileHover={{ borderColor: "var(--border-hover)" }}
                 >
                   {/* [typography] Changed text-[11px] to text-xs for minimum readable size */}
-                  <div className="flex items-center gap-2 mb-1.5 text-[10px] uppercase tracking-widest flex-wrap">
-                    <span
-                      className="px-1.5 py-0.5 rounded-md font-medium"
-                      style={{ background: "var(--accent-brand-soft)", color: "var(--accent-brand)" }}
-                    >
-                      [{index + 1}]
-                    </span>
-                    <span style={{ color: "var(--text-muted)" }}>{source.chunk_id}</span>
-                    {source.page_number ? (
-                      <span style={{ color: "var(--text-muted)" }}>p.{source.page_number}</span>
-                    ) : null}
-                    <span
-                      className="px-1.5 py-0.5 rounded-md"
-                      style={{
-                        background: source.score >= 0.8 ? "var(--success-soft)" : "var(--warning-soft)",
-                        color: source.score >= 0.8 ? "var(--success)" : "var(--warning)",
-                      }}
-                    >
-                      {Math.max(0, Math.min(100, Math.round(source.score * 100)))}%
-                    </span>
-                  </div>
+                  {(() => {
+                    const pct = Math.max(0, Math.min(100, Math.round(source.score * 100)));
+                    const tier =
+                      source.score >= 0.75
+                        ? { label: "Strong", icon: <CheckCircle2 size={10} />, color: "var(--provenance-strong)", bg: "var(--provenance-strong-soft)" }
+                        : source.score >= 0.45
+                        ? { label: "Good", icon: <MinusCircle size={10} />, color: "var(--confidence-med)", bg: "var(--confidence-med-soft)" }
+                        : { label: "Weak", icon: <AlertCircle size={10} />, color: "var(--provenance-weak)", bg: "var(--provenance-weak-soft)" };
+                    return (
+                      <>
+                        <div
+                          className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl"
+                          style={{ background: tier.color, opacity: 0.7 }}
+                          aria-hidden="true"
+                        />
+                        <div className="flex items-center gap-2 mb-1.5 text-[10px] flex-wrap">
+                          <span
+                            className="px-1.5 py-0.5 rounded-md font-semibold"
+                            style={{ background: "var(--accent-brand-soft)", color: "var(--accent-brand)" }}
+                          >
+                            [{index + 1}]
+                          </span>
+                          <span
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md font-medium"
+                            style={{ background: tier.bg, color: tier.color }}
+                          >
+                            {tier.icon}
+                            {tier.label} · {pct}%
+                          </span>
+                          {source.page_number ? (
+                            <span className="uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>p.{source.page_number}</span>
+                          ) : null}
+                          <span className="uppercase tracking-widest truncate max-w-[120px]" style={{ color: "var(--text-muted)" }} title={source.chunk_id}>
+                            {source.chunk_id}
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
                   <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                     {source.excerpt}
                   </p>

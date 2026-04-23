@@ -1,3 +1,3 @@
-## 2024-04-12 - Added native form validation
-**Learning:** Native HTML5 validation (`required`) provides an excellent, accessible fallback for form validation before complex state-based validation is triggered.
-**Action:** Always check form inputs for basic HTML5 validation attributes (`required`, `type="email"`, `minLength`, etc.) before implementing custom JavaScript validation logic.
+## 2024-05-15 - Missing ARIA labels on Icon-only Buttons
+**Learning:** Found a common pattern in the application where icon-only buttons (like refresh, close, edit, delete) in `Sidebar.tsx` and `UploadModal.tsx` are missing `aria-label` and `title` attributes, making them completely inaccessible to screen readers and difficult to understand without tooltips.
+**Action:** Always verify that buttons containing only icons include descriptive `aria-label` and `title` props for accessibility and usability.

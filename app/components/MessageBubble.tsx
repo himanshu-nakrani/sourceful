@@ -11,6 +11,14 @@ import type { Citation, Message } from "../lib/api";
 
 export type MessageFeedbackState = "idle" | "up" | "down" | "pending" | "error";
 
+function getConfidenceRailClass(sources: Citation[] | undefined): string {
+  if (!sources || sources.length === 0) return "";
+  const avg = sources.reduce((s, c) => s + c.score, 0) / sources.length;
+  if (avg >= 0.75) return "confidence-high-rail";
+  if (avg >= 0.45) return "confidence-med-rail";
+  return "confidence-low-rail";
+}
+
 interface MessageBubbleProps {
   message: Message;
   onRerun?: (message: Message) => void;
@@ -80,11 +88,11 @@ function CitationPills({
           <span
             key={`${label}-${idx}`}
             title={title}
-            className="inline-flex items-center align-baseline text-[10px] font-medium mx-0.5 px-1.5 rounded-full"
+            className="inline-flex items-center align-baseline text-[11px] font-semibold mx-0.5 px-2 py-0.5 rounded-full cursor-help transition-colors"
             style={{
               background: source ? "var(--accent-brand-soft)" : "var(--bg-surface)",
               color: source ? "var(--accent-brand)" : "var(--text-muted)",
-              border: "1px solid var(--border)",
+              border: `1px solid ${source ? "var(--accent-brand)" : "var(--border)"}`,
               cursor: source ? "help" : "default",
               verticalAlign: "baseline",
               lineHeight: 1.4,
@@ -138,7 +146,11 @@ const MessageBubble = React.memo(function MessageBubble({
       ) : null}
 
       <div
-        className="rounded-2xl px-4 py-3"
+        className={`rounded-2xl px-4 py-3${
+          !isUser && message.sources?.length && !isStreaming
+            ? " " + getConfidenceRailClass(message.sources)
+            : ""
+        }`}
         style={{
           maxWidth: isUser ? "75%" : "85%",
           background: isUser ? "var(--accent)" : "var(--bg-surface)",

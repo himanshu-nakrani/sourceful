@@ -8,6 +8,7 @@ import Sidebar from "../components/Sidebar";
 import ChatArea from "../components/ChatArea";
 import SettingsPanel from "../components/SettingsPanel";
 import UploadModal from "../components/UploadModal";
+import CommandPalette from "../components/CommandPalette";
 import { ServerStateProvider } from "../lib/server-state";
 import { StoreProvider, useStore } from "../lib/store";
 import { useKeyboardShortcuts } from "../lib/useKeyboardShortcuts";
@@ -23,6 +24,7 @@ function AppShell() {
   const { state, dispatch } = useStore();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [dropFile, setDropFile] = useState<File | null>(null);
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
 
   // Show welcome screen if setup not complete and no API key
   const needsSetup = !state.setupComplete && !state.settings.providerApiKey.trim();
@@ -40,8 +42,10 @@ function AppShell() {
   useKeyboardShortcuts({
     onUpload: () => openUpload(),
     onSettings: () => dispatch({ type: "SET_SETTINGS_OPEN", payload: true }),
+    onCommandPalette: () => setCmdPaletteOpen((v) => !v),
     onEscape: () => {
-      if (uploadOpen) closeUpload();
+      if (cmdPaletteOpen) setCmdPaletteOpen(false);
+      else if (uploadOpen) closeUpload();
       else dispatch({ type: "SET_SETTINGS_OPEN", payload: false });
     },
   });
@@ -99,6 +103,12 @@ function AppShell() {
       <SettingsPanel
         open={state.settingsOpen}
         onClose={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: false })}
+      />
+      <CommandPalette
+        open={cmdPaletteOpen}
+        onClose={() => setCmdPaletteOpen(false)}
+        onUpload={() => openUpload()}
+        onSettings={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
       />
     </div>
   );

@@ -6,6 +6,7 @@ interface ShortcutHandlers {
   onUpload: () => void;
   onSettings: () => void;
   onEscape: () => void;
+  onCommandPalette?: () => void;
 }
 
 /**
@@ -20,7 +21,7 @@ interface ShortcutHandlers {
  * @param onSettings - Callback invoked when the settings shortcut (Meta/Ctrl+,) is triggered
  * @param onEscape - Callback invoked when the Escape key is pressed
  */
-export function useKeyboardShortcuts({ onUpload, onSettings, onEscape }: ShortcutHandlers) {
+export function useKeyboardShortcuts({ onUpload, onSettings, onEscape, onCommandPalette }: ShortcutHandlers) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const meta = event.metaKey || event.ctrlKey;
@@ -30,6 +31,14 @@ export function useKeyboardShortcuts({ onUpload, onSettings, onEscape }: Shortcu
       if (event.key === "Escape") {
         onEscape();
         return;
+      }
+
+      if (meta) {
+        if (event.key === "k" || event.key === "K") {
+          event.preventDefault();
+          onCommandPalette?.();
+          return;
+        }
       }
 
       if (meta && !isInput) {
@@ -45,5 +54,5 @@ export function useKeyboardShortcuts({ onUpload, onSettings, onEscape }: Shortcu
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onUpload, onSettings, onEscape]);
+  }, [onUpload, onSettings, onEscape, onCommandPalette]);
 }

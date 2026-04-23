@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, ChevronDown, KeyRound, RotateCcw, Search, UserCircle, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, Contrast, KeyRound, Palette, RotateCcw, Search, UserCircle, Wind, X } from "lucide-react";
 import {
   fetchModels,
   getGoogleOAuthClientId,
@@ -225,6 +225,78 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               <p className="mt-0.5">
                 Models remembered locally. Keys stay in session storage.
               </p>
+            </div>
+          </div>
+
+          {/* Display Preferences */}
+          <div className="flex flex-col gap-3">
+            <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+              Display
+            </label>
+
+            {/* Accent pack */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--text-secondary)" }}>
+                <Palette size={12} />
+                Accent Color
+              </span>
+              <div className="flex gap-1.5">
+                {(["indigo", "emerald", "amber"] as const).map((pack) => {
+                  const colors = { indigo: "#6366f1", emerald: "#10b981", amber: "#f59e0b" };
+                  const labels = { indigo: "Indigo", emerald: "Emerald", amber: "Amber" };
+                  const active = settings.accentPack === pack;
+                  return (
+                    <motion.button
+                      key={pack}
+                      type="button"
+                      onClick={() => dispatch({ type: "SET_SETTINGS", payload: { accentPack: pack } })}
+                      aria-pressed={active}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium"
+                      style={{
+                        background: active ? `${colors[pack]}18` : "var(--bg-surface)",
+                        border: `1px solid ${active ? colors[pack] : "var(--border)"}`,
+                        color: active ? colors[pack] : "var(--text-secondary)",
+                      }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: colors[pack] }} />
+                      {labels[pack]}
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Toggle row */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => dispatch({ type: "SET_SETTINGS", payload: { highContrast: !settings.highContrast } })}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                style={{
+                  background: settings.highContrast ? "var(--accent-brand-soft)" : "var(--bg-surface)",
+                  border: `1px solid ${settings.highContrast ? "var(--accent-brand)" : "var(--border)"}`,
+                  color: settings.highContrast ? "var(--accent-brand)" : "var(--text-secondary)",
+                }}
+                aria-pressed={settings.highContrast}
+              >
+                <Contrast size={12} />
+                High Contrast
+              </button>
+              <button
+                type="button"
+                onClick={() => dispatch({ type: "SET_SETTINGS", payload: { reducedMotion: !settings.reducedMotion } })}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                style={{
+                  background: settings.reducedMotion ? "var(--accent-brand-soft)" : "var(--bg-surface)",
+                  border: `1px solid ${settings.reducedMotion ? "var(--accent-brand)" : "var(--border)"}`,
+                  color: settings.reducedMotion ? "var(--accent-brand)" : "var(--text-secondary)",
+                }}
+                aria-pressed={settings.reducedMotion}
+              >
+                <Wind size={12} />
+                Reduce Motion
+              </button>
             </div>
           </div>
 

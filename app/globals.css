@@ -61,6 +61,48 @@
   --glass-bg: rgba(10, 10, 12, 0.7);
   --glass-border: rgba(255, 255, 255, 0.05);
   --glass-blur: 24px;
+
+  /* --- Surface elevation tiers (aliases) --- */
+  --surface-1: var(--bg-secondary);
+  --surface-2: var(--bg-surface);
+  --surface-3: var(--bg-elevated);
+
+  /* --- Focus rings --- */
+  --focus-ring: rgba(99, 102, 241, 0.4);
+  --focus-ring-strong: rgba(99, 102, 241, 0.7);
+
+  /* --- Confidence semantic colors --- */
+  --confidence-high: #22c55e;
+  --confidence-high-soft: rgba(34, 197, 94, 0.08);
+  --confidence-high-rail: rgba(34, 197, 94, 0.18);
+  --confidence-med: #6366f1;
+  --confidence-med-soft: rgba(99, 102, 241, 0.08);
+  --confidence-low: #eab308;
+  --confidence-low-soft: rgba(234, 179, 8, 0.1);
+  --confidence-unverified: #ef4444;
+  --confidence-unverified-soft: rgba(239, 68, 68, 0.08);
+
+  /* --- Provenance quality --- */
+  --provenance-strong: #22c55e;
+  --provenance-strong-soft: rgba(34, 197, 94, 0.1);
+  --provenance-weak: #f97316;
+  --provenance-weak-soft: rgba(249, 115, 22, 0.08);
+
+  /* --- Motion speed tokens --- */
+  --motion-fast: 0.15s;
+  --motion-normal: 0.25s;
+  --motion-slow: 0.45s;
+
+  /* --- Typography scale tokens --- */
+  --text-label: 0.6875rem;
+  --text-body-sm: 0.8125rem;
+  --text-body: 0.9375rem;
+  --text-title-sm: 1.0625rem;
+  --text-title: 1.25rem;
+  --text-display: 1.5rem;
+
+  /* --- Accent pack (default: Indigo) --- */
+  --pack-hue: 239;
 }
 
 /* Light theme overrides */
@@ -106,6 +148,28 @@
   --glass-bg: rgba(255, 255, 255, 0.85);
   --glass-border: rgba(0, 0, 0, 0.06);
   --glass-blur: 24px;
+
+  --surface-1: var(--bg-secondary);
+  --surface-2: var(--bg-surface);
+  --surface-3: var(--bg-elevated);
+
+  --focus-ring: rgba(79, 70, 229, 0.35);
+  --focus-ring-strong: rgba(79, 70, 229, 0.6);
+
+  --confidence-high: #16a34a;
+  --confidence-high-soft: rgba(22, 163, 74, 0.06);
+  --confidence-high-rail: rgba(22, 163, 74, 0.14);
+  --confidence-med: #4f46e5;
+  --confidence-med-soft: rgba(79, 70, 229, 0.06);
+  --confidence-low: #ca8a04;
+  --confidence-low-soft: rgba(202, 138, 4, 0.08);
+  --confidence-unverified: #dc2626;
+  --confidence-unverified-soft: rgba(220, 38, 38, 0.06);
+
+  --provenance-strong: #16a34a;
+  --provenance-strong-soft: rgba(22, 163, 74, 0.08);
+  --provenance-weak: #ea580c;
+  --provenance-weak-soft: rgba(234, 88, 12, 0.06);
 }
 
 @theme inline {
@@ -436,4 +500,131 @@ body {
     padding: 0.75rem;
     font-size: 0.75rem;
   }
+}
+
+/* ===================================================================
+   Accent Packs — token overrides driven by [data-accent] attribute
+   =================================================================== */
+
+[data-accent="emerald"] {
+  --accent-brand: #10b981;
+  --accent-brand-hover: #34d399;
+  --accent-brand-soft: rgba(16, 185, 129, 0.08);
+  --shadow-glow: 0 0 20px rgba(16, 185, 129, 0.1);
+  --focus-ring: rgba(16, 185, 129, 0.4);
+  --focus-ring-strong: rgba(16, 185, 129, 0.7);
+}
+
+[data-accent="amber"] {
+  --accent-brand: #f59e0b;
+  --accent-brand-hover: #fbbf24;
+  --accent-brand-soft: rgba(245, 158, 11, 0.08);
+  --shadow-glow: 0 0 20px rgba(245, 158, 11, 0.1);
+  --focus-ring: rgba(245, 158, 11, 0.4);
+  --focus-ring-strong: rgba(245, 158, 11, 0.7);
+}
+
+/* ===================================================================
+   High Contrast Mode
+   =================================================================== */
+
+[data-contrast="high"] {
+  --text-secondary: #c0c0cc;
+  --text-tertiary: #8e8ea8;
+  --text-muted: #6a6a80;
+  --border: rgba(255, 255, 255, 0.14);
+  --border-hover: rgba(255, 255, 255, 0.26);
+  --border-accent: rgba(255, 255, 255, 0.4);
+  --bg-surface-hover: #2c2c36;
+}
+
+[data-theme="light"][data-contrast="high"] {
+  --text-secondary: #27272a;
+  --text-tertiary: #3f3f46;
+  --text-muted: #52525b;
+  --border: rgba(0, 0, 0, 0.18);
+  --border-hover: rgba(0, 0, 0, 0.3);
+  --border-accent: rgba(0, 0, 0, 0.5);
+}
+
+/* ===================================================================
+   Reduced Motion — disable all decorative animations
+   =================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+[data-motion="reduced"] *,
+[data-motion="reduced"] *::before,
+[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* ===================================================================
+   Typography scale utility classes
+   =================================================================== */
+
+.text-label { font-size: var(--text-label); }
+.text-body-sm { font-size: var(--text-body-sm); }
+.text-body { font-size: var(--text-body); }
+.text-title-sm { font-size: var(--text-title-sm); }
+.text-title { font-size: var(--text-title); }
+.text-display { font-size: var(--text-display); }
+
+/* ===================================================================
+   Focus ring utility
+   =================================================================== */
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--focus-ring-strong);
+  outline-offset: 2px;
+}
+
+/* ===================================================================
+   Sidebar active rail
+   =================================================================== */
+
+.sidebar-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent-brand);
+}
+
+/* ===================================================================
+   Confidence rail (left border glow on assistant messages)
+   =================================================================== */
+
+.confidence-high-rail {
+  border-left: 2px solid var(--confidence-high);
+  box-shadow: inset 2px 0 8px var(--confidence-high-rail);
+}
+
+.confidence-med-rail {
+  border-left: 2px solid var(--confidence-med);
+  box-shadow: inset 2px 0 6px var(--confidence-med-soft);
+}
+
+.confidence-low-rail {
+  border-left: 2px solid var(--confidence-low);
+  box-shadow: inset 2px 0 6px var(--confidence-low-soft);
+}
+
+.confidence-unverified-rail {
+  border-left: 2px solid var(--confidence-unverified);
+  box-shadow: inset 2px 0 6px var(--confidence-unverified-soft);
 }

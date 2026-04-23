@@ -19,6 +19,10 @@ export interface AppSettings {
   topK: number;
   similarityThreshold: number;
   theme: "dark" | "light";
+  highContrast: boolean;
+  reducedMotion: boolean;
+  accentPack: "indigo" | "emerald" | "amber";
+  chatLayout: "default" | "focus" | "research";
 }
 
 interface SessionSecrets {
@@ -102,6 +106,10 @@ function loadSettings(): AppSettings {
       topK: 5,
       similarityThreshold: 0.0,
       theme: "dark",
+      highContrast: false,
+      reducedMotion: false,
+      accentPack: "indigo",
+      chatLayout: "default",
     };
   }
 
@@ -115,6 +123,10 @@ function loadSettings(): AppSettings {
   let topK = 5;
   let similarityThreshold = 0.0;
   let theme: "dark" | "light" = "dark";
+  let highContrast = false;
+  let reducedMotion = false;
+  let accentPack: "indigo" | "emerald" | "amber" = "indigo";
+  let chatLayout: "default" | "focus" | "research" = "default";
 
   // Load theme from localStorage regardless of auth state (it's not sensitive)
   try {
@@ -122,6 +134,10 @@ function loadSettings(): AppSettings {
     if (rawPrefs) {
       const parsed = JSON.parse(rawPrefs) as Partial<AppSettings>;
       if (parsed.theme === "light" || parsed.theme === "dark") theme = parsed.theme;
+      if (typeof parsed.highContrast === "boolean") highContrast = parsed.highContrast;
+      if (typeof parsed.reducedMotion === "boolean") reducedMotion = parsed.reducedMotion;
+      if (parsed.accentPack === "emerald" || parsed.accentPack === "amber") accentPack = parsed.accentPack;
+      if (parsed.chatLayout === "focus" || parsed.chatLayout === "research") chatLayout = parsed.chatLayout;
     }
   } catch {
     // Use default
@@ -184,6 +200,10 @@ function loadSettings(): AppSettings {
     topK,
     similarityThreshold,
     theme,
+    highContrast,
+    reducedMotion,
+    accentPack,
+    chatLayout,
   };
 }
 
@@ -231,11 +251,18 @@ type Action =
 function persistSettings(next: AppSettings, isAuthenticated: boolean): void {
   if (typeof window === "undefined") return;
 
-  // Always persist theme regardless of auth
+  // Always persist theme and display preferences regardless of auth
   try {
     const rawPrefs = localStorage.getItem("rag-prefs");
     const existing = rawPrefs ? JSON.parse(rawPrefs) : {};
-    localStorage.setItem("rag-prefs", JSON.stringify({ ...existing, theme: next.theme }));
+    localStorage.setItem("rag-prefs", JSON.stringify({
+      ...existing,
+      theme: next.theme,
+      highContrast: next.highContrast,
+      reducedMotion: next.reducedMotion,
+      accentPack: next.accentPack,
+      chatLayout: next.chatLayout,
+    }));
   } catch {
     // ignore
   }
@@ -293,8 +320,31 @@ function reducer(state: AppState, action: Action): AppState {
     case "SET_SETTINGS": {
       const next = { ...state.settings, ...action.payload };
       persistSettings(next, Boolean(state.currentUser));
-      if (typeof document !== "undefined" && action.payload.theme) {
-        document.documentElement.setAttribute("data-theme", next.theme);
+      if (typeof document !== "undefined") {
+        if (action.payload.theme) {
+          document.documentElement.setAttribute("data-theme", next.theme);
+        }
+        if (action.payload.highContrast !== undefined) {
+          if (next.highContrast) {
+            document.documentElement.setAttribute("data-contrast", "high");
+          } else {
+            document.documentElement.removeAttribute("data-contrast");
+          }
+        }
+        if (action.payload.reducedMotion !== undefined) {
+          if (next.reducedMotion) {
+            document.documentElement.setAttribute("data-motion", "reduced");
+          } else {
+            document.documentElement.removeAttribute("data-motion");
+          }
+        }
+        if (action.payload.accentPack !== undefined) {
+          if (next.accentPack === "indigo") {
+            document.documentElement.removeAttribute("data-accent");
+          } else {
+            document.documentElement.setAttribute("data-accent", next.accentPack);
+          }
+        }
       }
       return { ...state, settings: next };
     }

@@ -17,7 +17,12 @@ import {
   ChevronDown,
   ChevronRight,
   BookOpen,
+  Focus,
+  LayoutPanelLeft,
+  Monitor,
+  BarChart3,
 } from "lucide-react";
+import TrustAnalyticsPanel from "./TrustAnalyticsPanel";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import {
@@ -66,6 +71,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     setMessages,
   } = useServerState();
   const { settings, activeConversationId, activeDocumentId, activeDocumentIds, sidebarOpen } = state;
+  const chatLayout = settings.chatLayout ?? "default";
   const router = useRouter();
   const activeDocument = useMemo(
     () => documents.find((document) => document.id === activeDocumentId) ?? null,
@@ -82,6 +88,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const [error, setError] = useState<string | null>(null);
   const [rerunningMessageId, setRerunningMessageId] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [lastStages, setLastStages] = useState<RetrievalStages | null>(null);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
   const [lastGrounding, setLastGrounding] = useState<GroundingSummary | null>(null);
@@ -454,6 +461,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     );
   };
 
+  const layoutMaxWidth =
+    chatLayout === "focus" ? "max-w-4xl" : chatLayout === "research" ? "max-w-full" : "max-w-3xl";
+
   return (
     <div className="flex-1 flex flex-col h-full w-full min-w-0">
       {/* Header bar */}
@@ -524,6 +534,45 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
             <span className="text-[11px] font-medium hidden sm:inline">Notebook</span>
           </motion.button>
         )}
+        {/* Layout mode toggle */}
+        <div className="flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+          {(["default", "focus", "research"] as const).map((mode) => {
+            const icons = { default: <Monitor size={12} />, focus: <Focus size={12} />, research: <LayoutPanelLeft size={12} /> };
+            const titles = { default: "Default", focus: "Focus", research: "Research" };
+            return (
+              <motion.button
+                key={mode}
+                type="button"
+                onClick={() => dispatch({ type: "SET_SETTINGS", payload: { chatLayout: mode } })}
+                aria-pressed={chatLayout === mode}
+                title={`${titles[mode]} layout`}
+                className="p-1.5"
+                style={{
+                  color: chatLayout === mode ? "var(--accent-brand)" : "var(--text-muted)",
+                  background: chatLayout === mode ? "var(--accent-brand-soft)" : "transparent",
+                }}
+                whileTap={{ scale: 0.9 }}
+              >
+                {icons[mode]}
+              </motion.button>
+            );
+          })}
+        </div>
+        <motion.button
+          type="button"
+          onClick={() => setAnalyticsOpen((v) => !v)}
+          className="p-1.5 rounded-lg flex items-center gap-1.5"
+          style={{
+            color: analyticsOpen ? "var(--accent-brand)" : "var(--text-muted)",
+            background: analyticsOpen ? "var(--accent-brand-soft)" : "transparent",
+          }}
+          aria-label="Toggle trust analytics panel"
+          title="Trust analytics"
+          whileHover={{ color: "var(--text-secondary)" }}
+          whileTap={{ scale: 0.92 }}
+        >
+          <BarChart3 size={14} />
+        </motion.button>
         <motion.button
           type="button"
           onClick={() => setDebugOpen((v) => !v)}
@@ -555,6 +604,12 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         ) : null}
       </div>
 
+      <TrustAnalyticsPanel
+        open={analyticsOpen}
+        onClose={() => setAnalyticsOpen(false)}
+        messages={messages}
+        latencyMs={lastLatencyMs}
+      />
       <RetrievalDebugPanel
         open={debugOpen}
         stages={lastStages}
@@ -566,8 +621,11 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       />
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6" style={{ background: "var(--bg-primary)" }}>
-        <div className="max-w-3xl mx-auto flex flex-col gap-4">
+      <div
+        className={`flex-1 overflow-y-auto py-6 ${chatLayout === "focus" ? "px-6" : "px-4"}`}
+        style={{ background: "var(--bg-primary)" }}
+      >
+        <div className={`${layoutMaxWidth} mx-auto flex flex-col gap-4`}>
           {messages.length === 0 ? (
             renderEmptyState()
           ) : (
@@ -637,7 +695,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       {/* Input area */}
       {activeDocument?.status === "ready" ? (
         <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ background: "var(--bg-primary)" }}>
-          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto relative">
+          <form onSubmit={handleSubmit} className={`${layoutMaxWidth} mx-auto relative`}>
             <motion.div
               className="flex items-end rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--bg-secondary)] transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--border-hover)] focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.06)]"
             >

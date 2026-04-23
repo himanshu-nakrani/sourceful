@@ -32,7 +32,7 @@ function computeMetrics(messages: Message[], latencyMs?: number | null): TrustMe
   let totalCitations = 0;
 
   for (const msg of assistantMsgs) {
-    if (msg.sources) allSources = allSources.concat(msg.sources);
+    if (msg.sources) allSources.push(...msg.sources);
     const wordCount = msg.content.split(/\s+/).filter(Boolean).length;
     totalWords += wordCount;
     const citationMatches = msg.content.match(/\[\d+\]/g);

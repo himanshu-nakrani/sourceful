@@ -25,6 +25,7 @@ import {
 import TrustAnalyticsPanel from "./TrustAnalyticsPanel";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
+import { MessageSkeleton } from "./Skeleton";
 import {
   reprocessDocument,
   rerunMessage,
@@ -539,21 +540,31 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           {(["default", "focus", "research"] as const).map((mode) => {
             const icons = { default: <Monitor size={12} />, focus: <Focus size={12} />, research: <LayoutPanelLeft size={12} /> };
             const titles = { default: "Default", focus: "Focus", research: "Research" };
+            const active = chatLayout === mode;
             return (
               <motion.button
                 key={mode}
                 type="button"
-                onClick={() => dispatch({ type: "SET_SETTINGS", payload: { chatLayout: mode } })}
-                aria-pressed={chatLayout === mode}
+                onClick={() => {
+                  dispatch({ type: "SET_SETTINGS", payload: { chatLayout: mode } });
+                  // Focus mode: collapse sidebar. Default/Research: restore it.
+                  if (mode === "focus") {
+                    dispatch({ type: "SET_SIDEBAR", payload: false });
+                  } else {
+                    dispatch({ type: "SET_SIDEBAR", payload: true });
+                  }
+                }}
+                aria-pressed={active}
                 title={`${titles[mode]} layout`}
-                className="p-1.5"
+                className="px-1.5 py-1.5 flex items-center gap-1 text-[10px] font-medium"
                 style={{
-                  color: chatLayout === mode ? "var(--accent-brand)" : "var(--text-muted)",
-                  background: chatLayout === mode ? "var(--accent-brand-soft)" : "transparent",
+                  color: active ? "var(--accent-brand)" : "var(--text-muted)",
+                  background: active ? "var(--accent-brand-soft)" : "transparent",
                 }}
                 whileTap={{ scale: 0.9 }}
               >
                 {icons[mode]}
+                {active && <span>{titles[mode]}</span>}
               </motion.button>
             );
           })}
@@ -626,7 +637,39 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         style={{ background: "var(--bg-primary)" }}
       >
         <div className={`${layoutMaxWidth} mx-auto flex flex-col gap-4`}>
-          {messages.length === 0 ? (
+          {chatLayout === "research" && (() => {
+            const latestAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+            const stickySources = streaming && currentSources.length
+              ? currentSources
+              : latestAssistant?.sources ?? [];
+            if (!stickySources.length) return null;
+            return (
+              <div
+                className="sticky top-0 z-10 -mx-4 px-4 py-2"
+                style={{
+                  background: "var(--bg-primary)",
+                  borderBottom: "1px solid var(--border)",
+                  backdropFilter: "blur(8px)",
+                }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="text-[10px] font-semibold uppercase tracking-widest"
+                    style={{ color: "var(--text-tertiary)" }}
+                  >
+                    Active sources · {stickySources.length}
+                  </span>
+                </div>
+                <SourceCard sources={stickySources} />
+              </div>
+            );
+          })()}
+          {messages.length === 0 && messagesLoading ? (
+            <>
+              <MessageSkeleton />
+              <MessageSkeleton />
+            </>
+          ) : messages.length === 0 ? (
             renderEmptyState()
           ) : (
             <>
@@ -697,7 +740,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ background: "var(--bg-primary)" }}>
           <form onSubmit={handleSubmit} className={`${layoutMaxWidth} mx-auto relative`}>
             <motion.div
-              className="flex items-end rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--bg-secondary)] transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--border-hover)] focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.06)]"
+              className="flex items-end rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--bg-secondary)] transition-[border-color,box-shadow,opacity] duration-200 focus-within:border-[var(--border-hover)] focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.06)]"
+              style={{ opacity: streaming ? 0.6 : 1 }}
             >
               <textarea
                 ref={textareaRef}
@@ -710,14 +754,16 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   }
                 }}
                 placeholder={
-                  settings.providerApiKey.trim()
+                  streaming
+                    ? "Assistant is responding… press Stop to interrupt"
+                    : settings.providerApiKey.trim()
                     ? "Ask a question about your document…"
                     : "Add your provider API key in Settings first"
                 }
                 disabled={!settings.providerApiKey.trim() || streaming}
                 rows={1}
                 aria-label="Ask a question about your document"
-                className="flex-1 resize-none bg-transparent px-4 py-3.5 text-sm outline-none rounded-2xl focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
+                className="flex-1 resize-none bg-transparent px-4 py-3.5 text-sm outline-none rounded-2xl focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed"
                 style={{ color: "var(--text-primary)", maxHeight: 160, minHeight: 44 }}
               />
               <div className="flex items-center gap-1 p-1.5">

@@ -11,12 +11,20 @@ import type { Citation, Message } from "../lib/api";
 
 export type MessageFeedbackState = "idle" | "up" | "down" | "pending" | "error";
 
-function getConfidenceRailClass(sources: Citation[] | undefined): string {
+function getConfidenceRailClass(sources: Citation[] | null | undefined): string {
   if (!sources || sources.length === 0) return "";
   const avg = sources.reduce((s, c) => s + c.score, 0) / sources.length;
   if (avg >= 0.75) return "confidence-high-rail";
   if (avg >= 0.45) return "confidence-med-rail";
   return "confidence-low-rail";
+}
+
+function getConfidenceTooltip(sources: Citation[] | null | undefined): string | undefined {
+  if (!sources || sources.length === 0) return undefined;
+  const avg = sources.reduce((s, c) => s + c.score, 0) / sources.length;
+  const pct = Math.round(avg * 100);
+  const tier = avg >= 0.75 ? "Strong" : avg >= 0.45 ? "Medium" : "Weak";
+  return `${tier} grounding · avg retrieval score ${pct}% across ${sources.length} source${sources.length === 1 ? "" : "s"}`;
 }
 
 interface MessageBubbleProps {
@@ -151,6 +159,7 @@ const MessageBubble = React.memo(function MessageBubble({
             ? " " + getConfidenceRailClass(message.sources)
             : ""
         }`}
+        title={!isUser && !isStreaming ? getConfidenceTooltip(message.sources) : undefined}
         style={{
           maxWidth: isUser ? "75%" : "85%",
           background: isUser ? "var(--accent)" : "var(--bg-surface)",

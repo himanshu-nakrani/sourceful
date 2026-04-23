@@ -9,6 +9,7 @@ import ChatArea from "../components/ChatArea";
 import SettingsPanel from "../components/SettingsPanel";
 import UploadModal from "../components/UploadModal";
 import CommandPalette from "../components/CommandPalette";
+import { ToastProvider } from "../components/Toast";
 import { ServerStateProvider } from "../lib/server-state";
 import { StoreProvider, useStore } from "../lib/store";
 import { useKeyboardShortcuts } from "../lib/useKeyboardShortcuts";
@@ -118,7 +119,9 @@ export default function Home() {
   return (
     <StoreProvider>
       <ServerStateProvider>
-        <AppShell />
+        <ToastProvider>
+          <AppShell />
+        </ToastProvider>
       </ServerStateProvider>
     </StoreProvider>
   );

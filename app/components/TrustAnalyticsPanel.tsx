@@ -124,7 +124,10 @@ export default function TrustAnalyticsPanel({ open, onClose, messages, latencyMs
             ) : (
               <>
                 {/* Avg retrieval score */}
-                <div className="flex flex-col gap-1">
+                <div
+                  className="flex flex-col gap-1"
+                  title="Average similarity score of all retrieved chunks across this session. Higher = better grounding."
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Avg. Retrieval Score</span>
                     <span
@@ -155,7 +158,10 @@ export default function TrustAnalyticsPanel({ open, onClose, messages, latencyMs
                 </div>
 
                 {/* Source depth */}
-                <div className="flex flex-col gap-1">
+                <div
+                  className="flex flex-col gap-1"
+                  title="Average number of retrieved sources per assistant response. Higher suggests more thorough grounding."
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Sources / Response</span>
                     <span className="text-[11px] font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -166,7 +172,10 @@ export default function TrustAnalyticsPanel({ open, onClose, messages, latencyMs
                 </div>
 
                 {/* Citation density */}
-                <div className="flex flex-col gap-1">
+                <div
+                  className="flex flex-col gap-1"
+                  title="Percentage of words in assistant responses that carry inline [n] citations. Higher = more verifiable claims."
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Citation Density</span>
                     <span className="text-[11px] font-semibold" style={{ color: "var(--text-primary)" }}>

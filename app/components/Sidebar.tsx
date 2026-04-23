@@ -27,6 +27,8 @@ import {
 } from "../lib/api";
 import { EASE_OUT } from "../lib/motion";
 import { useServerState } from "../lib/server-state";
+import { useToast } from "./Toast";
+import { SidebarDocSkeleton } from "./Skeleton";
 import { useStore } from "../lib/store";
 
 interface SidebarProps {
@@ -85,7 +87,10 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
     (conversation) => conversation.id === activeConversationId
   ) ?? null;
 
+  const { toast } = useToast();
+
   const handleDeleteDocument = async (documentId: string) => {
+    const doc = documents.find((d) => d.id === documentId);
     try {
       await deleteDocument(auth, documentId);
       if (activeDocumentId === documentId) {
@@ -94,16 +99,22 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
       }
       await refreshDocuments();
       setActionError(null);
+      toast({ variant: "success", title: "Document deleted", description: doc?.filename });
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Unable to delete document.");
+      const msg = error instanceof Error ? error.message : "Unable to delete document.";
+      setActionError(msg);
+      toast({ variant: "error", title: "Delete failed", description: msg });
     }
   };
 
   const handleReprocess = async (documentId: string) => {
     if (!settings.providerApiKey.trim()) {
-      setActionError("Add your provider API key in Settings before reprocessing.");
+      const msg = "Add your provider API key in Settings before reprocessing.";
+      setActionError(msg);
+      toast({ variant: "warning", title: "API key required", description: msg });
       return;
     }
+    const doc = documents.find((d) => d.id === documentId);
     try {
       await reprocessDocument(auth, documentId, settings.embeddingModel);
       await refreshDocuments();
@@ -111,8 +122,11 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         await refreshChunkPreview(documentId);
       }
       setActionError(null);
+      toast({ variant: "info", title: "Reprocessing queued", description: doc?.filename });
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Unable to reprocess document.");
+      const msg = error instanceof Error ? error.message : "Unable to reprocess document.";
+      setActionError(msg);
+      toast({ variant: "error", title: "Reprocess failed", description: msg });
     }
   };
 
@@ -347,7 +361,15 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           ) : null}
         </AnimatePresence>
 
-        {visibleDocuments.length === 0 ? (
+        {visibleDocuments.length === 0 && documentsLoading ? (
+          <div className="flex flex-col gap-1 px-1">
+            <SidebarDocSkeleton />
+            <SidebarDocSkeleton />
+            <SidebarDocSkeleton />
+          </div>
+        ) : null}
+
+        {visibleDocuments.length === 0 && !documentsLoading ? (
           <motion.div
             className="px-3 py-8 text-center"
             initial={{ opacity: 0 }}

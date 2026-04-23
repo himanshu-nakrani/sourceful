@@ -36,6 +36,7 @@ interface CommandItem {
   group: string;
   action: () => void;
   keywords?: string[];
+  shortcut?: string[];
 }
 
 export default function CommandPalette({ open, onClose, onUpload, onSettings }: CommandPaletteProps) {
@@ -76,6 +77,7 @@ export default function CommandPalette({ open, onClose, onUpload, onSettings }: 
       group: "Actions",
       action: () => { onUpload(); onClose(); },
       keywords: ["upload", "add", "file", "index"],
+      shortcut: ["⌘", "U"],
     },
     {
       id: "new-chat",
@@ -94,6 +96,7 @@ export default function CommandPalette({ open, onClose, onUpload, onSettings }: 
       group: "Actions",
       action: () => { onSettings(); onClose(); },
       keywords: ["settings", "config", "key", "api"],
+      shortcut: ["⌘", ","],
     },
     {
       id: "theme",
@@ -302,14 +305,32 @@ export default function CommandPalette({ open, onClose, onUpload, onSettings }: 
                               </span>
                             )}
                           </span>
-                          {active && (
+                          {cmd.shortcut ? (
+                            <span className="flex items-center gap-1 flex-shrink-0">
+                              {cmd.shortcut.map((k, i) => (
+                                <kbd
+                                  key={i}
+                                  className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                                  style={{
+                                    background: "var(--bg-elevated)",
+                                    color: "var(--text-tertiary)",
+                                    border: "1px solid var(--border)",
+                                    minWidth: 18,
+                                    textAlign: "center",
+                                  }}
+                                >
+                                  {k}
+                                </kbd>
+                              ))}
+                            </span>
+                          ) : active ? (
                             <span
                               className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
                               style={{ background: "var(--accent-brand-soft)", color: "var(--accent-brand)", border: "1px solid var(--accent-brand)" }}
                             >
                               ↵
                             </span>
-                          )}
+                          ) : null}
                         </motion.button>
                       );
                     })}

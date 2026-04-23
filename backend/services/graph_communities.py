@@ -25,7 +25,7 @@ import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass
 
-from backend.database import execute, execute_many, fetch_all
+from backend.database import execute_many, fetch_all
 from backend.settings import settings
 
 logger = logging.getLogger("ragapp.graph.communities")

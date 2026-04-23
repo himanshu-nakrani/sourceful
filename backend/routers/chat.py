@@ -8,6 +8,11 @@ import uuid
 import asyncio
 from typing import Any
 
+try:
+    import orjson
+except ImportError:
+    orjson = None
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from openai import APIError
@@ -531,9 +536,21 @@ async def _generate_chat_response(
         return response_body
 
 
+# ⚡ BOLT OPTIMIZATION:
+# Optimized `_sse_event` for high-frequency token streaming.
+# Replaced standard library `json.dumps()` + string concatenation with
+# direct high-performance byte concatenation using `orjson` (when available).
+# This minimizes serialization latency and CPU overhead on every yielded token.
 def _sse_event(event: str, data: dict | str) -> bytes:
-    payload = data if isinstance(data, str) else json.dumps(data, default=str)
-    return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
+    if isinstance(data, str):
+        payload_bytes = data.encode("utf-8")
+    elif orjson is not None:
+        payload_bytes = orjson.dumps(data, default=str, option=orjson.OPT_PASSTHROUGH_DATETIME)
+    else:
+        payload_bytes = json.dumps(data, default=str).encode("utf-8")
+
+    event_bytes = event.encode("utf-8")
+    return b"event: " + event_bytes + b"\ndata: " + payload_bytes + b"\n\n"
 
 
 async def _stream_chat_response(

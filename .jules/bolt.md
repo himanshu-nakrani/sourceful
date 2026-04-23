@@ -16,3 +16,6 @@
 ## 2026-04-13 - Prevent Streaming Re-renders with React.memo()
 **Learning:** During chat generation, state updates for every new token stream cause the entire list of messages to re-render. For components containing heavy markdown parsers (like `ReactMarkdown`) and syntax highlighters (like `SyntaxHighlighter`), this creates significant CPU overhead and UI lag. Because older message objects maintain referential equality in the state array while the active message updates, React's default behavior of re-rendering all children is wasteful.
 **Action:** Wrap computationally expensive UI list items (like `MessageBubble` and `SourceCard`) in `React.memo()`. This ensures that previous messages bypass the render phase entirely during active token streaming, resulting in a drastically smoother user experience.
+## 2024-06-25 - Python SSE Generation Overhead
+**Learning:** In high-frequency Server-Sent Events (SSE) loops like LLM token streaming, Python's standard `json.dumps()` paired with string formatting (f-strings) creates measurable CPU overhead and serialization latency on every yielded token.
+**Action:** Always conditionally utilize `orjson` (with `OPT_PASSTHROUGH_DATETIME` for compatibility) and construct the SSE frame directly using byte concatenation instead of string formatting to minimize overhead in tight loops.

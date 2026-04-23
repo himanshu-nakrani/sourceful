@@ -25,11 +25,10 @@ import json
 import logging
 import re
 import uuid
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from backend.database import execute, execute_many, fetch_all, fetch_one
+from backend.database import execute, execute_many, fetch_all
 from backend.settings import settings
 
 logger = logging.getLogger("ragapp.graph")

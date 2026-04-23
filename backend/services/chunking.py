@@ -12,7 +12,7 @@ The strategy is selected via the ``CHUNK_STRATEGY`` setting.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from backend.services.extract import ExtractedSection
 

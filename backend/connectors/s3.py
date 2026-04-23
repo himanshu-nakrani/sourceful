@@ -73,7 +73,6 @@ class S3Connector(BaseConnector):
         self, since: datetime | None = None
     ) -> AsyncIterator[RemoteDocument]:
         """List objects in bucket matching filters."""
-        import asyncio
 
         client = self._get_client()
         bucket = self._credentials.get("bucket")

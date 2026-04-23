@@ -27,7 +27,7 @@ function computeMetrics(messages: Message[], latencyMs?: number | null): TrustMe
   const assistantMsgs = messages.filter((m) => m.role === "assistant");
   const totalResponses = assistantMsgs.length;
 
-  let allSources: Citation[] = [];
+  const allSources: Citation[] = [];
   let totalWords = 0;
   let totalCitations = 0;
 

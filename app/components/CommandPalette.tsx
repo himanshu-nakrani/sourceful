@@ -160,7 +160,10 @@ export default function CommandPalette({ open, onClose, onUpload, onSettings }: 
     [documents, selectDocument, onClose]
   );
 
-  const allCommands = [...staticCommands, ...docCommands];
+  const allCommands = useMemo(
+    () => [...staticCommands, ...docCommands],
+    [staticCommands, docCommands]
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

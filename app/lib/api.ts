@@ -59,6 +59,34 @@ export interface DocumentInfo {
   created_at: string;
   processed_at?: string | null;
   last_error?: string | null;
+  workspace_id?: string | null;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  slug?: string | null;
+  description?: string | null;
+  visibility: "private" | "shared";
+  archived: boolean;
+  is_default: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface WorkspaceSource {
+  id: string;
+  workspace_id: string;
+  source_type: "file" | "url" | "note";
+  document_id?: string | null;
+  source_title: string;
+  source_url?: string | null;
+  mime_type?: string | null;
+  status: JobStatus;
+  last_fetched_at?: string | null;
+  metadata: Record<string, unknown>;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface JobInfo {
@@ -85,6 +113,7 @@ export interface ConversationListItem {
   created_at: string;
   updated_at: string;
   message_count: number;
+  workspace_id?: string | null;
 }
 
 export interface Message {
@@ -127,6 +156,7 @@ export interface Conversation {
   created_at: string;
   updated_at: string;
   messages: Message[];
+  workspace_id?: string | null;
 }
 
 export interface IngestResponse {
@@ -291,17 +321,106 @@ export async function ingestDocument(
   auth: ClientAuthContext,
   provider: Provider,
   file: File,
-  embeddingModel: string
+  embeddingModel: string,
+  workspaceId?: string
 ): Promise<IngestResponse> {
   const formData = new FormData();
   formData.append("provider", provider);
   formData.append("embedding_model", embeddingModel);
   formData.append("file", file);
+  if (workspaceId) {
+    formData.append("workspace_id", workspaceId);
+  }
 
   const res = await apiFetch("/api/ingest", {
     method: "POST",
     headers: baseHeaders(auth, { includeProviderKey: true }),
     body: formData,
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+// ---- Workspaces -------------------------------------------------------
+
+export async function listWorkspaces(
+  auth: ClientAuthContext,
+  includeArchived = false
+): Promise<Workspace[]> {
+  const qs = includeArchived ? "?include_archived=true" : "";
+  const res = await apiFetch(`/api/workspaces${qs}`, { headers: baseHeaders(auth) });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const data = (await res.json()) as { workspaces?: Workspace[] };
+  return data.workspaces ?? [];
+}
+
+export async function createWorkspace(
+  auth: ClientAuthContext,
+  payload: { name: string; description?: string; visibility?: "private" | "shared" }
+): Promise<Workspace> {
+  const res = await apiFetch("/api/workspaces", {
+    method: "POST",
+    headers: baseHeaders(auth, { includeJson: true }),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function getWorkspace(
+  auth: ClientAuthContext,
+  workspaceId: string
+): Promise<Workspace> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}`, { headers: baseHeaders(auth) });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function updateWorkspace(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  payload: {
+    name?: string;
+    description?: string;
+    visibility?: "private" | "shared";
+    archived?: boolean;
+  }
+): Promise<Workspace> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}`, {
+    method: "PATCH",
+    headers: baseHeaders(auth, { includeJson: true }),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function listWorkspaceSources(
+  auth: ClientAuthContext,
+  workspaceId: string
+): Promise<WorkspaceSource[]> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/sources`, {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const data = (await res.json()) as { sources?: WorkspaceSource[] };
+  return data.sources ?? [];
+}
+
+export async function importWorkspaceUrl(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  payload: {
+    url: string;
+    title?: string;
+    provider?: Provider;
+    embedding_model?: string;
+  }
+): Promise<WorkspaceSource> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/sources/url`, {
+    method: "POST",
+    headers: baseHeaders(auth, { includeJson: true, includeProviderKey: true }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();

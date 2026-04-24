@@ -34,7 +34,7 @@ async def list_conversations(
         params = (context.owner_id, document_id)
     rows = await fetch_all(
         f"""
-        SELECT c.id, c.document_id, c.title, c.created_at, c.updated_at,
+        SELECT c.id, c.document_id, c.title, c.created_at, c.updated_at, c.workspace_id,
                (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
         FROM conversations c
         {where}
@@ -53,7 +53,7 @@ async def get_conversation(
     context: RequestContext = Depends(get_request_context),
 ):
     conversation = await fetch_one(
-        "SELECT id, document_id, title, created_at, updated_at FROM conversations WHERE id = ? AND owner_id = ?",
+        "SELECT id, document_id, title, created_at, updated_at, workspace_id FROM conversations WHERE id = ? AND owner_id = ?",
         (conversation_id, context.owner_id),
     )
     if not conversation:

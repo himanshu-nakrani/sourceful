@@ -3,8 +3,8 @@ from collections.abc import Iterable
 from backend.settings import settings
 
 
-SQLITE_MIGRATION_VERSION = 11
-POSTGRES_MIGRATION_VERSION = 11
+SQLITE_MIGRATION_VERSION = 12
+POSTGRES_MIGRATION_VERSION = 12
 
 
 def _split_statements(script: str) -> list[str]:
@@ -252,7 +252,35 @@ CREATE TABLE IF NOT EXISTS connector_syncs (
 );
 CREATE INDEX IF NOT EXISTS idx_connector_syncs_connector ON connector_syncs(connector_id);
 
-INSERT OR IGNORE INTO schema_migrations (version) VALUES (1), (11);
+-- v12: knowledge-workspace Phase 0 additions
+ALTER TABLE workspaces ADD COLUMN owner_scope TEXT;
+ALTER TABLE workspaces ADD COLUMN description TEXT;
+ALTER TABLE workspaces ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private';
+ALTER TABLE workspaces ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE workspaces ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_workspaces_owner_scope ON workspaces(owner_scope);
+
+ALTER TABLE conversations ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_conversations_workspace ON conversations(workspace_id);
+
+CREATE TABLE IF NOT EXISTS workspace_sources (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL DEFAULT 'file' CHECK (source_type IN ('file', 'url', 'note')),
+    document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+    source_title TEXT NOT NULL,
+    source_url TEXT,
+    mime_type TEXT,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','processing','ready','error')),
+    last_fetched_at TEXT,
+    metadata_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_sources_workspace ON workspace_sources(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_sources_document ON workspace_sources(document_id);
+
+INSERT OR IGNORE INTO schema_migrations (version) VALUES (1), (11), (12);
 """
 
 
@@ -484,7 +512,35 @@ CREATE TABLE IF NOT EXISTS connector_syncs (
 );
 CREATE INDEX IF NOT EXISTS idx_connector_syncs_connector ON connector_syncs(connector_id);
 
-INSERT INTO schema_migrations (version) VALUES (1), (11) ON CONFLICT (version) DO NOTHING;
+-- v12: knowledge-workspace Phase 0 additions
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS owner_scope TEXT;
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'private';
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_workspaces_owner_scope ON workspaces(owner_scope);
+
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_conversations_workspace ON conversations(workspace_id);
+
+CREATE TABLE IF NOT EXISTS workspace_sources (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL DEFAULT 'file' CHECK (source_type IN ('file', 'url', 'note')),
+    document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+    source_title TEXT NOT NULL,
+    source_url TEXT,
+    mime_type TEXT,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','processing','ready','error')),
+    last_fetched_at TIMESTAMPTZ,
+    metadata_json JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_sources_workspace ON workspace_sources(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_sources_document ON workspace_sources(document_id);
+
+INSERT INTO schema_migrations (version) VALUES (1), (11), (12) ON CONFLICT (version) DO NOTHING;
 """
 
 

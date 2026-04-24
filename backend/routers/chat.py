@@ -47,6 +47,103 @@ router = APIRouter()
 _citation_list_adapter = TypeAdapter(list[Citation])
 
 
+async def _resolve_workspace_documents(
+    *,
+    owner_id: str,
+    workspace_id: str,
+    source_ids: list[str] | None,
+    provider: str,
+) -> list[dict]:
+    """Phase 1: resolve workspace-scoped source selection into concrete documents.
+
+    Returns ready documents that belong to ``workspace_id`` and match
+    ``provider``. When ``source_ids`` is provided, the result is filtered to
+    exactly those ``workspace_sources`` rows (each of which may reference a
+    document). The result is ordered by document ``created_at`` ascending so
+    the primary-document choice is deterministic.
+    """
+    base_query = """
+        SELECT DISTINCT d.*
+        FROM documents d
+        {join}
+        WHERE d.owner_id = ?
+          AND d.workspace_id = ?
+          AND d.provider = ?
+          AND d.status = 'ready'
+        {where_extra}
+        ORDER BY d.created_at ASC
+    """
+    params: tuple
+    if source_ids:
+        placeholders = ", ".join(["?"] * len(source_ids))
+        query = base_query.format(
+            join="JOIN workspace_sources ws ON ws.document_id = d.id AND ws.workspace_id = d.workspace_id",
+            where_extra=f"AND ws.id IN ({placeholders})",
+        )
+        params = (owner_id, workspace_id, provider, *source_ids)
+    else:
+        query = base_query.format(join="", where_extra="")
+        params = (owner_id, workspace_id, provider)
+    rows = await fetch_all(query, params)
+    return rows
+
+
+async def _apply_workspace_to_chat_body(
+    *,
+    request: Request,
+    context: RequestContext,
+    body: ChatRequest,
+):
+    """Phase 1: populate ``document_id``/``document_ids`` from workspace scope.
+
+    Mutates ``body`` in place. Returns ``(ok, error_response)``. If ok is False
+    the caller must return ``error_response``.
+    """
+    if body.document_id:
+        return True, None
+    if not body.workspace_id:
+        return False, api_error_response(
+            request=request,
+            status_code=400,
+            error="Either document_id or workspace_id is required.",
+            code="DOCUMENT_OR_WORKSPACE_REQUIRED",
+        )
+    # Validate ownership of the workspace.
+    from backend.services import workspace_service as _ws
+
+    workspace = await _ws.get_workspace(body.workspace_id, context.owner_id)
+    if not workspace:
+        return False, api_error_response(
+            request=request,
+            status_code=404,
+            error="Workspace not found.",
+            code="WORKSPACE_NOT_FOUND",
+            details={"workspace_id": body.workspace_id},
+        )
+    docs = await _resolve_workspace_documents(
+        owner_id=context.owner_id,
+        workspace_id=body.workspace_id,
+        source_ids=body.source_ids or None,
+        provider=body.provider,
+    )
+    if not docs:
+        return False, api_error_response(
+            request=request,
+            status_code=400,
+            error="No ready sources in the selected workspace.",
+            code="WORKSPACE_NO_READY_SOURCES",
+            details={"workspace_id": body.workspace_id},
+        )
+    body.document_id = docs[0]["id"]
+    extras = [d["id"] for d in docs[1:]]
+    existing = list(body.document_ids or [])
+    for doc_id in extras:
+        if doc_id not in existing:
+            existing.append(doc_id)
+    body.document_ids = existing or None
+    return True, None
+
+
 async def _load_ready_document(
     *,
     request: Request,
@@ -784,9 +881,24 @@ async def _resolve_or_create_conversation(
     title = body.question.strip()[:80] + ("..." if len(body.question.strip()) > 80 else "")
     extra_ids = [d for d in (body.document_ids or []) if d != body.document_id]
     doc_ids_json = json.dumps([body.document_id] + extra_ids) if extra_ids else None
+    # Phase 0: ensure every new conversation lands in a workspace. Prefer the
+    # document's workspace, falling back to the caller's default.
+    workspace_id = getattr(body, "workspace_id", None) or None
+    if not workspace_id and body.document_id:
+        doc_row = await fetch_one(
+            "SELECT workspace_id FROM documents WHERE id = ? AND owner_id = ?",
+            (body.document_id, context.owner_id),
+        )
+        if doc_row and doc_row.get("workspace_id"):
+            workspace_id = doc_row["workspace_id"]
+    if not workspace_id:
+        from backend.services import workspace_service as _ws
+
+        default_ws = await _ws.ensure_default_workspace(context.owner_id)
+        workspace_id = default_ws["id"]
     await execute(
-        "INSERT INTO conversations (id, owner_id, document_id, title, document_ids_json) VALUES (?, ?, ?, ?, ?)",
-        (conversation_id, context.owner_id, body.document_id, title, doc_ids_json),
+        "INSERT INTO conversations (id, owner_id, document_id, title, document_ids_json, workspace_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (conversation_id, context.owner_id, body.document_id, title, doc_ids_json, workspace_id),
     )
     return conversation_id, None
 
@@ -821,6 +933,9 @@ async def chat(
     Returns:
         dict: On success, a payload with `conversation_id` (str), `message_id` (str) for the created assistant message, `sources` (list of Citation objects), and `content` (assistant text). On failure, an API error response dict produced by `api_error_response` with appropriate HTTP status and error `code`.
     """
+    ok, err = await _apply_workspace_to_chat_body(request=request, context=context, body=body)
+    if not ok:
+        return err
     document, error_response = await _load_ready_document(
         request=request,
         context=context,
@@ -865,6 +980,9 @@ async def chat_stream(
 ):
     """Server-sent events version of /chat. Emits `sources`, `token`,
     `message_saved`, `done`, and `error` events per README contract."""
+    ok, err = await _apply_workspace_to_chat_body(request=request, context=context, body=body)
+    if not ok:
+        return err
     document, error_response = await _load_ready_document(
         request=request,
         context=context,
@@ -986,9 +1104,20 @@ async def rerun_chat_message(
     prior_messages = original_messages[:rerun_index]
     next_conversation_id = str(uuid.uuid4())
     title = rerun_message["content"][:80] + ("..." if len(rerun_message["content"]) > 80 else "")
+    # Phase 0: inherit the workspace of the document being rerun.
+    doc_row = await fetch_one(
+        "SELECT workspace_id FROM documents WHERE id = ? AND owner_id = ?",
+        (body.document_id, context.owner_id),
+    )
+    rerun_workspace_id = (doc_row or {}).get("workspace_id")
+    if not rerun_workspace_id:
+        from backend.services import workspace_service as _ws
+
+        default_ws = await _ws.ensure_default_workspace(context.owner_id)
+        rerun_workspace_id = default_ws["id"]
     await execute(
-        "INSERT INTO conversations (id, owner_id, document_id, title) VALUES (?, ?, ?, ?)",
-        (next_conversation_id, context.owner_id, body.document_id, title),
+        "INSERT INTO conversations (id, owner_id, document_id, title, workspace_id) VALUES (?, ?, ?, ?, ?)",
+        (next_conversation_id, context.owner_id, body.document_id, title, rerun_workspace_id),
     )
     # ⚡ BOLT OPTIMIZATION:
     # Use execute_many to batch insert prior messages instead of executing a query in a loop.

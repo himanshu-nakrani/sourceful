@@ -75,6 +75,7 @@ async def init_db() -> None:
                         await _apply_postgres_v8_migration(cur)
                         await _apply_postgres_v9_migration(cur)
                         await _apply_postgres_v11_migration(cur)
+                        await _apply_postgres_v12_migration(cur)
                 logger.info("Postgres initialized.")
                 return
             except Exception:
@@ -112,6 +113,7 @@ async def init_db() -> None:
             await _apply_sqlite_v8_migration(_sqlite)
             await _apply_sqlite_v9_migration(_sqlite)
             await _apply_sqlite_v11_migration(_sqlite)
+            await _apply_sqlite_v12_migration(_sqlite)
             await _sqlite.commit()
             logger.info("SQLite initialized.")
         except Exception:
@@ -806,6 +808,343 @@ async def _apply_sqlite_v11_migration(conn: aiosqlite.Connection) -> None:
     if "file_bytes" not in columns:
         await conn.execute("ALTER TABLE documents ADD COLUMN file_bytes BLOB")
     await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (11)")
+
+
+async def _apply_postgres_v12_migration(cur) -> None:
+    """v12: knowledge-workspace Phase 0 (workspace extras, conversations.workspace_id, workspace_sources, backfill)."""
+    # Relax legacy ownership: owner_id was NOT NULL + FK to users(id); anonymous
+    # owner_scopes cannot satisfy this. We keep the column for historical rows
+    # but allow NULL and drop the FK.
+    await cur.execute("ALTER TABLE workspaces ALTER COLUMN owner_id DROP NOT NULL")
+    await cur.execute("ALTER TABLE workspaces DROP CONSTRAINT IF EXISTS workspaces_owner_id_fkey")
+    await cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS owner_scope TEXT")
+    await cur.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS description TEXT")
+    await cur.execute(
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'private'"
+    )
+    await cur.execute(
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    await cur.execute(
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspaces_owner_scope ON workspaces(owner_scope)"
+    )
+    await cur.execute(
+        """
+        ALTER TABLE conversations
+        ADD COLUMN IF NOT EXISTS workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL
+        """
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_workspace ON conversations(workspace_id)"
+    )
+    await cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workspace_sources (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            source_type TEXT NOT NULL DEFAULT 'file' CHECK (source_type IN ('file','url','note')),
+            document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+            source_title TEXT NOT NULL,
+            source_url TEXT,
+            mime_type TEXT,
+            status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','processing','ready','error')),
+            last_fetched_at TIMESTAMPTZ,
+            metadata_json JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspace_sources_workspace ON workspace_sources(workspace_id)"
+    )
+    await cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspace_sources_document ON workspace_sources(document_id)"
+    )
+    # Backfill owner_scope from legacy owner_id (assumed to be user uuids for historical rows).
+    await cur.execute(
+        "UPDATE workspaces SET owner_scope = 'user:' || owner_id WHERE owner_scope IS NULL"
+    )
+    await _backfill_default_workspaces_postgres(cur)
+    await cur.execute(
+        "INSERT INTO schema_migrations (version) VALUES (12) ON CONFLICT (version) DO NOTHING"
+    )
+
+
+async def _backfill_default_workspaces_postgres(cur) -> None:
+    """Create a default workspace per owner_id and backfill documents/conversations."""
+    import uuid as _uuid
+    # Collect distinct owner_ids from documents and conversations with missing workspace_id.
+    await cur.execute(
+        """
+        SELECT DISTINCT owner_id FROM (
+            SELECT owner_id FROM documents WHERE workspace_id IS NULL
+            UNION
+            SELECT owner_id FROM conversations WHERE workspace_id IS NULL
+        ) AS owners
+        WHERE owner_id IS NOT NULL AND owner_id <> ''
+        """
+    )
+    owner_rows = await cur.fetchall()
+    for row in owner_rows:
+        owner_scope = row["owner_id"] if "owner_id" in row else row[0]
+        if not owner_scope:
+            continue
+        # Fetch-or-create default workspace
+        await cur.execute(
+            "SELECT id FROM workspaces WHERE owner_scope = %s AND is_default = TRUE LIMIT 1",
+            (owner_scope,),
+        )
+        existing = await cur.fetchone()
+        if existing:
+            workspace_id = existing["id"]
+        else:
+            workspace_id = str(_uuid.uuid4())
+            slug = f"default-{workspace_id[:8]}"
+            legacy_owner = owner_scope.split(":", 1)[1] if owner_scope.startswith("user:") else None
+            await cur.execute(
+                """
+                INSERT INTO workspaces (id, name, slug, owner_id, owner_scope, description, visibility, archived, is_default)
+                VALUES (%s, %s, %s, %s, %s, %s, 'private', FALSE, TRUE)
+                """,
+                (workspace_id, "Personal workspace", slug, legacy_owner, owner_scope, "Default workspace"),
+            )
+        await cur.execute(
+            "UPDATE documents SET workspace_id = %s WHERE owner_id = %s AND workspace_id IS NULL",
+            (workspace_id, owner_scope),
+        )
+        await cur.execute(
+            "UPDATE conversations SET workspace_id = %s WHERE owner_id = %s AND workspace_id IS NULL",
+            (workspace_id, owner_scope),
+        )
+        # Create workspace_sources rows for pre-existing documents.
+        await cur.execute(
+            """
+            INSERT INTO workspace_sources (id, workspace_id, source_type, document_id, source_title, mime_type, status)
+            SELECT
+                gen_random_uuid()::text,
+                %s,
+                'file',
+                d.id,
+                d.filename,
+                d.mime_type,
+                CASE WHEN d.status = 'ready' THEN 'ready' ELSE d.status END
+            FROM documents d
+            WHERE d.owner_id = %s
+              AND NOT EXISTS (SELECT 1 FROM workspace_sources ws WHERE ws.document_id = d.id)
+            """,
+            (workspace_id, owner_scope),
+        )
+
+
+async def _apply_sqlite_v12_migration(conn: aiosqlite.Connection) -> None:
+    """v12: knowledge-workspace Phase 0 (SQLite parity with backfill)."""
+    import uuid as _uuid
+
+    async def _columns(table: str) -> list[tuple]:
+        cursor = await conn.execute(f"PRAGMA table_info({table})")
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return list(rows)
+
+    # Relax legacy NOT NULL + FK on workspaces.owner_id. SQLite doesn't support
+    # altering column constraints in place, so we recreate the table when the
+    # owner_id column is still marked NOT NULL.
+    ws_info = await _columns("workspaces")
+    owner_id_info = next((r for r in ws_info if r[1] == "owner_id"), None)
+    if owner_id_info and owner_id_info[3] == 1:  # notnull
+        await conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            existing_cols = {r[1] for r in ws_info}
+            await conn.execute(
+                """
+                CREATE TABLE workspaces_v12_new (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    slug TEXT NOT NULL UNIQUE,
+                    owner_id TEXT,
+                    settings TEXT DEFAULT '{}',
+                    owner_scope TEXT,
+                    description TEXT,
+                    visibility TEXT NOT NULL DEFAULT 'private',
+                    archived INTEGER NOT NULL DEFAULT 0,
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+
+            def _src(col: str, fallback: str) -> str:
+                return col if col in existing_cols else fallback
+
+            await conn.execute(
+                f"""
+                INSERT INTO workspaces_v12_new (
+                    id, name, slug, owner_id, settings,
+                    owner_scope, description, visibility, archived, is_default,
+                    created_at, updated_at
+                )
+                SELECT
+                    id,
+                    name,
+                    slug,
+                    owner_id,
+                    {_src('settings', "'{}'")},
+                    {_src('owner_scope', 'NULL')},
+                    {_src('description', 'NULL')},
+                    {_src('visibility', "'private'")},
+                    {_src('archived', '0')},
+                    {_src('is_default', '0')},
+                    {_src('created_at', 'CURRENT_TIMESTAMP')},
+                    {_src('updated_at', 'CURRENT_TIMESTAMP')}
+                FROM workspaces
+                """
+            )
+            await conn.execute("DROP TABLE workspaces")
+            await conn.execute("ALTER TABLE workspaces_v12_new RENAME TO workspaces")
+            await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id)")
+        finally:
+            await conn.execute("PRAGMA foreign_keys=ON")
+
+    ws_cols_info = await _columns("workspaces")
+    ws_cols = {r[1] for r in ws_cols_info}
+    if "owner_scope" not in ws_cols:
+        await conn.execute("ALTER TABLE workspaces ADD COLUMN owner_scope TEXT")
+    if "description" not in ws_cols:
+        await conn.execute("ALTER TABLE workspaces ADD COLUMN description TEXT")
+    if "visibility" not in ws_cols:
+        await conn.execute(
+            "ALTER TABLE workspaces ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'"
+        )
+    if "archived" not in ws_cols:
+        await conn.execute(
+            "ALTER TABLE workspaces ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+        )
+    if "is_default" not in ws_cols:
+        await conn.execute(
+            "ALTER TABLE workspaces ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0"
+        )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspaces_owner_scope ON workspaces(owner_scope)"
+    )
+
+    conv_info = await _columns("conversations")
+    conv_cols = {r[1] for r in conv_info}
+    if "workspace_id" not in conv_cols:
+        await conn.execute(
+            "ALTER TABLE conversations ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL"
+        )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_workspace ON conversations(workspace_id)"
+    )
+
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workspace_sources (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            source_type TEXT NOT NULL DEFAULT 'file' CHECK (source_type IN ('file','url','note')),
+            document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+            source_title TEXT NOT NULL,
+            source_url TEXT,
+            mime_type TEXT,
+            status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','processing','ready','error')),
+            last_fetched_at TEXT,
+            metadata_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspace_sources_workspace ON workspace_sources(workspace_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspace_sources_document ON workspace_sources(document_id)"
+    )
+
+    await conn.execute(
+        "UPDATE workspaces SET owner_scope = 'user:' || owner_id WHERE owner_scope IS NULL"
+    )
+
+    # Backfill default workspaces for every distinct owner_id that has documents/conversations.
+    owner_cursor = await conn.execute(
+        """
+        SELECT DISTINCT owner_id FROM (
+            SELECT owner_id FROM documents WHERE workspace_id IS NULL
+            UNION
+            SELECT owner_id FROM conversations WHERE workspace_id IS NULL
+        )
+        WHERE owner_id IS NOT NULL AND owner_id <> ''
+        """
+    )
+    owner_rows = await owner_cursor.fetchall()
+    await owner_cursor.close()
+    for row in owner_rows:
+        owner_scope = row[0]
+        if not owner_scope:
+            continue
+        # Fetch-or-create default workspace
+        cursor = await conn.execute(
+            "SELECT id FROM workspaces WHERE owner_scope = ? AND is_default = 1 LIMIT 1",
+            (owner_scope,),
+        )
+        existing = await cursor.fetchone()
+        await cursor.close()
+        if existing:
+            workspace_id = existing[0]
+        else:
+            workspace_id = str(_uuid.uuid4())
+            slug = f"default-{workspace_id[:8]}"
+            legacy_owner = owner_scope.split(":", 1)[1] if owner_scope.startswith("user:") else owner_scope
+            await conn.execute(
+                """
+                INSERT INTO workspaces (id, name, slug, owner_id, owner_scope, description, visibility, archived, is_default)
+                VALUES (?, ?, ?, ?, ?, ?, 'private', 0, 1)
+                """,
+                (workspace_id, "Personal workspace", slug, legacy_owner, owner_scope, "Default workspace"),
+            )
+        await conn.execute(
+            "UPDATE documents SET workspace_id = ? WHERE owner_id = ? AND workspace_id IS NULL",
+            (workspace_id, owner_scope),
+        )
+        await conn.execute(
+            "UPDATE conversations SET workspace_id = ? WHERE owner_id = ? AND workspace_id IS NULL",
+            (workspace_id, owner_scope),
+        )
+        # Create workspace_sources rows for pre-existing documents.
+        doc_cursor = await conn.execute(
+            """
+            SELECT id, filename, mime_type, status FROM documents
+            WHERE owner_id = ?
+              AND id NOT IN (SELECT document_id FROM workspace_sources WHERE document_id IS NOT NULL)
+            """,
+            (owner_scope,),
+        )
+        doc_rows = await doc_cursor.fetchall()
+        await doc_cursor.close()
+        for drow in doc_rows:
+            await conn.execute(
+                """
+                INSERT INTO workspace_sources (id, workspace_id, source_type, document_id, source_title, mime_type, status)
+                VALUES (?, ?, 'file', ?, ?, ?, ?)
+                """,
+                (
+                    str(_uuid.uuid4()),
+                    workspace_id,
+                    drow[0],
+                    drow[1],
+                    drow[2],
+                    drow[3] if drow[3] in ("queued", "processing", "ready", "error") else "queued",
+                ),
+            )
+
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (12)")
 
 
 async def close_db() -> None:

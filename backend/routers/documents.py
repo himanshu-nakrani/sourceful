@@ -32,6 +32,7 @@ async def list_documents(context: RequestContext = Depends(get_request_context))
         """
         SELECT id, filename, provider, embedding_model, mime_type, checksum, chunk_count,
                file_size, page_count, status, current_job_id, created_at, processed_at, last_error,
+               workspace_id,
                (SELECT stage FROM document_jobs WHERE id = documents.current_job_id) AS current_stage,
                (SELECT id FROM document_jobs WHERE document_id = documents.id AND owner_id = documents.owner_id ORDER BY created_at DESC LIMIT 1) AS last_job_id
         FROM documents
@@ -54,6 +55,7 @@ async def get_document(
         """
         SELECT id, filename, provider, embedding_model, mime_type, checksum, chunk_count,
                file_size, page_count, status, current_job_id, created_at, processed_at, last_error,
+               workspace_id,
                (SELECT stage FROM document_jobs WHERE id = documents.current_job_id) AS current_stage,
                (SELECT id FROM document_jobs WHERE document_id = documents.id AND owner_id = documents.owner_id ORDER BY created_at DESC LIMIT 1) AS last_job_id
         FROM documents WHERE id = ? AND owner_id = ?

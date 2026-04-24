@@ -30,6 +30,7 @@ import { useServerState } from "../lib/server-state";
 import { useToast } from "./Toast";
 import { SidebarDocSkeleton } from "./Skeleton";
 import { useStore } from "../lib/store";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 interface SidebarProps {
   onUploadClick: () => void;
@@ -68,7 +69,14 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
     selectDocument,
     setMessages,
   } = useServerState();
-  const { settings, activeConversationId, activeDocumentId, activeDocumentIds, sidebarOpen } = state;
+  const {
+    settings,
+    activeConversationId,
+    activeDocumentId,
+    activeDocumentIds,
+    sidebarOpen,
+    activeWorkspaceId,
+  } = state;
   const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -79,9 +87,18 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
 
   const visibleDocuments = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return documents;
-    return documents.filter((document) => document.filename.toLowerCase().includes(term));
-  }, [documents, search]);
+    // Phase 1: scope the sidebar document list to the active workspace when one
+    // is selected. Legacy documents without a workspace_id are kept visible so
+    // existing flows keep working during migration.
+    const scoped = activeWorkspaceId
+      ? documents.filter(
+          (document) =>
+            !document.workspace_id || document.workspace_id === activeWorkspaceId
+        )
+      : documents;
+    if (!term) return scoped;
+    return scoped.filter((document) => document.filename.toLowerCase().includes(term));
+  }, [documents, search, activeWorkspaceId]);
 
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId
@@ -227,6 +244,9 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           <PanelLeftClose size={16} />
         </motion.button>
       </div>
+
+      {/* Workspace switcher (Phase 1) */}
+      <WorkspaceSwitcher />
 
       {/* Primary action */}
       <div className="relative px-3 pt-2 pb-1 flex-shrink-0">

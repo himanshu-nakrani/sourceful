@@ -33,6 +33,7 @@ class DocumentResponse(BaseModel):
     created_at: datetime
     processed_at: datetime | None = None
     last_error: str | None = None
+    workspace_id: str | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -68,12 +69,18 @@ class IngestResponse(BaseModel):
 class ChatRequest(BaseModel):
     provider: Literal["openai", "gemini"]
     model: str = Field(max_length=128)
-    document_id: str
+    document_id: str | None = None
     document_ids: list[str] | None = None
     question: str = Field(min_length=1, max_length=settings.max_question_length)
     conversation_id: str | None = None
     top_k: int | None = Field(default=None, ge=1, le=20)
     similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Phase 1 — workspace-scoped chat. When ``workspace_id`` is provided and no
+    # explicit ``document_id``/``document_ids`` are supplied, retrieval spans
+    # all ready sources in the workspace. ``source_ids`` optionally narrows
+    # retrieval to a subset of ``workspace_sources.id`` values.
+    workspace_id: str | None = None
+    source_ids: list[str] | None = None
 
 
 class RerunMessageRequest(BaseModel):
@@ -101,6 +108,7 @@ class ConversationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     messages: list[MessageResponse] = []
+    workspace_id: str | None = None
 
 
 class ConversationListItem(BaseModel):
@@ -110,6 +118,7 @@ class ConversationListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
     message_count: int = 0
+    workspace_id: str | None = None
 
 
 class ConversationListResponse(BaseModel):
@@ -240,6 +249,61 @@ class FeedbackResponse(BaseModel):
     rating: Literal["up", "down"]
     comment: str | None = None
     created_at: datetime
+
+
+class WorkspaceResponse(BaseModel):
+    id: str
+    name: str
+    slug: str | None = None
+    description: str | None = None
+    visibility: Literal["private", "shared"] = "private"
+    archived: bool = False
+    is_default: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class WorkspaceListResponse(BaseModel):
+    workspaces: list[WorkspaceResponse]
+
+
+class CreateWorkspaceRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+    visibility: Literal["private", "shared"] = "private"
+
+
+class UpdateWorkspaceRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+    visibility: Literal["private", "shared"] | None = None
+    archived: bool | None = None
+
+
+class WorkspaceSourceResponse(BaseModel):
+    id: str
+    workspace_id: str
+    source_type: Literal["file", "url", "note"]
+    document_id: str | None = None
+    source_title: str
+    source_url: str | None = None
+    mime_type: str | None = None
+    status: Literal["queued", "processing", "ready", "error"]
+    last_fetched_at: datetime | None = None
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class WorkspaceSourceListResponse(BaseModel):
+    sources: list[WorkspaceSourceResponse]
+
+
+class CreateUrlSourceRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+    title: str | None = Field(default=None, max_length=300)
+    provider: Literal["openai", "gemini"] | None = None
+    embedding_model: str | None = Field(default=None, max_length=128)
 
 
 class FeedbackSummaryResponse(BaseModel):

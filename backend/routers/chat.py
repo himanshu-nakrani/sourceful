@@ -13,6 +13,11 @@ from fastapi.responses import StreamingResponse
 from openai import APIError
 from pydantic import TypeAdapter
 
+try:
+    import orjson
+except ModuleNotFoundError:  # pragma: no cover
+    orjson = None
+
 from backend.database import execute, execute_many, fetch_all, fetch_one
 from backend.errors import api_error_response
 from backend.metrics import metrics
@@ -45,6 +50,7 @@ router = APIRouter()
 # dump_json(), skipping the standard library's json.dumps() and iterative dict instantiation.
 # This yields a measurable performance improvement when parsing message histories with many sources.
 _citation_list_adapter = TypeAdapter(list[Citation])
+_any_adapter = TypeAdapter(Any)
 
 
 async def _load_ready_document(
@@ -532,8 +538,18 @@ async def _generate_chat_response(
 
 
 def _sse_event(event: str, data: dict | str) -> bytes:
-    payload = data if isinstance(data, str) else json.dumps(data, default=str)
-    return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
+    # ⚡ BOLT OPTIMIZATION:
+    # For high-frequency SSE event streaming, we use byte concatenation instead of string formatting.
+    # We use orjson.dumps (or Pydantic's dump_json as fallback) to minimize serialization latency and CPU overhead.
+    if isinstance(data, str):
+        payload_bytes = data.encode("utf-8")
+    elif orjson is not None:
+        payload_bytes = orjson.dumps(data, default=str, option=orjson.OPT_PASSTHROUGH_DATETIME)
+    else:
+        payload_bytes = _any_adapter.dump_json(data)
+
+    event_bytes = event.encode("utf-8")
+    return b"event: " + event_bytes + b"\ndata: " + payload_bytes + b"\n\n"
 
 
 async def _stream_chat_response(

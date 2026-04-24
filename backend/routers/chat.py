@@ -8,6 +8,11 @@ import uuid
 import asyncio
 from typing import Any
 
+try:
+    import orjson
+except ImportError:
+    orjson = None
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from openai import APIError
@@ -45,6 +50,7 @@ router = APIRouter()
 # dump_json(), skipping the standard library's json.dumps() and iterative dict instantiation.
 # This yields a measurable performance improvement when parsing message histories with many sources.
 _citation_list_adapter = TypeAdapter(list[Citation])
+_any_adapter = TypeAdapter(Any)
 
 
 async def _load_ready_document(
@@ -532,8 +538,19 @@ async def _generate_chat_response(
 
 
 def _sse_event(event: str, data: dict | str) -> bytes:
-    payload = data if isinstance(data, str) else json.dumps(data, default=str)
-    return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
+    # ⚡ BOLT OPTIMIZATION: Use orjson or Pydantic TypeAdapter and bytes concatenation
+    # instead of json.dumps and string formatting for much faster SSE serialization.
+    if isinstance(data, str):
+        payload_bytes = data.encode("utf-8")
+    else:
+        if orjson is not None:
+            try:
+                payload_bytes = orjson.dumps(data)
+            except TypeError:
+                payload_bytes = _any_adapter.dump_json(data)
+        else:
+            payload_bytes = _any_adapter.dump_json(data)
+    return b"event: " + event.encode("utf-8") + b"\ndata: " + payload_bytes + b"\n\n"
 
 
 async def _stream_chat_response(

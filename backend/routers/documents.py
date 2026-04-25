@@ -270,7 +270,6 @@ async def extract_document_fields(
     )
 
     # Persist extracted fields on the document for downstream use
-    import json
     await execute(
         "UPDATE documents SET last_error = NULL WHERE id = ? AND owner_id = ?",
         (document_id, context.owner_id),

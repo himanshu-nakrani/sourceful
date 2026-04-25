@@ -34,7 +34,6 @@ class NotionConnector(BaseConnector):
 
     async def test_connection(self) -> tuple[bool, str | None]:
         """Test by querying the user endpoint."""
-        import asyncio
 
         try:
             import httpx
@@ -58,7 +57,6 @@ class NotionConnector(BaseConnector):
         self, since: datetime | None = None
     ) -> AsyncIterator[RemoteDocument]:
         """List all pages from Notion workspace."""
-        import asyncio
 
         try:
             import httpx
@@ -148,7 +146,6 @@ class NotionConnector(BaseConnector):
 
     async def _export_page_as_markdown(self, page_id: str) -> str:
         """Export a Notion page as markdown by fetching block content."""
-        import asyncio
 
         try:
             import httpx

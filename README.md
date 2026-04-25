@@ -1,14 +1,81 @@
 # Document RAG
 
-A self-hostable document question-answering app with a Next.js frontend, FastAPI API, durable background ingestion jobs, PostgreSQL + pgvector storage, and BYOK support for OpenAI or Google Gemini.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js)](https://nodejs.org)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python)](https://python.org)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)](https://fastapi.tiangolo.com)
 
-## What Changed
+A **self-hostable, production-ready document question-answering (RAG) application** that lets you upload documents, ask questions in natural language, and receive grounded, cited answers powered by your own OpenAI or Google Gemini API key.
 
-- PostgreSQL + pgvector is now the primary production path.
-- Document ingestion is durable and worker-backed instead of `asyncio.create_task` fire-and-forget processing.
-- The API separates app access control from provider credentials.
-- Documents, jobs, chunks, conversations, and messages are scoped to a stable client session.
-- Answers stream with structured citations that include chunk ids, similarity scores, and page references.
+### Key Highlights
+
+- **Bring Your Own Key (BYOK)** — works with OpenAI (`gpt-4o-mini`, `text-embedding-3-small`) or Google Gemini (`gemini-2.0-flash`, `gemini-embedding-001`). No vendor lock-in.
+- **Streaming answers with citations** — responses stream via Server-Sent Events and include chunk IDs, similarity scores, and page references for full traceability.
+- **Durable ingestion pipeline** — documents are processed by a background worker with job tracking, retries, and progress stages; no fire-and-forget.
+- **Multi-format document support** — ingest PDF, DOCX, TXT, Markdown, CSV, XLSX, PPTX, and HTML files.
+- **Advanced retrieval (optional)** — hybrid dense + lexical search (RRF), cross-encoder reranking, GraphRAG entity traversal, agentic planner-tool loop, and rolling conversation memory — all behind feature flags, off by default.
+- **Multi-tenant workspaces** — RBAC roles (owner / admin / editor / viewer), shareable links, and per-workspace usage quotas.
+- **Cloud connectors** — sync from Google Drive, Notion, Confluence, and S3 on a schedule.
+- **Notebook UX** — split-pane PDF viewer with click-through citations and inline chat.
+- **Production-ready** — PostgreSQL + pgvector, Prometheus metrics, health/readiness endpoints, and full Docker Compose orchestration.
+
+## Table of Contents
+
+1. [Features](#features)
+2. [Tech Stack](#tech-stack)
+3. [Architecture](#architecture)
+4. [Prerequisites](#prerequisites)
+5. [Supported File Types](#supported-file-types)
+6. [Auth Model](#auth-model)
+7. [Main API Endpoints](#main-api-endpoints)
+8. [Local Development](#local-development)
+9. [Docker Compose](#docker-compose)
+10. [Environment Variables](#environment-variables)
+11. [Quality Gates](#quality-gates)
+12. [Advanced Retrieval (Phase 0/1)](#advanced-retrieval-phase-01)
+13. [Agentic Retrieval & Memory (Phase 3)](#agentic-retrieval--memory-phase-3)
+14. [Cloud Connectors (Phase 4)](#cloud-connectors-phase-4)
+15. [Notebook UX (Phase 4)](#notebook-ux-phase-4)
+16. [Workspaces & RBAC (Phase 4)](#workspaces--rbac-phase-4)
+17. [Usage Metering & Quotas (Phase 4)](#usage-metering--quotas-phase-4)
+18. [Production Operations](#production-operations)
+19. [CI](#ci)
+
+## Features
+
+| Category | What's included |
+|---|---|
+| **Document ingestion** | Upload via UI or API; background worker with job status tracking, retries, and per-stage progress |
+| **Retrieval** | Dense vector search (pgvector), optional hybrid BM25+dense (RRF), optional cross-encoder reranking, optional GraphRAG traversal |
+| **Chat** | Single-response JSON or streaming SSE; structured citations with chunk ID, score, and page; multi-turn conversation history |
+| **AI providers** | OpenAI (GPT-4o, GPT-4o-mini, text-embedding-3-small/large) · Google Gemini (gemini-2.0-flash, gemini-embedding-001) |
+| **Storage** | PostgreSQL + pgvector (production) · SQLite (local dev fallback) |
+| **Auth** | Session-scoped data isolation; BYOK per request; workspace RBAC |
+| **Observability** | Prometheus metrics (`/metrics`), health (`/health`), readiness (`/ready`), optional Langfuse tracing |
+| **Cloud sync** | Google Drive · Notion · Confluence · S3 |
+| **Frontend** | Next.js 16 app with upload, chat, chunk preview, notebook PDF viewer, and conversation management |
+
+## Tech Stack
+
+**Frontend**
+- [Next.js 16](https://nextjs.org) (App Router, React 19, TypeScript)
+- [Tailwind CSS v4](https://tailwindcss.com) for styling
+- [Framer Motion](https://www.framer.com/motion/) for animations
+- [react-pdf](https://github.com/wojtekmaj/react-pdf) for the notebook PDF viewer
+- [react-markdown](https://github.com/remarkjs/react-markdown) + `remark-gfm` for rendered answers
+
+**Backend**
+- [FastAPI](https://fastapi.tiangolo.com) (Python 3.12) with async request handling
+- [Uvicorn](https://www.uvicorn.org) ASGI server
+- [OpenAI Python SDK](https://github.com/openai/openai-python) and [Google Generative AI SDK](https://github.com/google/generative-ai-python)
+- [pypdf](https://github.com/py-pdf/pypdf) + [python-docx](https://python-docx.readthedocs.io) for document parsing
+- [sse-starlette](https://github.com/sysid/sse-starlette) for streaming responses
+- [psycopg 3](https://www.psycopg.org) for PostgreSQL; [aiosqlite](https://github.com/omnilib/aiosqlite) for local dev
+
+**Storage**
+- [PostgreSQL 17](https://www.postgresql.org) + [pgvector](https://github.com/pgvector/pgvector) for production vector storage
+- SQLite as a zero-config local development fallback
 
 ## Architecture
 
@@ -17,6 +84,31 @@ A self-hostable document question-answering app with a Next.js frontend, FastAPI
 - `worker`: background process that claims queued jobs, extracts text, builds embeddings, and stores chunks.
 - `postgres`: primary production datastore with pgvector.
 - SQLite remains available as a local-dev fallback when `DATABASE_URL` is not set.
+
+## Prerequisites
+
+| Requirement | Minimum version | Notes |
+|---|---|---|
+| Node.js | 20 | 22 recommended (used in CI) |
+| Python | 3.11 | 3.12 recommended (used in CI) |
+| Docker & Docker Compose | any recent version | Required for the full-stack container workflow |
+| OpenAI **or** Gemini API key | — | Passed per-request via `X-Provider-Api-Key`; not stored server-side |
+| PostgreSQL + pgvector | pg 15+ | Only for production; SQLite is used automatically in local dev when `DATABASE_URL` is unset |
+
+## Supported File Types
+
+The following document formats are accepted for ingestion (configurable via `ALLOWED_FILE_TYPES`):
+
+| Format | Extension |
+|---|---|
+| PDF | `.pdf` |
+| Word document | `.docx` |
+| Plain text | `.txt` |
+| Markdown | `.md` |
+| CSV | `.csv` |
+| Excel spreadsheet | `.xlsx` |
+| PowerPoint presentation | `.pptx` |
+| HTML | `.html`, `.htm` |
 
 ## Auth Model
 

@@ -87,6 +87,10 @@ export interface WorkspaceSource {
   metadata: Record<string, unknown>;
   created_at?: string | null;
   updated_at?: string | null;
+  // Phase 3 — sync history columns surfaced from `workspace_sources`.
+  last_sync_status?: "running" | "success" | "error" | null;
+  last_sync_error?: string | null;
+  next_sync_at?: string | null;
 }
 
 export interface JobInfo {
@@ -121,6 +125,7 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: Citation[] | null;
+  mode?: "ask" | "compare" | "extract" | "brief" | null;
   created_at: string;
 }
 
@@ -147,6 +152,53 @@ export interface AnalyticsOverview {
     sessions_24h: number;
   };
   provider_breakdown: AnalyticsProviderBreakdown[];
+}
+
+export interface WorkspaceAnalytics {
+  totals: {
+    sources: number;
+    ready_sources: number;
+    artifacts: number;
+    conversations: number;
+    messages: number;
+  };
+  breakdown: {
+    sources_by_type: Array<{ type: string; count: number }>;
+    artifacts_by_type: Array<{ type: string; count: number }>;
+  };
+  recent: {
+    messages_7d: number;
+    artifacts_7d: number;
+  };
+}
+
+export type WorkspaceActivityItem =
+  | {
+      type: "message";
+      id: string;
+      role: string;
+      content_preview: string;
+      conversation_title: string | null;
+      created_at: string;
+    }
+  | {
+      type: "artifact";
+      id: string;
+      artifact_type: string;
+      title: string;
+      created_at: string;
+    }
+  | {
+      type: "source_update";
+      id: string;
+      source_type: string;
+      source_title: string;
+      status: string;
+      created_at: string;
+    };
+
+export interface WorkspaceActivity {
+  activities: WorkspaceActivityItem[];
 }
 
 export interface Conversation {
@@ -376,6 +428,18 @@ export async function getWorkspace(
   return res.json();
 }
 
+export type WorkspaceRoleLiteral = "owner" | "admin" | "editor" | "viewer" | null;
+
+export async function getMyWorkspaceRole(
+  auth: ClientAuthContext,
+  workspaceId: string
+): Promise<WorkspaceRoleLiteral> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/my-role`, { headers: baseHeaders(auth) });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const data = (await res.json()) as { role?: WorkspaceRoleLiteral };
+  return data.role ?? null;
+}
+
 export async function updateWorkspace(
   auth: ClientAuthContext,
   workspaceId: string,
@@ -425,6 +489,289 @@ export async function importWorkspaceUrl(
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }
+
+export async function reprocessWorkspaceSource(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  sourceId: string
+): Promise<WorkspaceSource> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/sources/${sourceId}/reprocess`,
+    {
+      method: "POST",
+      headers: baseHeaders(auth, { includeProviderKey: true }),
+    }
+  );
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+// ---------- Phase 3: workspace analytics ------------------------------------
+
+export async function getWorkspaceAnalytics(
+  auth: ClientAuthContext,
+  workspaceId: string
+): Promise<WorkspaceAnalytics> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/analytics`, {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function getWorkspaceActivity(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  limit = 20
+): Promise<WorkspaceActivity> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/activity?limit=${encodeURIComponent(limit)}`,
+    { headers: baseHeaders(auth) }
+  );
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+// ---------- Phase 2: artifacts ----------------------------------------------
+
+export type ArtifactType = "user_note" | "saved_answer" | "saved_brief" | "extraction_result";
+
+export interface Artifact {
+  id: string;
+  workspace_id: string;
+  artifact_type: ArtifactType;
+  title: string;
+  content: string;
+  metadata: Record<string, unknown>;
+  source_message_id?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export async function listArtifacts(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  artifactType?: ArtifactType
+): Promise<Artifact[]> {
+  const qs = artifactType ? `?artifact_type=${encodeURIComponent(artifactType)}` : "";
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/artifacts${qs}`, {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const data = (await res.json()) as { artifacts?: Artifact[] };
+  return data.artifacts ?? [];
+}
+
+export async function createArtifact(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  payload: {
+    artifact_type?: ArtifactType;
+    title: string;
+    content: string;
+    metadata?: Record<string, unknown>;
+    source_message_id?: string;
+  }
+): Promise<Artifact> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/artifacts`, {
+    method: "POST",
+    headers: baseHeaders(auth, { includeJson: true }),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function updateArtifact(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  artifactId: string,
+  payload: { title?: string; content?: string; metadata?: Record<string, unknown> }
+): Promise<Artifact> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/artifacts/${artifactId}`,
+    {
+      method: "PATCH",
+      headers: baseHeaders(auth, { includeJson: true }),
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function deleteArtifact(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  artifactId: string
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/artifacts/${artifactId}`,
+    { method: "DELETE", headers: baseHeaders(auth) }
+  );
+  if (!res.ok && res.status !== 204) throw new Error(await errorMessage(res));
+}
+
+export async function saveAssistantMessageAsArtifact(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  payload: { message_id: string; title?: string; artifact_type?: Exclude<ArtifactType, "user_note"> }
+): Promise<Artifact> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/artifacts/from-message`,
+    {
+      method: "POST",
+      headers: baseHeaders(auth, { includeJson: true }),
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+// ---------- Phase 3: members + invitations + sync runs ---------------------
+
+export type WorkspaceRole = "owner" | "admin" | "editor" | "viewer";
+
+export interface WorkspaceMember {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  email?: string | null;
+  role: WorkspaceRole;
+  joined_at?: string | null;
+}
+
+export interface WorkspaceInvitation {
+  id: string;
+  workspace_id: string;
+  email: string;
+  role: WorkspaceRole;
+  token: string;
+  invited_by?: string | null;
+  accepted_at?: string | null;
+  expires_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface SyncRun {
+  id: string;
+  workspace_id: string;
+  source_id: string;
+  status: "queued" | "running" | "success" | "error";
+  started_at?: string | null;
+  completed_at?: string | null;
+  error_message?: string | null;
+  checksum?: string | null;
+}
+
+export async function listWorkspaceMembers(
+  auth: ClientAuthContext,
+  workspaceId: string
+): Promise<WorkspaceMember[]> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/members`, {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return ((await res.json()) as { members?: WorkspaceMember[] }).members ?? [];
+}
+
+export async function addWorkspaceMember(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  payload: { user_id: string; role?: WorkspaceRole }
+): Promise<WorkspaceMember> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/members`, {
+    method: "POST",
+    headers: baseHeaders(auth, { includeJson: true }),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function updateWorkspaceMember(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  memberId: string,
+  role: WorkspaceRole
+): Promise<WorkspaceMember> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/members/${memberId}`,
+    {
+      method: "PATCH",
+      headers: baseHeaders(auth, { includeJson: true }),
+      body: JSON.stringify({ role }),
+    }
+  );
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function removeWorkspaceMember(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  memberId: string
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/members/${memberId}`,
+    { method: "DELETE", headers: baseHeaders(auth) }
+  );
+  if (!res.ok && res.status !== 204) throw new Error(await errorMessage(res));
+}
+
+export async function listWorkspaceInvitations(
+  auth: ClientAuthContext,
+  workspaceId: string
+): Promise<WorkspaceInvitation[]> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/invitations`, {
+    headers: baseHeaders(auth),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return ((await res.json()) as { invitations?: WorkspaceInvitation[] }).invitations ?? [];
+}
+
+export async function createWorkspaceInvitation(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  payload: { email: string; role?: WorkspaceRole; expires_in_days?: number }
+): Promise<WorkspaceInvitation> {
+  const res = await apiFetch(`/api/workspaces/${workspaceId}/invitations`, {
+    method: "POST",
+    headers: baseHeaders(auth, { includeJson: true }),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export async function revokeWorkspaceInvitation(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  invitationId: string
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/invitations/${invitationId}`,
+    { method: "DELETE", headers: baseHeaders(auth) }
+  );
+  if (!res.ok && res.status !== 204) throw new Error(await errorMessage(res));
+}
+
+export async function listSourceSyncRuns(
+  auth: ClientAuthContext,
+  workspaceId: string,
+  sourceId: string
+): Promise<SyncRun[]> {
+  const res = await apiFetch(
+    `/api/workspaces/${workspaceId}/sources/${sourceId}/sync-runs`,
+    { headers: baseHeaders(auth) }
+  );
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return ((await res.json()) as { runs?: SyncRun[] }).runs ?? [];
+}
+
+export type ChatMode = "ask" | "compare" | "extract" | "brief";
 
 export async function reprocessDocument(
   auth: ClientAuthContext,
@@ -668,7 +1015,12 @@ export async function sendChatStream(
   signal?: AbortSignal,
   topK?: number,
   similarityThreshold?: number,
-  documentIds?: string[]
+  documentIds?: string[],
+  options?: {
+    workspaceId?: string;
+    sourceIds?: string[];
+    mode?: ChatMode;
+  }
 ): Promise<void> {
   const res = await apiFetch("/api/chat/stream", {
     method: "POST",
@@ -682,6 +1034,9 @@ export async function sendChatStream(
       conversation_id: conversationId,
       top_k: topK,
       similarity_threshold: similarityThreshold,
+      workspace_id: options?.workspaceId,
+      source_ids: options?.sourceIds && options.sourceIds.length ? options.sourceIds : undefined,
+      mode: options?.mode && options.mode !== "ask" ? options.mode : undefined,
     }),
     signal,
   });

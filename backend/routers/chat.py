@@ -99,6 +99,21 @@ async def _apply_workspace_to_chat_body(
     Mutates ``body`` in place. Returns ``(ok, error_response)``. If ok is False
     the caller must return ``error_response``.
     """
+    # Phase 3 RBAC: when chat is workspace-scoped, every caller (including the
+    # owner) must have at least ``viewer`` access. The shared helper already
+    # returns 404 for unknown workspaces and 403 for insufficient roles.
+    if body.workspace_id:
+        from backend.services.workspace_rbac import check_workspace_role
+
+        _, err = await check_workspace_role(
+            workspace_id=body.workspace_id,
+            request=request,
+            context=context,
+            minimum="viewer",
+        )
+        if err:
+            return False, err
+
     if body.document_id:
         return True, None
     if not body.workspace_id:
@@ -107,18 +122,6 @@ async def _apply_workspace_to_chat_body(
             status_code=400,
             error="Either document_id or workspace_id is required.",
             code="DOCUMENT_OR_WORKSPACE_REQUIRED",
-        )
-    # Validate ownership of the workspace.
-    from backend.services import workspace_service as _ws
-
-    workspace = await _ws.get_workspace(body.workspace_id, context.owner_id)
-    if not workspace:
-        return False, api_error_response(
-            request=request,
-            status_code=404,
-            error="Workspace not found.",
-            code="WORKSPACE_NOT_FOUND",
-            details={"workspace_id": body.workspace_id},
         )
     docs = await _resolve_workspace_documents(
         owner_id=context.owner_id,
@@ -436,16 +439,30 @@ async def _embed_and_retrieve(
 
 
 def _citations_from_chunks(chunks) -> list[Citation]:
-    return [
-        Citation(
-            chunk_id=c.chunk_id,
-            document_id=c.document_id,
-            excerpt=c.excerpt,
-            score=c.score,
-            page_number=c.page_number,
+    citations: list[Citation] = []
+    for c in chunks:
+        chunk_type = getattr(c, "chunk_type", "text") or "text"
+        artifact_metadata: dict | None = None
+        raw_meta = getattr(c, "metadata_json", None)
+        if chunk_type == "artifact" and raw_meta:
+            try:
+                parsed = json.loads(raw_meta)
+                if isinstance(parsed, dict):
+                    artifact_metadata = parsed
+            except (TypeError, ValueError, json.JSONDecodeError):
+                artifact_metadata = None
+        citations.append(
+            Citation(
+                chunk_id=c.chunk_id,
+                document_id=c.document_id,
+                excerpt=c.excerpt,
+                score=c.score,
+                page_number=c.page_number,
+                chunk_type=chunk_type,
+                artifact_metadata=artifact_metadata,
+            )
         )
-        for c in chunks
-    ]
+    return citations
 
 
 async def _save_turn(
@@ -456,6 +473,7 @@ async def _save_turn(
     assistant_message_id: str,
     answer: str,
     sources_json: str,
+    mode: str | None = None,
 ) -> None:
     user_message_id = str(uuid.uuid4())
     await execute(
@@ -464,10 +482,10 @@ async def _save_turn(
     )
     await execute(
         """
-        INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json)
-        VALUES (?, ?, ?, 'assistant', ?, ?)
+        INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json, mode)
+        VALUES (?, ?, ?, 'assistant', ?, ?, ?)
         """,
-        (assistant_message_id, context.owner_id, conversation_id, answer, sources_json),
+        (assistant_message_id, context.owner_id, conversation_id, answer, sources_json, mode or "ask"),
     )
     await execute(
         f"UPDATE conversations SET updated_at = {TIMESTAMP_SQL} WHERE id = ? AND owner_id = ?",
@@ -489,6 +507,8 @@ async def _generate_chat_response(
     top_k: int | None = None,
     similarity_threshold: float | None = None,
     extra_document_ids: list[str] | None = None,
+    mode: str | None = None,
+    workspace_id: str | None = None,
 ):
     """
     Generate a grounded assistant response for a question, persist the user and assistant messages, update the conversation timestamp, and return the created assistant message payload.
@@ -549,6 +569,20 @@ async def _generate_chat_response(
         if err is not None:
             return err
 
+        # Phase 2: augment workspace-scoped retrieval with saved artifacts.
+        if workspace_id and chunks is not None:
+            from backend.services import artifact_retrieval as _art
+
+            artifact_chunks = await _art.retrieve_workspace_artifacts(
+                workspace_id=workspace_id,
+                question=trimmed_question,
+                primary_citation_count=len(chunks),
+            )
+            if artifact_chunks:
+                chunks = list(chunks) + list(artifact_chunks)
+                if isinstance(stages, dict):
+                    stages["artifacts"] = {"count": len(artifact_chunks)}
+
         hint = _compute_active_learning_hint(stages or {}, chunks or [])
         if hint is not None and isinstance(stages, dict):
             stages["active_learning_hint"] = hint
@@ -566,7 +600,9 @@ async def _generate_chat_response(
 
         source_payload = _citations_from_chunks(chunks)
         source_payload_json = _citation_list_adapter.dump_json(source_payload).decode("utf-8")
-        prompt = build_rag_prompt(chunks, trimmed_question, history=memory_ctx.recent)
+        prompt = build_rag_prompt(
+            chunks, trimmed_question, history=memory_ctx.recent, mode=mode
+        )
         prompt = memory_service.inject_summary_into_messages(prompt, memory_ctx.summary)
         assistant_message_id = str(uuid.uuid4())
 
@@ -614,6 +650,7 @@ async def _generate_chat_response(
             assistant_message_id=assistant_message_id,
             answer=answer,
             sources_json=source_payload_json,
+            mode=mode,
         )
 
         response_body: dict[str, Any] = {
@@ -647,6 +684,8 @@ async def _stream_chat_response(
     top_k: int | None = None,
     similarity_threshold: float | None = None,
     extra_document_ids: list[str] | None = None,
+    mode: str | None = None,
+    workspace_id: str | None = None,
 ):
     trimmed_question = question.strip()
     trace_span_cm = tracing.trace(
@@ -697,6 +736,20 @@ async def _stream_chat_response(
                 yield _sse_event("error", payload)
                 return
 
+            # Phase 2: augment workspace-scoped retrieval with saved artifacts.
+            if workspace_id and chunks is not None:
+                from backend.services import artifact_retrieval as _art
+
+                artifact_chunks = await _art.retrieve_workspace_artifacts(
+                    workspace_id=workspace_id,
+                    question=trimmed_question,
+                    primary_citation_count=len(chunks),
+                )
+                if artifact_chunks:
+                    chunks = list(chunks) + list(artifact_chunks)
+                    if isinstance(stages, dict):
+                        stages["artifacts"] = {"count": len(artifact_chunks)}
+
             hint = _compute_active_learning_hint(stages or {}, chunks or [])
             if hint is not None and isinstance(stages, dict):
                 stages["active_learning_hint"] = hint
@@ -723,7 +776,9 @@ async def _stream_chat_response(
                 },
             )
 
-            prompt = build_rag_prompt(chunks, trimmed_question, history=memory_ctx.recent)
+            prompt = build_rag_prompt(
+                chunks, trimmed_question, history=memory_ctx.recent, mode=mode
+            )
             prompt = memory_service.inject_summary_into_messages(prompt, memory_ctx.summary)
             assistant_message_id = str(uuid.uuid4())
             collected: list[str] = []
@@ -823,6 +878,7 @@ async def _stream_chat_response(
                 assistant_message_id=assistant_message_id,
                 answer=answer,
                 sources_json=source_payload_json,
+                mode=mode,
             )
             yield _sse_event(
                 "message_saved",
@@ -968,6 +1024,8 @@ async def chat(
         top_k=body.top_k,
         similarity_threshold=body.similarity_threshold,
         extra_document_ids=extra_doc_ids or None,
+        mode=body.mode,
+        workspace_id=getattr(body, "workspace_id", None),
     )
 
 
@@ -1015,6 +1073,8 @@ async def chat_stream(
         top_k=body.top_k,
         similarity_threshold=body.similarity_threshold,
         extra_document_ids=extra_doc_ids or None,
+        mode=body.mode,
+        workspace_id=getattr(body, "workspace_id", None),
     )
 
 
@@ -1073,7 +1133,7 @@ async def rerun_chat_message(
 
     original_messages = await fetch_all(
         """
-        SELECT id, role, content, sources_json
+        SELECT id, role, content, sources_json, mode
         FROM messages
         WHERE conversation_id = ? AND owner_id = ?
         ORDER BY created_at ASC
@@ -1130,14 +1190,15 @@ async def rerun_chat_message(
             row["role"],
             row["content"],
             row.get("sources_json"),
+            row.get("mode"),
         )
         for row in prior_messages
     ]
     if params_list:
         await execute_many(
             """
-            INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json, mode)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             params_list,
         )

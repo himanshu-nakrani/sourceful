@@ -241,6 +241,11 @@ def _serialize_source(row: dict[str, Any]) -> dict[str, Any]:
         "metadata": metadata,
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
+        # Phase 3 sync columns. Older rows pre-dating migration v14 may not
+        # have these populated; ``.get`` keeps the serializer safe.
+        "last_sync_status": row.get("last_sync_status"),
+        "last_sync_error": row.get("last_sync_error"),
+        "next_sync_at": row.get("next_sync_at"),
     }
 
 
@@ -250,7 +255,8 @@ async def list_sources(workspace_id: str) -> list[dict[str, Any]]:
         SELECT ws.id, ws.workspace_id, ws.source_type, ws.document_id, ws.source_title,
                ws.source_url, ws.mime_type,
                COALESCE(d.status, ws.status) AS status,
-               ws.last_fetched_at, ws.metadata_json, ws.created_at, ws.updated_at
+               ws.last_fetched_at, ws.metadata_json, ws.created_at, ws.updated_at,
+               ws.last_sync_status, ws.last_sync_error, ws.next_sync_at
         FROM workspace_sources ws
         LEFT JOIN documents d ON d.id = ws.document_id
         WHERE ws.workspace_id = ?
@@ -267,7 +273,8 @@ async def get_source(source_id: str, workspace_id: str) -> dict[str, Any] | None
         SELECT ws.id, ws.workspace_id, ws.source_type, ws.document_id, ws.source_title,
                ws.source_url, ws.mime_type,
                COALESCE(d.status, ws.status) AS status,
-               ws.last_fetched_at, ws.metadata_json, ws.created_at, ws.updated_at
+               ws.last_fetched_at, ws.metadata_json, ws.created_at, ws.updated_at,
+               ws.last_sync_status, ws.last_sync_error, ws.next_sync_at
         FROM workspace_sources ws
         LEFT JOIN documents d ON d.id = ws.document_id
         WHERE ws.id = ? AND ws.workspace_id = ?

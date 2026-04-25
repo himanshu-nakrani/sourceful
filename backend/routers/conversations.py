@@ -65,7 +65,7 @@ async def get_conversation(
             details={"conversation_id": conversation_id},
         )
     rows = await fetch_all(
-        "SELECT id, role, content, sources_json, created_at FROM messages WHERE conversation_id = ? AND owner_id = ? ORDER BY created_at ASC",
+        "SELECT id, role, content, sources_json, mode, created_at FROM messages WHERE conversation_id = ? AND owner_id = ? ORDER BY created_at ASC",
         (conversation_id, context.owner_id),
     )
     messages = []
@@ -80,6 +80,7 @@ async def get_conversation(
                 role=row["role"],
                 content=row["content"],
                 sources=sources,
+                mode=row.get("mode"),
                 created_at=row["created_at"],
             )
         )

@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from backend.database import fetch_one
 from backend.services import workspace_service
 from backend.services.jobs import enqueue_ingest_job
 from backend.services.provider_auth import provider_requires_api_key
@@ -135,6 +136,130 @@ async def _fetch_url(url: str) -> tuple[bytes, str, str]:
             details={"max_bytes": MAX_URL_BYTES, "received_bytes": len(raw)},
         )
     return raw, (response.headers.get("content-type") or "").lower(), str(response.url)
+
+
+async def refetch_url_source(
+    *,
+    workspace_id: str,
+    owner_scope: str,
+    source: dict[str, Any],
+    provider_api_key: str | None,
+) -> dict[str, Any]:
+    """Re-fetch a URL-backed workspace source and enqueue a fresh ingest job.
+
+    Phase 3 sync semantics: the URL is fetched again (so updated content is
+    indexed), the underlying document's chunks are replaced via the worker,
+    and the workspace_source row's ``last_fetched_at`` / status / sync history
+    are updated.
+    """
+    if source.get("source_type") != "url":
+        raise UrlIngestError(
+            "Only URL sources support refetch.",
+            code="SOURCE_NOT_URL",
+        )
+    url = source.get("source_url") or ""
+    document_id = source.get("document_id")
+    if not url or not document_id:
+        raise UrlIngestError(
+            "URL source is missing url or document binding.",
+            code="SOURCE_INVALID",
+            status_code=409,
+        )
+
+    document = await fetch_one(
+        "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
+        (document_id, owner_scope),
+    )
+    if not document:
+        raise UrlIngestError(
+            "Underlying document not found.",
+            code="DOCUMENT_NOT_FOUND",
+            status_code=404,
+        )
+
+    provider = document["provider"]
+    embedding_model = document["embedding_model"]
+    if provider_requires_api_key(provider) and not provider_api_key:
+        raise UrlIngestError(
+            "Missing X-Provider-Api-Key header.",
+            code="MISSING_PROVIDER_API_KEY",
+            status_code=401,
+        )
+
+    from backend.services import sync_runs
+
+    run_id = await sync_runs.start_run(
+        workspace_id=workspace_id, source_id=source["id"]
+    )
+
+    try:
+        raw, content_type, final_url = await _fetch_url(url)
+        if "application/pdf" in content_type or final_url.lower().endswith(".pdf"):
+            mime_type = "application/pdf"
+            payload = raw
+        else:
+            try:
+                html_text = raw.decode("utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                html_text = raw.decode("latin-1", errors="replace")
+            text = _html_to_text(html_text)
+            if not text.strip():
+                raise UrlIngestError(
+                    "URL returned no text content to index.",
+                    code="URL_EMPTY_CONTENT",
+                )
+            mime_type = "text/plain"
+            payload = text.encode("utf-8")
+    except UrlIngestError as exc:
+        await sync_runs.finish_run(
+            run_id=run_id,
+            source_id=source["id"],
+            status="error",
+            error_message=str(exc),
+        )
+        raise
+
+    checksum = hashlib.sha256(payload).hexdigest()
+
+    # Update document payload + reset status, then enqueue a reprocess job that
+    # will re-chunk and re-embed the new content.
+    from backend.database import execute as _execute
+    from backend.services.jobs import enqueue_reprocess_job
+
+    await _execute(
+        "UPDATE documents SET file_bytes = ?, mime_type = ?, checksum = ?, status = 'queued', last_error = NULL WHERE id = ? AND owner_id = ?",
+        (payload, mime_type, checksum, document_id, owner_scope),
+    )
+    document, job = await enqueue_reprocess_job(
+        owner_id=owner_scope,
+        document_id=document_id,
+        provider_api_key=provider_api_key or "",
+        embedding_model=embedding_model,
+    )
+    # Mirror status onto the source and stamp last_fetched_at.
+    await _execute(
+        "UPDATE workspace_sources SET status = 'queued', mime_type = ?, last_fetched_at = "
+        + ("NOW()" if settings.using_postgres else "CURRENT_TIMESTAMP")
+        + ", updated_at = "
+        + ("NOW()" if settings.using_postgres else "CURRENT_TIMESTAMP")
+        + " WHERE id = ? AND workspace_id = ?",
+        (mime_type, source["id"], workspace_id),
+    )
+    await sync_runs.finish_run(
+        run_id=run_id,
+        source_id=source["id"],
+        status="success",
+        checksum=checksum,
+    )
+    refreshed = await workspace_service.get_source(source["id"], workspace_id)
+    logger.info(
+        "url_source_refetched workspace=%s source=%s document=%s job=%s",
+        workspace_id,
+        source["id"],
+        document_id,
+        (job or {}).get("id"),
+    )
+    return refreshed or source
 
 
 async def enqueue_url_source(

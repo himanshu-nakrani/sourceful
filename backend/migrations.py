@@ -3,8 +3,8 @@ from collections.abc import Iterable
 from backend.settings import settings
 
 
-SQLITE_MIGRATION_VERSION = 12
-POSTGRES_MIGRATION_VERSION = 12
+SQLITE_MIGRATION_VERSION = 15
+POSTGRES_MIGRATION_VERSION = 15
 
 
 def _split_statements(script: str) -> list[str]:
@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS messages (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     sources_json TEXT,
+    mode TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
@@ -280,9 +281,58 @@ CREATE TABLE IF NOT EXISTS workspace_sources (
 CREATE INDEX IF NOT EXISTS idx_workspace_sources_workspace ON workspace_sources(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_workspace_sources_document ON workspace_sources(document_id);
 
-INSERT OR IGNORE INTO schema_migrations (version) VALUES (1), (11), (12);
-"""
+-- v13: Phase 2 — saved knowledge artifacts (notes, saved answers, briefs).
+CREATE TABLE IF NOT EXISTS workspace_artifacts (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    artifact_type TEXT NOT NULL CHECK (artifact_type IN ('user_note','saved_answer','saved_brief','extraction_result')),
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata_json TEXT,
+    source_message_id TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_artifacts_workspace ON workspace_artifacts(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_artifacts_type ON workspace_artifacts(workspace_id, artifact_type);
 
+-- v14: Phase 3 — durable URL refresh tracking + invitations.
+ALTER TABLE workspace_sources ADD COLUMN last_sync_status TEXT;
+ALTER TABLE workspace_sources ADD COLUMN last_sync_error TEXT;
+ALTER TABLE workspace_sources ADD COLUMN next_sync_at TEXT;
+
+CREATE TABLE IF NOT EXISTS workspace_source_sync_runs (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL REFERENCES workspace_sources(id) ON DELETE CASCADE,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    status TEXT NOT NULL CHECK (status IN ('queued','running','success','error')),
+    error_message TEXT,
+    checksum TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_source_sync_runs_source ON workspace_source_sync_runs(source_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS workspace_invitations (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('owner','admin','editor','viewer')),
+    invited_by TEXT,
+    token TEXT NOT NULL UNIQUE,
+    accepted_at TEXT,
+    expires_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace ON workspace_invitations(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_token ON workspace_invitations(token);
+
+-- v15: Phase 2 — analysis mode on messages for structured rendering.
+ALTER TABLE messages ADD COLUMN mode TEXT;
+
+INSERT OR IGNORE INTO schema_migrations (version) VALUES (1), (11), (12), (13), (14), (15);
+"""
 
 POSTGRES_SCHEMA = """
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -373,6 +423,7 @@ CREATE TABLE IF NOT EXISTS messages (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     sources_json TEXT,
+    mode TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
@@ -540,7 +591,57 @@ CREATE TABLE IF NOT EXISTS workspace_sources (
 CREATE INDEX IF NOT EXISTS idx_workspace_sources_workspace ON workspace_sources(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_workspace_sources_document ON workspace_sources(document_id);
 
-INSERT INTO schema_migrations (version) VALUES (1), (11), (12) ON CONFLICT (version) DO NOTHING;
+-- v13: Phase 2 — saved knowledge artifacts.
+CREATE TABLE IF NOT EXISTS workspace_artifacts (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    artifact_type TEXT NOT NULL CHECK (artifact_type IN ('user_note','saved_answer','saved_brief','extraction_result')),
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata_json JSONB,
+    source_message_id TEXT,
+    created_by TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_artifacts_workspace ON workspace_artifacts(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_artifacts_type ON workspace_artifacts(workspace_id, artifact_type);
+
+-- v14: Phase 3 — durable refresh tracking + invitations.
+ALTER TABLE workspace_sources ADD COLUMN IF NOT EXISTS last_sync_status TEXT;
+ALTER TABLE workspace_sources ADD COLUMN IF NOT EXISTS last_sync_error TEXT;
+ALTER TABLE workspace_sources ADD COLUMN IF NOT EXISTS next_sync_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS workspace_source_sync_runs (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL REFERENCES workspace_sources(id) ON DELETE CASCADE,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    status TEXT NOT NULL CHECK (status IN ('queued','running','success','error')),
+    error_message TEXT,
+    checksum TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_source_sync_runs_source ON workspace_source_sync_runs(source_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS workspace_invitations (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('owner','admin','editor','viewer')),
+    invited_by TEXT,
+    token TEXT NOT NULL UNIQUE,
+    accepted_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace ON workspace_invitations(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_token ON workspace_invitations(token);
+
+-- v15: Phase 2 — analysis mode on messages for structured rendering.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS mode TEXT;
+
+INSERT INTO schema_migrations (version) VALUES (1), (11), (12), (13), (14), (15) ON CONFLICT (version) DO NOTHING;
 """
 
 

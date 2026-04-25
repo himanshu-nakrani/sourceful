@@ -14,6 +14,11 @@ class Citation(BaseModel):
     excerpt: str
     score: float
     page_number: int | None = None
+    # Phase 2 — distinguish primary source citations from saved-knowledge
+    # artifact citations so the UI can render them differently. Defaults to
+    # ``"text"`` so existing single-document chat keeps its current shape.
+    chunk_type: str = "text"
+    artifact_metadata: dict | None = None
 
 
 class DocumentResponse(BaseModel):
@@ -81,6 +86,12 @@ class ChatRequest(BaseModel):
     # retrieval to a subset of ``workspace_sources.id`` values.
     workspace_id: str | None = None
     source_ids: list[str] | None = None
+    # Phase 2 — analysis mode. ``ask`` is the default grounded Q&A mode.
+    # ``compare`` produces structured similarities/differences across sources;
+    # ``extract`` produces normalized field extraction; ``brief`` produces an
+    # executive summary. Modes only change the system prompt; retrieval and
+    # citation contracts are preserved.
+    mode: Literal["ask", "compare", "extract", "brief"] | None = None
 
 
 class RerunMessageRequest(BaseModel):
@@ -98,6 +109,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     sources: list[Citation] | None = None
+    mode: str | None = None
     created_at: datetime
 
 
@@ -267,6 +279,10 @@ class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
 
 
+class MyRoleResponse(BaseModel):
+    role: Literal["owner", "admin", "editor", "viewer"] | None = None
+
+
 class CreateWorkspaceRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
@@ -293,6 +309,12 @@ class WorkspaceSourceResponse(BaseModel):
     metadata: dict = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Phase 3 — sync state surfaced from ``workspace_sources`` columns added in
+    # migration v14. ``last_sync_status`` is populated by URL refetch flows;
+    # file-only sources keep these fields null.
+    last_sync_status: Literal["running", "success", "error"] | None = None
+    last_sync_error: str | None = None
+    next_sync_at: datetime | None = None
 
 
 class WorkspaceSourceListResponse(BaseModel):
@@ -304,6 +326,102 @@ class CreateUrlSourceRequest(BaseModel):
     title: str | None = Field(default=None, max_length=300)
     provider: Literal["openai", "gemini"] | None = None
     embedding_model: str | None = Field(default=None, max_length=128)
+
+
+class ArtifactResponse(BaseModel):
+    id: str
+    workspace_id: str
+    artifact_type: Literal["user_note", "saved_answer", "saved_brief", "extraction_result"]
+    title: str
+    content: str
+    metadata: dict = Field(default_factory=dict)
+    source_message_id: str | None = None
+    created_by: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ArtifactListResponse(BaseModel):
+    artifacts: list[ArtifactResponse]
+
+
+class CreateArtifactRequest(BaseModel):
+    artifact_type: Literal["user_note", "saved_answer", "saved_brief", "extraction_result"] = "user_note"
+    title: str = Field(min_length=1, max_length=300)
+    content: str = Field(min_length=1)
+    metadata: dict | None = None
+    source_message_id: str | None = None
+
+
+class UpdateArtifactRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    content: str | None = None
+    metadata: dict | None = None
+
+
+class SaveAssistantMessageRequest(BaseModel):
+    message_id: str = Field(min_length=1)
+    title: str | None = Field(default=None, max_length=300)
+    artifact_type: Literal["saved_answer", "saved_brief", "extraction_result"] | None = None
+
+
+class WorkspaceMemberResponse(BaseModel):
+    id: str
+    workspace_id: str
+    user_id: str
+    email: str | None = None
+    role: Literal["owner", "admin", "editor", "viewer"]
+    joined_at: datetime | None = None
+
+
+class WorkspaceMemberListResponse(BaseModel):
+    members: list[WorkspaceMemberResponse]
+
+
+class CreateWorkspaceMemberRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    role: Literal["owner", "admin", "editor", "viewer"] = "viewer"
+
+
+class UpdateWorkspaceMemberRequest(BaseModel):
+    role: Literal["owner", "admin", "editor", "viewer"]
+
+
+class WorkspaceInvitationResponse(BaseModel):
+    id: str
+    workspace_id: str
+    email: str
+    role: Literal["owner", "admin", "editor", "viewer"]
+    token: str
+    invited_by: str | None = None
+    accepted_at: datetime | None = None
+    expires_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class WorkspaceInvitationListResponse(BaseModel):
+    invitations: list[WorkspaceInvitationResponse]
+
+
+class CreateWorkspaceInvitationRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    role: Literal["owner", "admin", "editor", "viewer"] = "viewer"
+    expires_in_days: int | None = Field(default=14, ge=1, le=365)
+
+
+class SyncRunResponse(BaseModel):
+    id: str
+    workspace_id: str
+    source_id: str
+    status: Literal["queued", "running", "success", "error"]
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+    checksum: str | None = None
+
+
+class SyncRunListResponse(BaseModel):
+    runs: list[SyncRunResponse]
 
 
 class FeedbackSummaryResponse(BaseModel):

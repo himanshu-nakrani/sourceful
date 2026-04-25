@@ -27,20 +27,25 @@ import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import { MessageSkeleton } from "./Skeleton";
 import {
+  listWorkspaceSources,
   reprocessDocument,
   rerunMessage,
+  saveAssistantMessageAsArtifact,
   sendChatStream,
   submitFeedback,
   type ActiveLearningHint,
+  type ChatMode,
   type Citation,
   type FeedbackRating,
   type GroundingSummary,
   type Message,
   type RetrievalStages,
+  type WorkspaceSource,
 } from "../lib/api";
 import type { MessageFeedbackState } from "./MessageBubble";
 import { useServerState } from "../lib/server-state";
 import { useStore } from "../lib/store";
+import { useWorkspaceRole } from "../lib/use-workspace-role";
 import { EASE_OUT } from "../lib/motion";
 
 interface ChatAreaProps {
@@ -71,7 +76,16 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     updateLastAssistantId,
     setMessages,
   } = useServerState();
-  const { settings, activeConversationId, activeDocumentId, activeDocumentIds, sidebarOpen } = state;
+  const { settings, activeConversationId, activeDocumentId, activeDocumentIds, activeWorkspaceId, sidebarOpen } = state;
+  const [chatMode, setChatMode] = useState<ChatMode>("ask");
+  const [savingMessageId, setSavingMessageId] = useState<string | null>(null);
+  // Phase 1 — per-source retrieval filter. ``null`` means "all ready sources
+  // in the workspace" (the default backend behavior). When non-null, contains
+  // the explicit ``workspace_sources.id`` values to restrict retrieval to.
+  const [workspaceSources, setWorkspaceSources] = useState<WorkspaceSource[]>([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[] | null>(null);
+  const [sourceFilterOpen, setSourceFilterOpen] = useState(false);
+
   const chatLayout = settings.chatLayout ?? "default";
   const router = useRouter();
   const activeDocument = useMemo(
@@ -108,6 +122,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     [settings.clientSessionId, settings.providerApiKey]
   );
 
+  const { canEdit } = useWorkspaceRole(auth, activeWorkspaceId ?? "");
+
   const suggestions = [
     "Summarize the main themes",
     "List the most important findings",
@@ -117,6 +133,54 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
 
   const activeConversationIdRef = useRef<string | null>(activeConversationId);
   activeConversationIdRef.current = activeConversationId;
+
+  // Reload the workspace's source list whenever the active workspace changes.
+  // The per-source filter is opt-in: by default we keep ``selectedSourceIds``
+  // null so retrieval spans every ready source in the workspace.
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeWorkspaceId) {
+      setWorkspaceSources([]);
+      setSelectedSourceIds(null);
+      return;
+    }
+    void listWorkspaceSources(auth, activeWorkspaceId)
+      .then((sources) => {
+        if (cancelled) return;
+        setWorkspaceSources(sources);
+        // Drop any selections that no longer exist (source deleted, workspace
+        // switched, etc.). Keep ``null`` if we had no explicit selection.
+        setSelectedSourceIds((prev) =>
+          prev ? prev.filter((id) => sources.find((s) => s.id === id)) : prev
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setWorkspaceSources([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspaceId]);
+
+  const handleSaveToWorkspace = useCallback(
+    async (message: Message) => {
+      if (!activeWorkspaceId || !message.id || message.role !== "assistant") return;
+      setSavingMessageId(message.id);
+      try {
+        await saveAssistantMessageAsArtifact(auth, activeWorkspaceId, {
+          message_id: message.id,
+          artifact_type: "saved_answer",
+        });
+      } catch (saveError) {
+        console.error("save_to_workspace_failed", saveError);
+      } finally {
+        setSavingMessageId(null);
+      }
+    },
+    [auth, activeWorkspaceId]
+  );
 
   const handleFeedback = useCallback(
     async (message: Message, rating: FeedbackRating) => {
@@ -253,6 +317,14 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           settings.topK,
           settings.similarityThreshold,
           activeDocumentIds,
+          {
+            workspaceId: activeWorkspaceId ?? undefined,
+            mode: chatMode,
+            sourceIds:
+              selectedSourceIds && selectedSourceIds.length
+                ? selectedSourceIds
+                : undefined,
+          },
         );
         if (streamError) throw streamError;
         if (activeConversation) {
@@ -277,10 +349,13 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       activeConversationId,
       activeDocumentId,
       activeDocumentIds,
+      activeWorkspaceId,
       addMessage,
       appendToLastAssistant,
       auth,
       canAsk,
+      chatMode,
+      selectedSourceIds,
       dispatch,
       question,
       refreshConversations,
@@ -702,6 +777,23 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   {message.role === "assistant" && message.sources?.length ? (
                     <SourceCard sources={message.sources} />
                   ) : null}
+                  {message.role === "assistant" && message.id && !message.id.startsWith("temp-") && activeWorkspaceId && canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSaveToWorkspace(message)}
+                      disabled={savingMessageId === message.id}
+                      className="self-start text-[11px] px-2 py-1 rounded-md transition-colors"
+                      style={{
+                        background: "var(--accent-brand-soft)",
+                        color: "var(--accent-brand)",
+                        border: "1px solid var(--border)",
+                        opacity: savingMessageId === message.id ? 0.6 : 1,
+                      }}
+                      title="Save this answer to the workspace as a saved_answer artifact"
+                    >
+                      {savingMessageId === message.id ? "Saving…" : "Save to workspace"}
+                    </button>
+                  ) : null}
                 </React.Fragment>
               ))}
               {streaming && currentSources.length ? <SourceCard sources={currentSources} /> : null}
@@ -739,6 +831,151 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       {activeDocument?.status === "ready" ? (
         <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ background: "var(--bg-primary)" }}>
           <form onSubmit={handleSubmit} className={`${layoutMaxWidth} mx-auto relative`}>
+            <div className="flex items-center gap-1 mb-1.5 flex-wrap relative">
+              <span className="text-[10px] uppercase tracking-widest mr-1" style={{ color: "var(--text-muted)" }}>
+                Mode
+              </span>
+              {(["ask", "compare", "extract", "brief"] as const).map((mode) => {
+                const active = chatMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setChatMode(mode)}
+                    aria-pressed={active}
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-md transition-colors"
+                    style={{
+                      background: active ? "var(--accent-brand-soft)" : "transparent",
+                      color: active ? "var(--accent-brand)" : "var(--text-muted)",
+                      border: "1px solid var(--border)",
+                    }}
+                    title={
+                      mode === "ask"
+                        ? "Grounded Q&A (default)"
+                        : mode === "compare"
+                          ? "Compare similarities/differences across sources"
+                          : mode === "extract"
+                            ? "Normalized field extraction with citations"
+                            : "Executive brief / study guide"
+                    }
+                  >
+                    {mode}
+                  </button>
+                );
+              })}
+
+              {/* Per-source filter (Phase 1). Hidden when not inside a workspace
+                  or when the workspace has fewer than 2 ready sources. */}
+              {activeWorkspaceId && workspaceSources.length >= 2 ? (
+                <div className="ml-2 relative">
+                  <button
+                    type="button"
+                    onClick={() => setSourceFilterOpen((v) => !v)}
+                    aria-haspopup="listbox"
+                    aria-expanded={sourceFilterOpen}
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-md transition-colors flex items-center gap-1"
+                    style={{
+                      background: selectedSourceIds
+                        ? "var(--accent-brand-soft)"
+                        : "transparent",
+                      color: selectedSourceIds
+                        ? "var(--accent-brand)"
+                        : "var(--text-muted)",
+                      border: "1px solid var(--border)",
+                    }}
+                    title="Restrict retrieval to selected workspace sources"
+                  >
+                    Sources:{" "}
+                    {selectedSourceIds
+                      ? `${selectedSourceIds.length} selected`
+                      : "all"}
+                  </button>
+                  {sourceFilterOpen ? (
+                    <div
+                      className="absolute bottom-full mb-1 left-0 z-30 w-72 rounded-xl overflow-hidden"
+                      style={{
+                        background: "var(--bg-secondary)",
+                        border: "1px solid var(--border)",
+                        boxShadow: "0 12px 24px rgba(0,0,0,0.3)",
+                      }}
+                      role="listbox"
+                    >
+                      <div
+                        className="flex items-center justify-between px-3 py-2"
+                        style={{ borderBottom: "1px solid var(--border)" }}
+                      >
+                        <span
+                          className="text-[10px] uppercase tracking-widest"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          Filter sources
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSourceIds(null);
+                            setSourceFilterOpen(false);
+                          }}
+                          className="text-[10px]"
+                          style={{ color: "var(--accent-brand)" }}
+                        >
+                          Reset to all
+                        </button>
+                      </div>
+                      <ul className="max-h-64 overflow-y-auto">
+                        {workspaceSources.map((src) => {
+                          const checked = selectedSourceIds
+                            ? selectedSourceIds.includes(src.id)
+                            : false;
+                          const isReady = src.status === "ready";
+                          return (
+                            <li key={src.id}>
+                              <label
+                                className="w-full flex items-center gap-2 px-3 py-2 text-xs cursor-pointer"
+                                style={{
+                                  color: isReady
+                                    ? "var(--text-primary)"
+                                    : "var(--text-muted)",
+                                  opacity: isReady ? 1 : 0.6,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={!isReady}
+                                  onChange={(e) => {
+                                    setSelectedSourceIds((prev) => {
+                                      const base = prev ?? [];
+                                      if (e.target.checked) {
+                                        return [...new Set([...base, src.id])];
+                                      }
+                                      const next = base.filter((id) => id !== src.id);
+                                      // If unchecking the last one, fall back to
+                                      // "all sources" so the user can't accidentally
+                                      // submit an empty filter.
+                                      return next.length === 0 ? null : next;
+                                    });
+                                  }}
+                                />
+                                <span className="flex-1 truncate">
+                                  {src.source_title}
+                                </span>
+                                <span
+                                  className="text-[10px] uppercase tracking-widest"
+                                  style={{ color: "var(--text-muted)" }}
+                                >
+                                  {src.source_type}
+                                </span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             <motion.div
               className="flex items-end rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--bg-secondary)] transition-[border-color,box-shadow,opacity] duration-200 focus-within:border-[var(--border-hover)] focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.06)]"
               style={{ opacity: streaming ? 0.6 : 1 }}

@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { motion } from "framer-motion";
-import { Bot, Check, Copy, RefreshCcw, ThumbsDown, ThumbsUp, User } from "lucide-react";
+import { Bot, Check, Copy, RefreshCcw, ThumbsDown, ThumbsUp, User, Scale, FileText, ListTree } from "lucide-react";
 import type { Citation, Message } from "../lib/api";
 
 export type MessageFeedbackState = "idle" | "up" | "down" | "pending" | "error";
@@ -132,6 +132,39 @@ const MessageBubble = React.memo(function MessageBubble({
   const feedbackPending = feedbackState === "pending";
   const feedbackRecorded = feedbackState === "up" || feedbackState === "down";
 
+  const mode = message.mode;
+  const modeBadge = !isUser && mode && mode !== "ask" ? (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded mb-1"
+      style={{
+        background:
+          mode === "compare"
+            ? "var(--accent-warning-soft, rgba(234,179,8,0.12))"
+            : mode === "extract"
+              ? "var(--accent-success-soft, rgba(34,197,94,0.12))"
+              : mode === "brief"
+                ? "var(--accent-brand-soft)"
+                : "var(--bg-surface)",
+        color:
+          mode === "compare"
+            ? "var(--accent-warning, #ca8a04)"
+            : mode === "extract"
+              ? "var(--accent-success, #16a34a)"
+              : mode === "brief"
+                ? "var(--accent-brand)"
+                : "var(--text-muted)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      {mode === "compare" && <Scale size={10} />}
+      {mode === "extract" && <FileText size={10} />}
+      {mode === "brief" && <ListTree size={10} />}
+      {mode}
+    </span>
+  ) : null;
+
+  const isBrief = !isUser && mode === "brief";
+
   return (
     <div
       className="flex gap-3"
@@ -194,7 +227,11 @@ const MessageBubble = React.memo(function MessageBubble({
             ) : null}
           </div>
         ) : (
-          <div className="markdown-body">
+          <div
+            className="markdown-body"
+            style={isBrief ? { borderLeft: "3px solid var(--accent-brand)", paddingLeft: 12, marginLeft: -4 } : undefined}
+          >
+            {modeBadge}
             {!message.content ? (
               isStreaming ? (
                 <TypingIndicator />

@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  BarChart3,
   Download,
   FileText,
   Loader2,
@@ -13,9 +14,11 @@ import {
   RefreshCcw,
   Search,
   Settings,
+  StickyNote,
   Sun,
   Trash2,
   Upload,
+  Users,
   PanelLeftClose,
 } from "lucide-react";
 import {
@@ -31,6 +34,10 @@ import { useToast } from "./Toast";
 import { SidebarDocSkeleton } from "./Skeleton";
 import { useStore } from "../lib/store";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import WorkspaceNotesPanel from "./WorkspaceNotesPanel";
+import WorkspaceMembersPanel from "./WorkspaceMembersPanel";
+import WorkspaceSourcesPanel from "./WorkspaceSourcesPanel";
+import WorkspaceAnalyticsPanel from "./WorkspaceAnalyticsPanel";
 
 interface SidebarProps {
   onUploadClick: () => void;
@@ -79,6 +86,10 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
   } = state;
   const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const auth = {
     clientSessionId: settings.clientSessionId,
@@ -191,7 +202,10 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
 
 
 
+  const activeWorkspace = state.workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
+
   return (
+    <>
     <aside
       style={{ width: "var(--sidebar-width)" }}
       className={`absolute md:relative z-40 flex flex-col h-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] flex-shrink-0 ${
@@ -247,6 +261,68 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
 
       {/* Workspace switcher (Phase 1) */}
       <WorkspaceSwitcher />
+
+      {/* Phase 2/3 — workspace tools (notes + members) */}
+      {activeWorkspaceId ? (
+        <div className="px-3 pb-1 flex-shrink-0 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setSourcesOpen(true)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px]"
+            style={{
+              background: "var(--bg-surface)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border)",
+            }}
+            title="Workspace sources & sync state"
+          >
+            <FileText size={11} />
+            Sources
+          </button>
+          <button
+            type="button"
+            onClick={() => setNotesOpen(true)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px]"
+            style={{
+              background: "var(--bg-surface)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border)",
+            }}
+            title="Workspace notes & saved answers"
+          >
+            <StickyNote size={11} />
+            Notes
+          </button>
+          <button
+            type="button"
+            onClick={() => setMembersOpen(true)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px]"
+            style={{
+              background: "var(--bg-surface)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border)",
+            }}
+            title="Members & invitations"
+          >
+            <Users size={11} />
+            Members
+          </button>
+          <button
+            type="button"
+            onClick={() => setAnalyticsOpen(true)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px]"
+            style={{
+              background: "var(--bg-surface)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border)",
+            }}
+            title="Workspace overview"
+          >
+            <BarChart3 size={11} />
+            Overview
+          </button>
+        </div>
+      ) : null}
 
       {/* Primary action */}
       <div className="relative px-3 pt-2 pb-1 flex-shrink-0">
@@ -677,5 +753,38 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         })}
       </div>
     </aside>
+    {activeWorkspaceId && activeWorkspace ? (
+      <>
+        <WorkspaceSourcesPanel
+          open={sourcesOpen}
+          onClose={() => setSourcesOpen(false)}
+          workspaceId={activeWorkspaceId}
+          workspaceName={activeWorkspace.name}
+          auth={auth}
+        />
+        <WorkspaceNotesPanel
+          open={notesOpen}
+          onClose={() => setNotesOpen(false)}
+          workspaceId={activeWorkspaceId}
+          workspaceName={activeWorkspace.name}
+          auth={auth}
+        />
+        <WorkspaceMembersPanel
+          open={membersOpen}
+          onClose={() => setMembersOpen(false)}
+          workspaceId={activeWorkspaceId}
+          workspaceName={activeWorkspace.name}
+          auth={auth}
+        />
+        <WorkspaceAnalyticsPanel
+          open={analyticsOpen}
+          onClose={() => setAnalyticsOpen(false)}
+          workspaceId={activeWorkspaceId}
+          workspaceName={activeWorkspace.name}
+          auth={auth}
+        />
+      </>
+    ) : null}
+    </>
   );
 }

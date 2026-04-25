@@ -38,6 +38,11 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${inter.variable} ${geistMono.variable} h-full`}
+      // The pre-paint script below mutates `data-theme`, `data-contrast`,
+      // `data-motion`, and `data-accent` on <html> from localStorage before
+      // hydration. This is the canonical FOUC-prevention pattern; the
+      // suppression is scoped to attributes on this element only.
+      suppressHydrationWarning
     >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />

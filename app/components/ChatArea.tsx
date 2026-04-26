@@ -631,6 +631,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   }
                 }}
                 aria-pressed={active}
+                aria-label={`${titles[mode]} layout`}
                 title={`${titles[mode]} layout`}
                 className="px-1.5 py-1.5 flex items-center gap-1 text-[10px] font-medium"
                 style={{

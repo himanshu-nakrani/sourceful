@@ -14,7 +14,7 @@ import { useStore } from "../lib/store";
  */
 export default function WorkspaceSwitcher() {
   const { state, dispatch } = useStore();
-  const { workspaces, activeWorkspaceId, workspacesLoading, workspacesError, settings } = state;
+  const { workspaces, activeWorkspaceId, workspacesLoading, workspacesError, settings, user } = state;
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");

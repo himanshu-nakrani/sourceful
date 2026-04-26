@@ -444,7 +444,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                 <button
                   type="submit"
                   disabled={isLoading || !input.trim()}
-                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-white transition-colors hover:bg-blue-700 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-white transition-colors hover:bg-blue-700 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
                   aria-label="Send message"
                   title="Send message"
                 >

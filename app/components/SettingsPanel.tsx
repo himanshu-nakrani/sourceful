@@ -242,8 +242,8 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               </span>
               <div className="flex gap-1.5">
                 {(["indigo", "emerald", "amber"] as const).map((pack) => {
-                  const colors = { indigo: "#6366f1", emerald: "#10b981", amber: "#f59e0b" };
-                  const labels = { indigo: "Indigo", emerald: "Emerald", amber: "Amber" };
+                  const colors = { indigo: "#14b8a6", emerald: "#10b981", amber: "#f59e0b" };
+                  const labels = { indigo: "Teal", emerald: "Emerald", amber: "Amber" };
                   const active = settings.accentPack === pack;
                   return (
                     <motion.button
@@ -379,7 +379,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   <motion.button
                     type="button"
                     className="flex-1 px-4 py-2 rounded-xl text-sm"
-                    style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+                    style={{ background: "var(--gradient-accent)", color: "#fff" }}
                     onClick={async () => {
                       try {
                         const next = await login(email.trim(), password);
@@ -485,8 +485,12 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <motion.button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-xl text-sm font-medium"
-            style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+            className="px-5 py-2 rounded-xl text-sm font-semibold"
+            style={{
+              background: "var(--gradient-accent)",
+              color: "#fff",
+              boxShadow: "var(--shadow-glow-teal)",
+            }}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 400, damping: 17 }}

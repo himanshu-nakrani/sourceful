@@ -1,321 +1,367 @@
-"""Workspace service for multi-tenant document organization."""
+"""Workspace service: CRUD + default-workspace + source helpers.
+
+This service is the single source of truth for the knowledge-workspace
+Phase 0 and Phase 1 data operations. It purposefully uses the same
+``fetch_one`` / ``fetch_all`` / ``execute`` helpers as the rest of the
+backend so SQLite and Postgres stay in lockstep.
+
+Ownership is scoped via ``owner_scope`` — the same ``owner_id`` string
+used across ``documents``/``conversations`` (``user:<uuid>`` or
+``anon:<session>``). The legacy ``workspaces.owner_id`` column (FK to
+``users.id``) is preserved for historical rows but is not used for new
+anonymous scopes.
+"""
 
 from __future__ import annotations
 
+import json
+import re
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from backend.database import execute, fetch_all, fetch_one
+from backend.settings import settings
 
 
-@dataclass
-class Workspace:
-    id: str
-    name: str
-    slug: str
-    owner_id: str
-    settings: dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-    member_count: int = 0
-    document_count: int = 0
+TIMESTAMP_SQL = "NOW()" if settings.using_postgres else "CURRENT_TIMESTAMP"
+
+VISIBILITY_VALUES = {"private", "shared"}
+SOURCE_TYPES = {"file", "url", "note"}
+SOURCE_STATUSES = {"queued", "processing", "ready", "error"}
 
 
-@dataclass
-class WorkspaceMember:
-    id: str
-    workspace_id: str
-    user_id: str
-    role: str  # "owner", "admin", "editor", "viewer"
-    joined_at: datetime
-    user_email: str | None = None
-    user_name: str | None = None
+def _slugify(name: str) -> str:
+    base = re.sub(r"[^\w\s-]", "", name.lower())
+    base = re.sub(r"[-\s]+", "-", base).strip("-") or "workspace"
+    return f"{base}-{uuid.uuid4().hex[:8]}"
 
 
-class WorkspaceService:
-    """Service for workspace CRUD and member management."""
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "t", "yes"}
+    return False
 
-    ROLES = ["owner", "admin", "editor", "viewer"]
-    ROLE_HIERARCHY = {"owner": 4, "admin": 3, "editor": 2, "viewer": 1}
 
-    def __init__(self, db: Any):
-        self.db = db
+def _serialize_workspace(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "slug": row.get("slug"),
+        "description": row.get("description"),
+        "visibility": row.get("visibility") or "private",
+        "archived": _to_bool(row.get("archived")),
+        "is_default": _to_bool(row.get("is_default")),
+        "owner_scope": row.get("owner_scope"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    }
 
-    @staticmethod
-    def can_manage_members(actor_role: str, target_role: str | None = None) -> bool:
-        """Check if actor can manage (add/remove/change) members."""
-        if actor_role not in WorkspaceService.ROLE_HIERARCHY:
-            return False
-        # Only owner and admin can manage members
-        if WorkspaceService.ROLE_HIERARCHY[actor_role] < 3:
-            return False
-        # Cannot manage someone with equal or higher role
-        if target_role and WorkspaceService.ROLE_HIERARCHY.get(target_role, 0) >= WorkspaceService.ROLE_HIERARCHY[actor_role]:
-            return False
-        return True
 
-    @staticmethod
-    def can_edit_documents(role: str) -> bool:
-        """Check if role can upload/edit documents."""
-        return WorkspaceService.ROLE_HIERARCHY.get(role, 0) >= 2  # editor and above
+async def list_workspaces(owner_scope: str, *, include_archived: bool = False) -> list[dict[str, Any]]:
+    where = "WHERE owner_scope = ?"
+    params: tuple = (owner_scope,)
+    if not include_archived:
+        where += " AND (archived = 0 OR archived IS NULL OR archived = FALSE)" if not settings.using_postgres else " AND archived = FALSE"
+    rows = await fetch_all(
+        f"""
+        SELECT id, name, slug, description, visibility, archived, is_default,
+               owner_scope, created_at, updated_at
+        FROM workspaces
+        {where}
+        ORDER BY is_default DESC, updated_at DESC
+        """,
+        params,
+    )
+    return [_serialize_workspace(r) for r in rows]
 
-    @staticmethod
-    def can_delete_workspace(role: str) -> bool:
-        """Only owner can delete workspace."""
-        return role == "owner"
 
-    async def create_workspace(
-        self, name: str, owner_id: str, settings: dict[str, Any] | None = None
-    ) -> Workspace:
-        """Create a new workspace with owner as first member."""
-        workspace_id = str(uuid.uuid4())
-        slug = self._generate_slug(name)
-        now = datetime.now(timezone.utc)
-
-        await self.db.execute(
-            """
-            INSERT INTO workspaces (id, name, slug, owner_id, settings, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            """,
-            workspace_id, name, slug, owner_id, settings or {}, now, now
-        )
-
-        # Add owner as member
-        await self.add_member(workspace_id, owner_id, "owner")
-
-        return Workspace(
-            id=workspace_id,
-            name=name,
-            slug=slug,
-            owner_id=owner_id,
-            settings=settings or {},
-            created_at=now,
-            updated_at=now,
-        )
-
-    async def get_workspace(self, workspace_id: str) -> Workspace | None:
-        """Get workspace by ID."""
-        row = await self.db.fetchrow(
-            """
-            SELECT w.*,
-                   COUNT(DISTINCT wm.id) as member_count,
-                   COUNT(DISTINCT d.id) as document_count
-            FROM workspaces w
-            LEFT JOIN workspace_members wm ON w.id = wm.workspace_id
-            LEFT JOIN documents d ON d.workspace_id = w.id
-            WHERE w.id = $1
-            GROUP BY w.id
-            """,
-            workspace_id
-        )
-        if not row:
-            return None
-        return self._row_to_workspace(row)
-
-    async def get_workspace_by_slug(self, slug: str) -> Workspace | None:
-        """Get workspace by slug."""
-        row = await self.db.fetchrow(
-            """
-            SELECT w.*,
-                   COUNT(DISTINCT wm.id) as member_count,
-                   COUNT(DISTINCT d.id) as document_count
-            FROM workspaces w
-            LEFT JOIN workspace_members wm ON w.id = wm.workspace_id
-            LEFT JOIN documents d ON d.workspace_id = w.id
-            WHERE w.slug = $1
-            GROUP BY w.id
-            """,
-            slug
-        )
-        if not row:
-            return None
-        return self._row_to_workspace(row)
-
-    async def list_user_workspaces(self, user_id: str) -> list[Workspace]:
-        """List all workspaces where user is a member."""
-        rows = await self.db.fetch(
-            """
-            SELECT w.*,
-                   COUNT(DISTINCT wm.id) as member_count,
-                   COUNT(DISTINCT d.id) as document_count
-            FROM workspaces w
-            JOIN workspace_members wm ON w.id = wm.workspace_id
-            LEFT JOIN workspace_members wm2 ON w.id = wm2.workspace_id
-            LEFT JOIN documents d ON d.workspace_id = w.id
-            WHERE wm.user_id = $1
-            GROUP BY w.id
-            ORDER BY w.updated_at DESC
-            """,
-            user_id
-        )
-        return [self._row_to_workspace(r) for r in rows]
-
-    async def update_workspace(
-        self, workspace_id: str, updates: dict[str, Any]
-    ) -> Workspace | None:
-        """Update workspace settings."""
-        allowed = {"name", "settings"}
-        set_clauses = []
-        values = []
-        for i, (key, value) in enumerate(updates.items(), start=1):
-            if key not in allowed:
-                continue
-            set_clauses.append(f"{key} = ${i}")
-            values.append(value)
-
-        if not set_clauses:
-            return await self.get_workspace(workspace_id)
-
-        values.extend([datetime.now(timezone.utc), workspace_id])
-        query = f"""
-            UPDATE workspaces
-            SET {', '.join(set_clauses)}, updated_at = ${len(values) - 1}
-            WHERE id = ${len(values)}
-            RETURNING *
+async def get_workspace(workspace_id: str, owner_scope: str) -> dict[str, Any] | None:
+    row = await fetch_one(
         """
-        row = await self.db.fetchrow(query, *values)
-        if row:
-            return await self.get_workspace(workspace_id)
+        SELECT id, name, slug, description, visibility, archived, is_default,
+               owner_scope, created_at, updated_at
+        FROM workspaces
+        WHERE id = ? AND owner_scope = ?
+        """,
+        (workspace_id, owner_scope),
+    )
+    return _serialize_workspace(row) if row else None
+
+
+async def get_default_workspace(owner_scope: str) -> dict[str, Any] | None:
+    row = await fetch_one(
+        """
+        SELECT id, name, slug, description, visibility, archived, is_default,
+               owner_scope, created_at, updated_at
+        FROM workspaces
+        WHERE owner_scope = ?
+          AND (is_default = 1 OR is_default = TRUE)
+        ORDER BY created_at ASC
+        LIMIT 1
+        """,
+        (owner_scope,),
+    )
+    return _serialize_workspace(row) if row else None
+
+
+async def ensure_default_workspace(owner_scope: str) -> dict[str, Any]:
+    """Return the caller's default workspace, creating it if missing.
+
+    Idempotent: concurrent calls are safe because we check-then-create and the
+    workspace owner_scope is unique-enough under the default flag.
+    """
+    existing = await get_default_workspace(owner_scope)
+    if existing:
+        return existing
+    return await create_workspace(
+        owner_scope,
+        name="Personal workspace",
+        description="Default workspace",
+        is_default=True,
+    )
+
+
+async def create_workspace(
+    owner_scope: str,
+    *,
+    name: str,
+    description: str | None = None,
+    visibility: str = "private",
+    is_default: bool = False,
+) -> dict[str, Any]:
+    if visibility not in VISIBILITY_VALUES:
+        raise ValueError(f"Invalid visibility: {visibility}")
+    name = name.strip()
+    if not name:
+        raise ValueError("Workspace name cannot be empty.")
+    workspace_id = str(uuid.uuid4())
+    slug = _slugify(name)
+    legacy_owner = owner_scope.split(":", 1)[1] if owner_scope.startswith("user:") else None
+    archived_val = False if settings.using_postgres else 0
+    default_val = (True if settings.using_postgres else 1) if is_default else (False if settings.using_postgres else 0)
+
+    # Workspaces.owner_id historically FK-references users(id). For anonymous
+    # scopes we cannot satisfy the FK, so we insert NULL there and rely on
+    # owner_scope for ownership lookups.
+    await execute(
+        f"""
+        INSERT INTO workspaces (
+            id, name, slug, owner_id, owner_scope, description, visibility,
+            archived, is_default, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, {TIMESTAMP_SQL}, {TIMESTAMP_SQL})
+        """,
+        (
+            workspace_id,
+            name,
+            slug,
+            legacy_owner,
+            owner_scope,
+            description,
+            visibility,
+            archived_val,
+            default_val,
+        ),
+    )
+    created = await get_workspace(workspace_id, owner_scope)
+    assert created is not None, "Workspace insert did not persist"
+    return created
+
+
+async def update_workspace(
+    workspace_id: str,
+    owner_scope: str,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    visibility: str | None = None,
+    archived: bool | None = None,
+) -> dict[str, Any] | None:
+    existing = await get_workspace(workspace_id, owner_scope)
+    if not existing:
         return None
+    sets: list[str] = []
+    params: list[Any] = []
+    if name is not None:
+        clean = name.strip()
+        if not clean:
+            raise ValueError("Workspace name cannot be empty.")
+        sets.append("name = ?")
+        params.append(clean)
+    if description is not None:
+        sets.append("description = ?")
+        params.append(description)
+    if visibility is not None:
+        if visibility not in VISIBILITY_VALUES:
+            raise ValueError(f"Invalid visibility: {visibility}")
+        sets.append("visibility = ?")
+        params.append(visibility)
+    if archived is not None:
+        sets.append("archived = ?")
+        params.append((True if settings.using_postgres else 1) if archived else (False if settings.using_postgres else 0))
+    if not sets:
+        return existing
+    sets.append(f"updated_at = {TIMESTAMP_SQL}")
+    params.extend([workspace_id, owner_scope])
+    await execute(
+        f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ? AND owner_scope = ?",
+        tuple(params),
+    )
+    return await get_workspace(workspace_id, owner_scope)
 
-    async def delete_workspace(self, workspace_id: str) -> bool:
-        """Delete workspace and all associated data."""
-        # Cascade deletes handle related records
-        result = await self.db.execute(
-            "DELETE FROM workspaces WHERE id = $1",
-            workspace_id
-        )
-        return result != "DELETE 0"
 
-    # Member management
+# ---------- Sources ---------------------------------------------------------
 
-    async def add_member(
-        self, workspace_id: str, user_id: str, role: str = "viewer"
-    ) -> WorkspaceMember:
-        """Add a member to workspace."""
-        if role not in self.ROLES:
-            raise ValueError(f"Invalid role: {role}")
 
-        member_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
+def _serialize_source(row: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    raw_meta = row.get("metadata_json")
+    if raw_meta:
+        if isinstance(raw_meta, str):
+            try:
+                metadata = json.loads(raw_meta)
+            except (json.JSONDecodeError, TypeError):
+                metadata = {}
+        elif isinstance(raw_meta, dict):
+            metadata = raw_meta
+    return {
+        "id": row["id"],
+        "workspace_id": row["workspace_id"],
+        "source_type": row.get("source_type") or "file",
+        "document_id": row.get("document_id"),
+        "source_title": row.get("source_title"),
+        "source_url": row.get("source_url"),
+        "mime_type": row.get("mime_type"),
+        "status": row.get("status") or "queued",
+        "last_fetched_at": row.get("last_fetched_at"),
+        "metadata": metadata,
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+        # Phase 3 sync columns. Older rows pre-dating migration v14 may not
+        # have these populated; ``.get`` keeps the serializer safe.
+        "last_sync_status": row.get("last_sync_status"),
+        "last_sync_error": row.get("last_sync_error"),
+        "next_sync_at": row.get("next_sync_at"),
+    }
 
-        await self.db.execute(
-            """
-            INSERT INTO workspace_members (id, workspace_id, user_id, role, joined_at)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (workspace_id, user_id) DO UPDATE SET
-                role = EXCLUDED.role,
-                joined_at = EXCLUDED.joined_at
+
+async def list_sources(workspace_id: str) -> list[dict[str, Any]]:
+    rows = await fetch_all(
+        """
+        SELECT ws.id, ws.workspace_id, ws.source_type, ws.document_id, ws.source_title,
+               ws.source_url, ws.mime_type,
+               COALESCE(d.status, ws.status) AS status,
+               ws.last_fetched_at, ws.metadata_json, ws.created_at, ws.updated_at,
+               ws.last_sync_status, ws.last_sync_error, ws.next_sync_at
+        FROM workspace_sources ws
+        LEFT JOIN documents d ON d.id = ws.document_id
+        WHERE ws.workspace_id = ?
+        ORDER BY ws.created_at DESC
+        """,
+        (workspace_id,),
+    )
+    return [_serialize_source(r) for r in rows]
+
+
+async def get_source(source_id: str, workspace_id: str) -> dict[str, Any] | None:
+    row = await fetch_one(
+        """
+        SELECT ws.id, ws.workspace_id, ws.source_type, ws.document_id, ws.source_title,
+               ws.source_url, ws.mime_type,
+               COALESCE(d.status, ws.status) AS status,
+               ws.last_fetched_at, ws.metadata_json, ws.created_at, ws.updated_at,
+               ws.last_sync_status, ws.last_sync_error, ws.next_sync_at
+        FROM workspace_sources ws
+        LEFT JOIN documents d ON d.id = ws.document_id
+        WHERE ws.id = ? AND ws.workspace_id = ?
+        """,
+        (source_id, workspace_id),
+    )
+    return _serialize_source(row) if row else None
+
+
+async def create_source(
+    workspace_id: str,
+    *,
+    source_type: str,
+    source_title: str,
+    document_id: str | None = None,
+    source_url: str | None = None,
+    mime_type: str | None = None,
+    status: str = "queued",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if source_type not in SOURCE_TYPES:
+        raise ValueError(f"Invalid source_type: {source_type}")
+    if status not in SOURCE_STATUSES:
+        raise ValueError(f"Invalid status: {status}")
+    title = source_title.strip()
+    if not title:
+        raise ValueError("Source title cannot be empty.")
+    source_id = str(uuid.uuid4())
+    meta_payload = json.dumps(metadata) if metadata else None
+    await execute(
+        f"""
+        INSERT INTO workspace_sources (
+            id, workspace_id, source_type, document_id, source_title, source_url,
+            mime_type, status, metadata_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, {TIMESTAMP_SQL}, {TIMESTAMP_SQL})
+        """,
+        (
+            source_id,
+            workspace_id,
+            source_type,
+            document_id,
+            title,
+            source_url,
+            mime_type,
+            status,
+            meta_payload,
+        ),
+    )
+    created = await get_source(source_id, workspace_id)
+    assert created is not None, "Source insert did not persist"
+    return created
+
+
+async def upsert_source_for_document(
+    workspace_id: str,
+    *,
+    document_id: str,
+    source_title: str,
+    mime_type: str | None,
+    status: str = "queued",
+) -> dict[str, Any]:
+    """Create (or update title/status of) a workspace_source row bound to a document.
+
+    Used during ingest to link a document to the caller's default workspace as a
+    first-class source.
+    """
+    existing = await fetch_one(
+        "SELECT id FROM workspace_sources WHERE document_id = ? AND workspace_id = ?",
+        (document_id, workspace_id),
+    )
+    if existing:
+        await execute(
+            f"""
+            UPDATE workspace_sources
+            SET source_title = ?, mime_type = ?, status = ?, updated_at = {TIMESTAMP_SQL}
+            WHERE id = ?
             """,
-            member_id, workspace_id, user_id, role, now
+            (source_title, mime_type, status, existing["id"]),
         )
-
-        return WorkspaceMember(
-            id=member_id,
-            workspace_id=workspace_id,
-            user_id=user_id,
-            role=role,
-            joined_at=now,
-        )
-
-    async def remove_member(self, workspace_id: str, user_id: str) -> bool:
-        """Remove a member from workspace."""
-        result = await self.db.execute(
-            "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-            workspace_id, user_id
-        )
-        return result != "DELETE 0"
-
-    async def update_member_role(
-        self, workspace_id: str, user_id: str, new_role: str
-    ) -> WorkspaceMember | None:
-        """Update member's role."""
-        if new_role not in self.ROLES:
-            raise ValueError(f"Invalid role: {new_role}")
-
-        await self.db.execute(
-            """
-            UPDATE workspace_members
-            SET role = $1
-            WHERE workspace_id = $2 AND user_id = $3
-            """,
-            new_role, workspace_id, user_id
-        )
-
-        row = await self.db.fetchrow(
-            """
-            SELECT wm.*, u.email as user_email, u.full_name as user_name
-            FROM workspace_members wm
-            JOIN users u ON wm.user_id = u.id
-            WHERE wm.workspace_id = $1 AND wm.user_id = $2
-            """,
-            workspace_id, user_id
-        )
-        if row:
-            return self._row_to_member(row)
-        return None
-
-    async def get_member(
-        self, workspace_id: str, user_id: str
-    ) -> WorkspaceMember | None:
-        """Get member info for a user in workspace."""
-        row = await self.db.fetchrow(
-            """
-            SELECT wm.*, u.email as user_email, u.full_name as user_name
-            FROM workspace_members wm
-            JOIN users u ON wm.user_id = u.id
-            WHERE wm.workspace_id = $1 AND wm.user_id = $2
-            """,
-            workspace_id, user_id
-        )
-        if row:
-            return self._row_to_member(row)
-        return None
-
-    async def list_members(self, workspace_id: str) -> list[WorkspaceMember]:
-        """List all members of workspace."""
-        rows = await self.db.fetch(
-            """
-            SELECT wm.*, u.email as user_email, u.full_name as user_name
-            FROM workspace_members wm
-            JOIN users u ON wm.user_id = u.id
-            WHERE wm.workspace_id = $1
-            ORDER BY wm.joined_at ASC
-            """,
-            workspace_id
-        )
-        return [self._row_to_member(r) for r in rows]
-
-    # Helpers
-
-    def _generate_slug(self, name: str) -> str:
-        """Generate URL-friendly slug from name."""
-        import re
-        base = re.sub(r'[^\w\s-]', '', name.lower())
-        base = re.sub(r'[-\s]+', '-', base).strip('-')
-        return f"{base}-{str(uuid.uuid4())[:8]}"
-
-    def _row_to_workspace(self, row: Any) -> Workspace:
-        return Workspace(
-            id=row["id"],
-            name=row["name"],
-            slug=row["slug"],
-            owner_id=row["owner_id"],
-            settings=row.get("settings", {}),
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-            member_count=row.get("member_count", 0),
-            document_count=row.get("document_count", 0),
-        )
-
-    def _row_to_member(self, row: Any) -> WorkspaceMember:
-        return WorkspaceMember(
-            id=row["id"],
-            workspace_id=row["workspace_id"],
-            user_id=row["user_id"],
-            role=row["role"],
-            joined_at=row["joined_at"],
-            user_email=row.get("user_email"),
-            user_name=row.get("user_name"),
-        )
+        result = await get_source(existing["id"], workspace_id)
+        assert result is not None
+        return result
+    return await create_source(
+        workspace_id,
+        source_type="file",
+        source_title=source_title,
+        document_id=document_id,
+        mime_type=mime_type,
+        status=status,
+    )

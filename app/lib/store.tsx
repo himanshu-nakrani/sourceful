@@ -8,7 +8,7 @@ import React, {
   type Dispatch,
   type ReactNode,
 } from "react";
-import { me, type AuthUser, type Provider } from "./api";
+import { listWorkspaces, me, type AuthUser, type Provider, type Workspace } from "./api";
 
 export interface AppSettings {
   provider: Provider;
@@ -42,6 +42,11 @@ export interface AppState {
   sidebarOpen: boolean;
   settingsOpen: boolean;
   setupComplete: boolean;
+  // Phase 0: workspace state.
+  workspaces: Workspace[];
+  activeWorkspaceId: string | null;
+  workspacesLoading: boolean;
+  workspacesError: string | null;
 }
 
 const DEFAULT_CHAT: Record<Provider, string> = {
@@ -218,6 +223,10 @@ const initialState: AppState = {
   sidebarOpen: true,
   settingsOpen: false,
   setupComplete: false, // Always start as false - in-memory only, never persisted for anonymous users
+  workspaces: [],
+  activeWorkspaceId: null,
+  workspacesLoading: false,
+  workspacesError: null,
 };
 
 type Action =
@@ -234,7 +243,12 @@ type Action =
   | { type: "SET_SIDEBAR"; payload: boolean }
   | { type: "TOGGLE_SETTINGS" }
   | { type: "SET_SETTINGS_OPEN"; payload: boolean }
-  | { type: "SET_SETUP_COMPLETE"; payload: boolean };
+  | { type: "SET_SETUP_COMPLETE"; payload: boolean }
+  | { type: "SET_WORKSPACES"; payload: Workspace[] }
+  | { type: "SET_ACTIVE_WORKSPACE"; payload: string | null }
+  | { type: "UPSERT_WORKSPACE"; payload: Workspace }
+  | { type: "SET_WORKSPACES_LOADING"; payload: boolean }
+  | { type: "SET_WORKSPACES_ERROR"; payload: string | null };
 
 /**
  * Persist selected app settings to browser storage.
@@ -406,6 +420,32 @@ function reducer(state: AppState, action: Action): AppState {
       // For anonymous users: flushed on reload
       // For authenticated users: managed by auth state
       return { ...state, setupComplete: action.payload };
+    case "SET_WORKSPACES": {
+      const workspaces = action.payload;
+      const stillActive = workspaces.find((w) => w.id === state.activeWorkspaceId);
+      const activeWorkspaceId = stillActive
+        ? stillActive.id
+        : (workspaces.find((w) => w.is_default) ?? workspaces[0])?.id ?? null;
+      return { ...state, workspaces, activeWorkspaceId };
+    }
+    case "SET_ACTIVE_WORKSPACE":
+      return { ...state, activeWorkspaceId: action.payload };
+    case "UPSERT_WORKSPACE": {
+      const next = action.payload;
+      const existing = state.workspaces.find((w) => w.id === next.id);
+      const workspaces = existing
+        ? state.workspaces.map((w) => (w.id === next.id ? next : w))
+        : [...state.workspaces, next];
+      return {
+        ...state,
+        workspaces,
+        activeWorkspaceId: state.activeWorkspaceId ?? next.id,
+      };
+    }
+    case "SET_WORKSPACES_LOADING":
+      return { ...state, workspacesLoading: action.payload };
+    case "SET_WORKSPACES_ERROR":
+      return { ...state, workspacesError: action.payload };
     default:
       return state;
   }
@@ -425,6 +465,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     dispatch({ type: "SET_SETTINGS", payload: loadSettings() });
   }, []);
+
+  // Phase 0 bootstrap: resolve workspaces (server auto-creates a default).
+  const clientSessionId = state.settings.clientSessionId;
+  useEffect(() => {
+    if (!clientSessionId) return;
+    let cancelled = false;
+    const run = async () => {
+      dispatch({ type: "SET_WORKSPACES_LOADING", payload: true });
+      dispatch({ type: "SET_WORKSPACES_ERROR", payload: null });
+      try {
+        const workspaces = await listWorkspaces({ clientSessionId });
+        if (!cancelled) {
+          dispatch({ type: "SET_WORKSPACES", payload: workspaces });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          dispatch({
+            type: "SET_WORKSPACES_ERROR",
+            payload: err instanceof Error ? err.message : "Failed to load workspaces.",
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          dispatch({ type: "SET_WORKSPACES_LOADING", payload: false });
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientSessionId]);
 
   useEffect(() => {
     let cancelled = false;

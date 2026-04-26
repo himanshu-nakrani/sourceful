@@ -30,6 +30,7 @@ async def enqueue_ingest_job(
     mime_type: str,
     checksum: str,
     raw: bytes,
+    workspace_id: str | None = None,
 ) -> tuple[dict, dict | None, bool]:
     existing = await fetch_one(
         """
@@ -45,23 +46,30 @@ async def enqueue_ingest_job(
                 "SELECT * FROM document_jobs WHERE id = ? AND owner_id = ?",
                 (existing["current_job_id"], owner_id),
             )
+        # Attach to workspace if one was supplied and the existing row is unscoped.
+        if workspace_id and not existing.get("workspace_id"):
+            await execute(
+                "UPDATE documents SET workspace_id = ? WHERE id = ? AND owner_id = ?",
+                (workspace_id, existing["id"], owner_id),
+            )
+            existing["workspace_id"] = workspace_id
         return existing, job, True
 
     if existing:
         document_id = existing["id"]
         await execute(
-            "UPDATE documents SET status = 'queued', current_job_id = NULL, last_error = NULL, file_bytes = ? WHERE id = ? AND owner_id = ?",
-            (raw, document_id, owner_id),
+            "UPDATE documents SET status = 'queued', current_job_id = NULL, last_error = NULL, file_bytes = ?, workspace_id = COALESCE(?, workspace_id) WHERE id = ? AND owner_id = ?",
+            (raw, workspace_id, document_id, owner_id),
         )
     else:
         document_id = str(uuid.uuid4())
         await execute(
             """
             INSERT INTO documents (
-                id, owner_id, filename, provider, embedding_model, mime_type, checksum, file_bytes, file_size, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+                id, owner_id, filename, provider, embedding_model, mime_type, checksum, file_bytes, file_size, status, workspace_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
             """,
-            (document_id, owner_id, filename, provider, embedding_model, mime_type, checksum, raw, len(raw)),
+            (document_id, owner_id, filename, provider, embedding_model, mime_type, checksum, raw, len(raw), workspace_id),
         )
 
     job_id = str(uuid.uuid4())

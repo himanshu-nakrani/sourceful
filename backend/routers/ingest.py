@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, Request, UploadFile
 from backend.errors import api_error_response
 from backend.models import IngestResponse
 from backend.routers.deps import RequestContext, get_request_context
+from backend.services import workspace_service
 from backend.services.extract import FileValidationError, validate_upload
 from backend.services.jobs import enqueue_ingest_job
 from backend.services.provider_auth import normalize_provider_api_key, provider_requires_api_key
@@ -23,6 +24,7 @@ async def ingest(
     provider: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     embedding_model: str = Form(""),
+    workspace_id: str = Form(""),
     x_provider_api_key: str | None = Header(default=None),
     context: RequestContext = Depends(get_request_context),
 ):
@@ -86,6 +88,24 @@ async def ingest(
             code="INVALID_FILE",
         )
 
+    # Resolve the target workspace. If the caller didn't specify one, bind to
+    # the owner's default workspace so every document lives in a workspace
+    # after Phase 0.
+    target_workspace_id = workspace_id.strip() or None
+    if target_workspace_id:
+        ws = await workspace_service.get_workspace(target_workspace_id, context.owner_id)
+        if not ws:
+            return api_error_response(
+                request=request,
+                status_code=404,
+                error="Workspace not found.",
+                code="WORKSPACE_NOT_FOUND",
+                details={"workspace_id": target_workspace_id},
+            )
+    else:
+        default_ws = await workspace_service.ensure_default_workspace(context.owner_id)
+        target_workspace_id = default_ws["id"]
+
     document, job, deduplicated = await enqueue_ingest_job(
         owner_id=context.owner_id,
         provider=provider,
@@ -95,8 +115,17 @@ async def ingest(
         mime_type=validated.mime_type,
         checksum=validated.checksum,
         raw=raw,
+        workspace_id=target_workspace_id,
     )
     status = document.get("status", "queued")
+    # Mirror the document into workspace_sources for first-class source listing.
+    await workspace_service.upsert_source_for_document(
+        target_workspace_id,
+        document_id=document["id"],
+        source_title=document.get("filename") or file.filename,
+        mime_type=document.get("mime_type"),
+        status=status if status in {"queued", "processing", "ready", "error"} else "queued",
+    )
     return IngestResponse(
         document_id=document["id"],
         job_id=job["id"] if job else document.get("current_job_id"),

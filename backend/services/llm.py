@@ -15,6 +15,39 @@ SYSTEM_PROMPT = (
     "retrieved excerpts, clearly say you cannot find it in the document. Use concise markdown."
 )
 
+# Phase 2 — analysis modes. Each mode appends a structured-output instruction
+# to the base SYSTEM_PROMPT. Citations and grounding rules from the base
+# prompt always apply.
+MODE_INSTRUCTIONS: dict[str, str] = {
+    "ask": "",
+    "compare": (
+        "\n\nMode: COMPARE. The user wants similarities and differences across the "
+        "provided sources. Structure your answer as: a 1-2 sentence framing, then a "
+        "section titled 'Similarities' with bullet points (each citing its source), "
+        "then a section titled 'Differences' as a markdown table with columns "
+        "'Aspect' and one column per cited source. Each bullet/cell must include a "
+        "citation marker like [1]."
+    ),
+    "extract": (
+        "\n\nMode: EXTRACT. The user wants normalized field extraction. Identify the "
+        "fields the user is asking about, return a markdown table with columns "
+        "'Field', 'Value', and 'Source'. Every row must include a citation marker. "
+        "If a field cannot be located in the excerpts, write 'not found' in the "
+        "Value column."
+    ),
+    "brief": (
+        "\n\nMode: BRIEF. Produce an executive summary with these sections in this "
+        "order: 'TL;DR' (1-2 sentences), 'Key points' (3-6 bullets, each cited), "
+        "'Risks / open questions' (1-3 bullets if applicable). Keep total length "
+        "under 250 words. Every claim must include a citation marker."
+    ),
+}
+
+
+def system_prompt_for_mode(mode: str | None) -> str:
+    """Return the SYSTEM_PROMPT augmented for ``mode`` (defaults to 'ask')."""
+    suffix = MODE_INSTRUCTIONS.get((mode or "ask").lower(), "")
+    return SYSTEM_PROMPT + suffix
 
 
 def build_rag_prompt(
@@ -22,15 +55,67 @@ def build_rag_prompt(
     question: str,
     *,
     history: list[dict[str, str]] | None = None,
+    mode: str | None = None,
 ) -> list[dict[str, str]]:
-    numbered_context = []
+    """Assemble the chat prompt from retrieved chunks.
+
+    Phase 2 introduces a precedence rule: source-document chunks (``chunk_type
+    in {"text", "table", "image"}`` etc.) form the primary evidence set, and
+    workspace artifacts (``chunk_type == "artifact"``) are appended under a
+    separate "Saved knowledge" heading. Both groups share a single ``[N]``
+    citation numbering so the LLM can reference any of them, but the system
+    prompt suffix tells the model that artifact entries are *augmenting*
+    context — never to be presented as primary source documents.
+    """
+    primary_lines: list[str] = []
+    artifact_lines: list[str] = []
+    has_artifacts = False
     for index, chunk in enumerate(retrieved_chunks, start=1):
         page = f" (page {chunk.page_number})" if chunk.page_number else ""
-        numbered_context.append(f"[{index}]{page}\n{chunk.excerpt}")
+        if getattr(chunk, "chunk_type", "text") == "artifact":
+            has_artifacts = True
+            title = ""
+            try:
+                if chunk.metadata_json:
+                    import json as _json
+
+                    meta = _json.loads(chunk.metadata_json)
+                    if isinstance(meta, dict):
+                        if meta.get("title"):
+                            title = f" — {meta['title']}"
+            except (TypeError, ValueError):
+                title = ""
+            artifact_lines.append(f"[{index}]{page} (saved {title.strip(' —') or 'note'})\n{chunk.excerpt}")
+        else:
+            primary_lines.append(f"[{index}]{page}\n{chunk.excerpt}")
+
+    user_blocks: list[str] = []
+    # Always emit the primary "Document excerpts:" header so single-document
+    # callers see the same shape they did pre-Phase-2 even when there are no
+    # primary chunks (rare but possible during empty-retrieval edge cases).
+    user_blocks.append(
+        "Document excerpts:\n\n" + "\n\n---\n\n".join(primary_lines)
+    )
+    if artifact_lines:
+        user_blocks.append(
+            "Saved knowledge (augmenting context, not primary sources):\n\n"
+            + "\n\n---\n\n".join(artifact_lines)
+        )
+
+    system_prompt = system_prompt_for_mode(mode)
+    if has_artifacts:
+        system_prompt = (
+            system_prompt
+            + "\n\nSome numbered excerpts come from the workspace's saved "
+            "knowledge (notes, saved answers, briefs). Treat them as "
+            "augmenting context: never present them as if they were the "
+            "primary source documents, and prefer the source excerpts when "
+            "they conflict."
+        )
 
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": "Document excerpts:\n\n" + "\n\n---\n\n".join(numbered_context)},
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "\n\n===\n\n".join(user_blocks)},
     ]
     for item in history or []:
         if item["role"] in {"user", "assistant"}:

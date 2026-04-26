@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -8,13 +8,14 @@ const inter = Inter({
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
+const jetbrainsMono = JetBrains_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Document RAG — AI-Powered Document Q&A",
+  title: "DocRAG — AI-Powered Document Intelligence",
   description:
     "Upload PDFs, DOCX, and text files, index them with embeddings, then ask questions with AI-powered retrieval-augmented generation. Supports OpenAI and Google Gemini.",
   keywords: ["RAG", "document QA", "AI", "embeddings", "OpenAI", "Gemini", "PDF"],
@@ -37,7 +38,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geistMono.variable} h-full`}
+      className={`${inter.variable} ${jetbrainsMono.variable} h-full`}
+      // The pre-paint script below mutates `data-theme`, `data-contrast`,
+      // `data-motion`, and `data-accent` on <html> from localStorage before
+      // hydration. This is the canonical FOUC-prevention pattern; the
+      // suppression is scoped to attributes on this element only.
+      suppressHydrationWarning
     >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />

@@ -14,7 +14,7 @@ import { useStore } from "../lib/store";
  */
 export default function WorkspaceSwitcher() {
   const { state, dispatch } = useStore();
-  const { workspaces, activeWorkspaceId, workspacesLoading, workspacesError, settings, user } = state;
+  const { workspaces, activeWorkspaceId, workspacesLoading, workspacesError, settings, currentUser } = state;
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -22,7 +22,7 @@ export default function WorkspaceSwitcher() {
   const [submitting, setSubmitting] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const auth = { clientSessionId: settings.clientSessionId, authToken: user?.token };
+  const auth = { clientSessionId: settings.clientSessionId, authToken: currentUser?.session_token };
   const active = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
 
   useEffect(() => {

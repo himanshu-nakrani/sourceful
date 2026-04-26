@@ -119,7 +119,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       clientSessionId: settings.clientSessionId,
       providerApiKey: settings.providerApiKey,
     }),
-    [settings.clientSessionId, settings.providerApiKey, state.user?.token]
+    [settings.clientSessionId, settings.providerApiKey, state.currentUser?.session_token]
   );
 
   const { canEdit } = useWorkspaceRole(auth, activeWorkspaceId ?? "");

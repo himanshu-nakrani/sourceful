@@ -22,7 +22,7 @@ export default function WorkspaceSwitcher() {
   const [submitting, setSubmitting] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const auth = { clientSessionId: settings.clientSessionId };
+  const auth = { clientSessionId: settings.clientSessionId, authToken: user?.token };
   const active = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
 
   useEffect(() => {

@@ -438,7 +438,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                   onChange={(event) => setInput(event.target.value)}
                   type="text"
                   placeholder="Ask a question..."
-                  className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                   disabled={isLoading}
                 />
                 <button

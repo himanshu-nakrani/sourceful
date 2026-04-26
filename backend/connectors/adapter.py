@@ -193,7 +193,7 @@ class UrlSourceAdapter(SourceAdapter):
                     success=True,
                     content=None,
                     checksum=new_checksum,
-                    synced_at=datetime.utcnow(),
+                    synced_at=datetime.now(timezone.utc),
                     changed=False,
                 )
             

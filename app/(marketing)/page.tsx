@@ -1,11 +1,10 @@
 "use client";
 
-import React from "react";
-import { motion } from "framer-motion";
+import React, { useRef } from "react";
+import { motion, useInView } from "framer-motion";
 import {
   FileText,
   MessageSquare,
-  Zap,
   Shield,
   BarChart3,
   Users,
@@ -13,272 +12,644 @@ import {
   Database,
   Brain,
   ArrowRight,
-  Check,
+  Sparkles,
+  GitBranch,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
+
+/* ─── Data ─────────────────────────────────────────────────────────── */
 
 const features = [
   {
     icon: Brain,
     title: "Advanced RAG Pipeline",
-    description: "Hybrid search (dense + FTS), cross-encoder reranking, MMR diversification, and query transformations (HyDE, multi-query, step-back).",
+    description:
+      "Hybrid search with dense + FTS retrieval, cross-encoder reranking, MMR diversification, and query transformations.",
+    color: "var(--accent-primary)",
+    gradient: "linear-gradient(135deg, rgba(20,184,166,0.12), rgba(20,184,166,0.02))",
   },
   {
     icon: FileText,
     title: "Multi-Modal Ingestion",
-    description: "PDFs, Office docs, images, tables, and scanned documents with OCR. Docling-powered extraction with layout preservation.",
+    description:
+      "PDFs, Office docs, images, tables, and scanned documents with OCR. Docling-powered extraction with layout preservation.",
+    color: "var(--accent-secondary)",
+    gradient: "linear-gradient(135deg, rgba(139,92,246,0.12), rgba(139,92,246,0.02))",
   },
   {
     icon: MessageSquare,
     title: "Agentic Retrieval",
-    description: "GraphRAG with community detection, multi-hop traversal, and agent-driven search loops for complex queries.",
+    description:
+      "GraphRAG with community detection, multi-hop traversal, and agent-driven search loops for complex queries.",
+    color: "#3b82f6",
+    gradient: "linear-gradient(135deg, rgba(59,130,246,0.12), rgba(59,130,246,0.02))",
   },
   {
     icon: Cloud,
     title: "Cloud Connectors",
-    description: "Sync from Google Drive, Notion, Confluence, and S3. Automated background sync with change detection.",
+    description:
+      "Sync from Google Drive, Notion, Confluence, and S3. Automated background sync with change detection.",
+    color: "#f59e0b",
+    gradient: "linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.02))",
   },
   {
     icon: Shield,
     title: "Enterprise Security",
-    description: "Workspace-based RBAC, shareable links with expiration, usage quotas, and audit logging.",
+    description:
+      "Workspace-based RBAC, shareable links with expiration, usage quotas, and comprehensive audit logging.",
+    color: "#22c55e",
+    gradient: "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(34,197,94,0.02))",
   },
   {
     icon: BarChart3,
     title: "Observability",
-    description: "Per-stage latency metrics, RAGAS evaluation, Prometheus metrics, and Langfuse tracing integration.",
+    description:
+      "Per-stage latency metrics, RAGAS evaluation, Prometheus metrics, and Langfuse tracing integration.",
+    color: "#ec4899",
+    gradient: "linear-gradient(135deg, rgba(236,72,153,0.12), rgba(236,72,153,0.02))",
   },
 ];
 
 const techStack = [
-  { name: "Next.js 14", category: "Frontend" },
-  { name: "FastAPI", category: "Backend" },
-  { name: "PostgreSQL + pgvector", category: "Database" },
-  { name: "SQLite (dev)", category: "Database" },
-  { name: "OpenAI / Gemini", category: "LLM" },
-  { name: "Sentence Transformers", category: "Embeddings" },
-  { name: "Docling", category: "Document Parsing" },
-  { name: "NetworkX", category: "Graph Processing" },
-  { name: "Cohere / Jina", category: "Reranking" },
-  { name: "Langfuse", category: "Observability" },
+  { name: "Next.js 14", category: "Frontend", icon: "▲" },
+  { name: "FastAPI", category: "Backend", icon: "⚡" },
+  { name: "PostgreSQL + pgvector", category: "Database", icon: "🗄️" },
+  { name: "OpenAI / Gemini", category: "LLM", icon: "🧠" },
+  { name: "Sentence Transformers", category: "Embeddings", icon: "📐" },
+  { name: "Docling", category: "Document Parsing", icon: "📄" },
+  { name: "NetworkX", category: "Graph Processing", icon: "🔗" },
+  { name: "Cohere / Jina", category: "Reranking", icon: "🔀" },
+  { name: "Langfuse", category: "Observability", icon: "📊" },
 ];
 
-const benchmarks = [
-  { metric: "Recall@5", value: "92%", baseline: "66%" },
-  { metric: "RAGAS Faithfulness", value: "0.87", baseline: "n/a" },
-  { metric: "p95 Latency", value: "<2.5s", baseline: "5s+" },
-  { metric: "Documents Ingested", value: "31-item golden set", baseline: "3 items" },
+const stats = [
+  { label: "Recall@5", value: "92%", suffix: "", prefix: "" },
+  { label: "Faithfulness", value: "0.87", suffix: "", prefix: "" },
+  { label: "p95 Latency", value: "<2.5s", suffix: "", prefix: "" },
+  { label: "Retrieval Modes", value: "4", suffix: "+", prefix: "" },
 ];
+
+const architectureLayers = [
+  {
+    icon: Database,
+    title: "Ingestion Layer",
+    color: "var(--accent-primary)",
+    items: ["Docling extraction", "OCR + table detection", "Semantic chunking", "GraphRAG entities"],
+  },
+  {
+    icon: Brain,
+    title: "Retrieval Pipeline",
+    color: "var(--accent-secondary)",
+    items: ["Hybrid search", "Cross-encoder reranking", "MMR diversification", "Query transforms"],
+  },
+  {
+    icon: Users,
+    title: "Application Layer",
+    color: "#3b82f6",
+    items: ["Streaming chat", "Notebook UX", "Workspace RBAC", "Prompt library"],
+  },
+];
+
+/* ─── Animated counter ─────────────────────────────────────────────── */
+
+function AnimatedStat({ label, value, suffix = "" }: { label: string; value: string; suffix?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+  return (
+    <motion.div
+      ref={ref}
+      className="text-center"
+      initial={{ opacity: 0, y: 16 }}
+      animate={isInView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5 }}
+    >
+      <div
+        className="text-3xl md:text-4xl font-bold tracking-tight gradient-text"
+        style={{ lineHeight: 1.1 }}
+      >
+        {value}{suffix}
+      </div>
+      <div
+        className="text-sm mt-2 font-medium"
+        style={{ color: "var(--text-tertiary)" }}
+      >
+        {label}
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Page ─────────────────────────────────────────────────────────── */
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-900 py-20 lg:py-32">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+    <div
+      className="min-h-screen relative"
+      style={{
+        background: "var(--bg-primary)",
+        color: "var(--text-primary)",
+      }}
+    >
+      {/* ─── Hero Section ───────────────────────────────────────────── */}
+      <section className="relative overflow-hidden pt-16 pb-24 lg:pt-24 lg:pb-36">
+        {/* Mesh gradient background */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ opacity: 0.5 }}
+        >
+          <div
+            className="absolute top-[-30%] left-[-20%] w-[700px] h-[700px] rounded-full animate-aurora"
+            style={{
+              background: "radial-gradient(circle, rgba(20,184,166,0.15), transparent 60%)",
+              filter: "blur(60px)",
+            }}
+          />
+          <div
+            className="absolute top-[-10%] right-[-15%] w-[600px] h-[600px] rounded-full animate-aurora"
+            style={{
+              background: "radial-gradient(circle, rgba(139,92,246,0.12), transparent 60%)",
+              filter: "blur(60px)",
+              animationDelay: "-5s",
+            }}
+          />
+          <div
+            className="absolute bottom-[-20%] left-[30%] w-[500px] h-[500px] rounded-full animate-aurora"
+            style={{
+              background: "radial-gradient(circle, rgba(59,130,246,0.08), transparent 60%)",
+              filter: "blur(60px)",
+              animationDelay: "-10s",
+            }}
+          />
+        </div>
+
+        {/* Subtle grid */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)`,
+            backgroundSize: "60px 60px",
+            maskImage: "radial-gradient(ellipse 60% 60% at 50% 50%, black, transparent)",
+            WebkitMaskImage: "radial-gradient(ellipse 60% 60% at 50% 50%, black, transparent)",
+          }}
+        />
+
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-4xl mx-auto">
+            {/* Badge */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium mb-8"
+              style={{
+                background: "var(--accent-primary-soft)",
+                border: "1px solid var(--border-hover)",
+                color: "var(--accent-primary)",
+              }}
             >
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 dark:text-white tracking-tight">
-                Document Intelligence
-                <span className="block text-blue-600">Powered by AI</span>
-              </h1>
-              <p className="mt-6 text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-                Enterprise-grade RAG platform with advanced retrieval, agentic capabilities,
-                and production-ready observability. Built for teams that need answers from their documents.
-              </p>
+              <Sparkles size={12} />
+              Open Source RAG Platform
+              <ChevronRight size={12} />
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
+            {/* Title */}
+            <motion.h1
+              initial={{ opacity: 0, y: 20, filter: "blur(8px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={{ duration: 0.7, delay: 0.1 }}
+              className="text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight"
+              style={{ lineHeight: 1.05, letterSpacing: "-0.04em" }}
+            >
+              Document Intelligence
+              <br />
+              <span className="gradient-text">Powered by AI</span>
+            </motion.h1>
+
+            {/* Subtitle */}
+            <motion.p
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="mt-10 flex flex-col sm:flex-row gap-4 justify-center"
+              transition={{ duration: 0.6, delay: 0.25 }}
+              className="mt-6 text-lg md:text-xl max-w-2xl mx-auto"
+              style={{ color: "var(--text-secondary)", lineHeight: 1.65 }}
+            >
+              Enterprise-grade RAG platform with hybrid retrieval, agentic
+              capabilities, and production-ready observability. Built for teams
+              that need{" "}
+              <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                grounded answers
+              </span>{" "}
+              from their documents.
+            </motion.p>
+
+            {/* CTA buttons */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              className="mt-10 flex flex-col sm:flex-row gap-3 justify-center"
             >
               <Link
                 href="/dashboard"
-                className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                className="group inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-semibold rounded-xl transition-all duration-300"
+                style={{
+                  background: "var(--gradient-accent)",
+                  color: "#fff",
+                  boxShadow: "var(--shadow-glow-teal)",
+                }}
               >
                 Get Started
-                <ArrowRight className="ml-2 h-5 w-5" />
+                <ArrowRight
+                  size={16}
+                  className="transition-transform group-hover:translate-x-0.5"
+                />
               </Link>
               <a
                 href="https://github.com/himanshu-nakrani/document-qa"
-                className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-semibold rounded-xl transition-all duration-200"
+                style={{
+                  background: "var(--bg-surface)",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--border-hover)",
+                }}
               >
+                <GitBranch size={16} />
                 View on GitHub
               </a>
             </motion.div>
 
             {/* Stats */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-              className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8"
+              transition={{ duration: 0.6, delay: 0.6 }}
+              className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 max-w-3xl mx-auto"
             >
-              {benchmarks.map((item) => (
-                <div key={item.metric} className="text-center">
-                  <div className="text-3xl font-bold text-blue-600">{item.value}</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">{item.metric}</div>
-                  <div className="text-xs text-gray-400">vs {item.baseline} baseline</div>
-                </div>
+              {stats.map((item) => (
+                <AnimatedStat key={item.label} {...item} />
               ))}
             </motion.div>
           </div>
         </div>
-
-        {/* Background decoration */}
-        <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-blue-400/20 rounded-full blur-3xl" />
-        </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-20 lg:py-32 bg-white dark:bg-gray-900">
+      {/* ─── Features Bento Grid ───────────────────────────────────── */}
+      <section
+        className="py-20 lg:py-28 relative"
+        style={{ borderTop: "1px solid var(--border)" }}
+      >
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
-              Everything you need for document QA
+          <motion.div
+            className="text-center max-w-2xl mx-auto mb-16"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <span
+              className="text-xs font-semibold uppercase tracking-widest mb-4 block"
+              style={{ color: "var(--accent-primary)" }}
+            >
+              Capabilities
+            </span>
+            <h2
+              className="text-3xl md:text-4xl font-bold tracking-tight"
+              style={{ letterSpacing: "-0.03em" }}
+            >
+              Everything you need for
+              <br />
+              <span className="gradient-text">document intelligence</span>
             </h2>
-            <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">
-              From ingestion to retrieval to conversation, every component is optimized for accuracy and performance.
+            <p
+              className="mt-4 text-base"
+              style={{ color: "var(--text-secondary)", lineHeight: 1.65 }}
+            >
+              From ingestion to retrieval to conversation — every component is
+              optimized for accuracy and performance.
             </p>
-          </div>
+          </motion.div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="bento-grid max-w-6xl mx-auto">
             {features.map((feature, index) => (
               <motion.div
                 key={feature.title}
+                className="bento-card group"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="p-6 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-shadow"
+                transition={{ duration: 0.5, delay: index * 0.08 }}
               >
-                <feature.icon className="h-10 w-10 text-blue-600 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                  {feature.title}
-                </h3>
-                <p className="text-gray-600 dark:text-gray-300">
-                  {feature.description}
-                </p>
+                <div
+                  className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl"
+                  style={{ background: feature.gradient }}
+                />
+                <div className="relative z-10">
+                  <div
+                    className="inline-flex items-center justify-center w-10 h-10 rounded-xl mb-4"
+                    style={{
+                      background: `${feature.color}15`,
+                      border: `1px solid ${feature.color}25`,
+                    }}
+                  >
+                    <feature.icon size={18} style={{ color: feature.color }} />
+                  </div>
+                  <h3
+                    className="text-base font-semibold mb-2"
+                    style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}
+                  >
+                    {feature.title}
+                  </h3>
+                  <p
+                    className="text-sm leading-relaxed"
+                    style={{ color: "var(--text-tertiary)" }}
+                  >
+                    {feature.description}
+                  </p>
+                </div>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Architecture Section */}
-      <section className="py-20 lg:py-32 bg-gray-50 dark:bg-gray-800">
+      {/* ─── Architecture ──────────────────────────────────────────── */}
+      <section
+        className="py-20 lg:py-28"
+        style={{
+          background: "var(--bg-secondary)",
+          borderTop: "1px solid var(--border)",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-900 dark:text-white mb-12">
-              Architecture Overview
+          <motion.div
+            className="text-center max-w-2xl mx-auto mb-16"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <span
+              className="text-xs font-semibold uppercase tracking-widest mb-4 block"
+              style={{ color: "var(--accent-secondary)" }}
+            >
+              Architecture
+            </span>
+            <h2
+              className="text-3xl md:text-4xl font-bold tracking-tight"
+              style={{ letterSpacing: "-0.03em" }}
+            >
+              Three layers.{" "}
+              <span className="gradient-text">One pipeline.</span>
             </h2>
+          </motion.div>
 
-            <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 shadow-lg border border-gray-200 dark:border-gray-700">
-              <div className="grid md:grid-cols-3 gap-6 text-center">
-                <div className="p-4">
-                  <Database className="h-12 w-12 text-green-600 mx-auto mb-3" />
-                  <h3 className="font-semibold text-gray-900 dark:text-white">Ingestion Layer</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                    Docling extraction, OCR, semantic chunking, table detection, and GraphRAG entity extraction
-                  </p>
-                </div>
-                <div className="p-4">
-                  <Brain className="h-12 w-12 text-purple-600 mx-auto mb-3" />
-                  <h3 className="font-semibold text-gray-900 dark:text-white">Retrieval Pipeline</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                    Hybrid search, reranking, MMR, query transforms, context compression, and groundedness verification
-                  </p>
-                </div>
-                <div className="p-4">
-                  <Users className="h-12 w-12 text-blue-600 mx-auto mb-3" />
-                  <h3 className="font-semibold text-gray-900 dark:text-white">Application Layer</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                    Streaming chat, notebook UX, workspace RBAC, connectors, and prompt library
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Tech Stack */}
-      <section className="py-20 bg-white dark:bg-gray-900">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-12">
-            Built with Modern Technology
-          </h2>
-
-          <div className="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
-            {techStack.map((tech) => (
-              <span
-                key={tech.name}
-                className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-full text-sm font-medium"
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {architectureLayers.map((layer, index) => (
+              <motion.div
+                key={layer.title}
+                className="rounded-2xl p-6 relative overflow-hidden group"
+                style={{
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border)",
+                }}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
               >
-                {tech.name}
-                <span className="text-gray-400 ml-2 text-xs">{tech.category}</span>
-              </span>
+                {/* Top accent line */}
+                <div
+                  className="absolute top-0 left-0 right-0 h-px opacity-60 group-hover:opacity-100 transition-opacity"
+                  style={{
+                    background: `linear-gradient(90deg, transparent, ${layer.color}, transparent)`,
+                  }}
+                />
+
+                <div
+                  className="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4"
+                  style={{
+                    background: `${layer.color}12`,
+                    border: `1px solid ${layer.color}20`,
+                  }}
+                >
+                  <layer.icon size={22} style={{ color: layer.color }} />
+                </div>
+
+                <h3 className="text-base font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
+                  {layer.title}
+                </h3>
+
+                <ul className="space-y-2">
+                  {layer.items.map((item) => (
+                    <li
+                      key={item}
+                      className="flex items-center gap-2 text-sm"
+                      style={{ color: "var(--text-tertiary)" }}
+                    >
+                      <div
+                        className="w-1 h-1 rounded-full flex-shrink-0"
+                        style={{ background: layer.color }}
+                      />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 lg:py-32 bg-blue-600">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-            Ready to get started?
-          </h2>
-          <p className="text-xl text-blue-100 mb-10 max-w-2xl mx-auto">
-            Deploy your own instance in minutes with Docker Compose, or explore the demo deployment.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-blue-600 bg-white rounded-lg hover:bg-gray-100 transition-colors"
+      {/* ─── Tech Stack ────────────────────────────────────────────── */}
+      <section className="py-20 lg:py-28">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            className="text-center max-w-2xl mx-auto mb-12"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <span
+              className="text-xs font-semibold uppercase tracking-widest mb-4 block"
+              style={{ color: "var(--accent-primary)" }}
             >
-              Launch App
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Link>
-            <a
-              href="/docs"
-              className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white border-2 border-white rounded-lg hover:bg-white/10 transition-colors"
+              Technology
+            </span>
+            <h2
+              className="text-3xl font-bold tracking-tight"
+              style={{ letterSpacing: "-0.03em" }}
             >
-              Documentation
-            </a>
+              Built with{" "}
+              <span className="gradient-text">modern tools</span>
+            </h2>
+          </motion.div>
+
+          <div className="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
+            {techStack.map((tech, i) => (
+              <motion.span
+                key={tech.name}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
+                style={{
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-primary)",
+                }}
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.3, delay: i * 0.04 }}
+                whileHover={{
+                  borderColor: "var(--border-accent)",
+                  y: -2,
+                }}
+              >
+                {tech.name}
+                <span
+                  className="text-xs px-2 py-0.5 rounded-md"
+                  style={{
+                    background: "var(--bg-elevated)",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  {tech.category}
+                </span>
+              </motion.span>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-12 bg-gray-900 text-gray-400">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="flex items-center gap-2 mb-4 md:mb-0">
-              <FileText className="h-6 w-6 text-blue-500" />
-              <span className="text-white font-semibold">Document QA</span>
+      {/* ─── CTA Section ───────────────────────────────────────────── */}
+      <section
+        className="py-24 lg:py-32 relative overflow-hidden"
+        style={{
+          borderTop: "1px solid var(--border)",
+        }}
+      >
+        {/* Gradient background */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: "var(--gradient-accent-soft)",
+            opacity: 0.5,
+          }}
+        />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `radial-gradient(circle at 50% 50%, var(--accent-primary-glow), transparent 70%)`,
+          }}
+        />
+
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2
+              className="text-3xl md:text-5xl font-bold tracking-tight mb-6"
+              style={{ letterSpacing: "-0.03em" }}
+            >
+              Ready to get{" "}
+              <span className="gradient-text">started?</span>
+            </h2>
+            <p
+              className="text-lg mb-10 max-w-xl mx-auto"
+              style={{ color: "var(--text-secondary)", lineHeight: 1.65 }}
+            >
+              Deploy your own instance in minutes with Docker Compose, or jump
+              straight into the demo.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link
+                href="/dashboard"
+                className="group inline-flex items-center justify-center gap-2 px-8 py-4 text-base font-semibold rounded-xl transition-all duration-300"
+                style={{
+                  background: "var(--gradient-accent)",
+                  color: "#fff",
+                  boxShadow: "var(--shadow-glow-teal)",
+                }}
+              >
+                Launch App
+                <ArrowRight
+                  size={16}
+                  className="transition-transform group-hover:translate-x-0.5"
+                />
+              </Link>
+              <a
+                href="/docs"
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 text-base font-semibold rounded-xl transition-all duration-200"
+                style={{
+                  background: "var(--bg-surface)",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--border-hover)",
+                }}
+              >
+                Documentation
+              </a>
             </div>
-            <div className="flex gap-6">
-              <a href="https://github.com/himanshu-nakrani/document-qa" className="hover:text-white transition-colors">
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ─── Footer ────────────────────────────────────────────────── */}
+      <footer
+        className="py-10"
+        style={{
+          borderTop: "1px solid var(--border)",
+          background: "var(--bg-secondary)",
+        }}
+      >
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center justify-center w-8 h-8 rounded-lg"
+                style={{
+                  background: "var(--accent-primary-soft)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <FileText size={14} style={{ color: "var(--accent-primary)" }} />
+              </div>
+              <span className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                DocRAG
+              </span>
+            </div>
+            <div className="flex gap-6 text-sm">
+              <a
+                href="https://github.com/himanshu-nakrani/document-qa"
+                className="transition-colors"
+                style={{ color: "var(--text-tertiary)" }}
+              >
                 GitHub
               </a>
-              <a href="/docs" className="hover:text-white transition-colors">
+              <a
+                href="/docs"
+                className="transition-colors"
+                style={{ color: "var(--text-tertiary)" }}
+              >
                 Docs
               </a>
-              <a href="/dashboard" className="hover:text-white transition-colors">
+              <Link
+                href="/dashboard"
+                className="transition-colors"
+                style={{ color: "var(--text-tertiary)" }}
+              >
                 App
-              </a>
+              </Link>
             </div>
           </div>
-          <div className="mt-8 text-center text-sm">
-            Built with ❤️ by Himanshu Nakrani. Open source under MIT license.
+          <div
+            className="mt-6 text-center text-xs"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Built by Himanshu Nakrani. Open source under MIT license.
           </div>
         </div>
       </footer>

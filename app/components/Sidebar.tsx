@@ -231,16 +231,18 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           <div
             className="flex items-center justify-center rounded-lg"
             style={{
-              width: 28,
-              height: 28,
-              background: "var(--accent-brand-soft)",
+              width: 30,
+              height: 30,
+              background: "var(--gradient-accent-soft)",
+              border: "1px solid var(--border-hover)",
+              boxShadow: "var(--shadow-glow-teal)",
             }}
           >
-            <FileText size={14} style={{ color: "var(--accent-brand)" }} />
+            <FileText size={14} style={{ color: "var(--accent-primary)" }} />
           </div>
           <span
-            className="font-semibold text-sm"
-            style={{ color: "var(--text-primary)", letterSpacing: "-0.02em" }}
+            className="font-bold text-sm"
+            style={{ color: "var(--text-primary)", letterSpacing: "-0.025em" }}
           >
             DocRAG
           </span>
@@ -329,9 +331,13 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         <motion.button
           type="button"
           onClick={onUploadClick}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
-          style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
-          whileHover={{ scale: 1.02 }}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold"
+          style={{
+            background: "var(--gradient-accent)",
+            color: "#fff",
+            boxShadow: "var(--shadow-glow-teal)",
+          }}
+          whileHover={{ scale: 1.02, boxShadow: "0 0 32px rgba(20,184,166,0.2)" }}
           whileTap={{ scale: 0.97 }}
           transition={{ type: "spring", stiffness: 400, damping: 17 }}
         >

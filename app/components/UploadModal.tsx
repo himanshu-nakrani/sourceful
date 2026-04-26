@@ -457,7 +457,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
                         <motion.div
                           className="h-full rounded-full"
                           style={{
-                            background: status === "done" ? "var(--success)" : "var(--accent-brand)",
+                            background: status === "done" ? "var(--success)" : "var(--gradient-accent)",
                           }}
                           initial={{ width: "8%" }}
                           animate={{ width: `${Math.max(8, Math.round((job.progress || 0) * 100))}%` }}
@@ -496,10 +496,11 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
               type="button"
               onClick={handleSubmit}
               disabled={!canSubmit}
-              className="px-5 py-2 rounded-xl text-sm font-medium"
+              className="px-5 py-2 rounded-xl text-sm font-semibold"
               style={{
-                background: !canSubmit ? "var(--bg-elevated)" : "var(--accent)",
-                color: !canSubmit ? "var(--text-muted)" : "var(--accent-fg)",
+                background: !canSubmit ? "var(--bg-elevated)" : "var(--gradient-accent)",
+                color: !canSubmit ? "var(--text-muted)" : "#fff",
+                boxShadow: canSubmit ? "var(--shadow-glow-teal)" : "none",
               }}
               whileHover={canSubmit ? { scale: 1.02 } : {}}
               whileTap={canSubmit ? { scale: 0.97 } : {}}

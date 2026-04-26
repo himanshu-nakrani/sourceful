@@ -488,8 +488,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           style={{
             width: 56,
             height: 56,
-            background: "var(--accent-brand-soft)",
-            border: "1px solid var(--border)",
+            background: "var(--gradient-accent-soft)",
+            border: "1px solid var(--border-hover)",
+            boxShadow: "var(--shadow-glow-teal)",
           }}
           animate={{ y: [0, -4, 0] }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
@@ -1022,8 +1023,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   disabled={!canAsk}
                   className="flex items-center justify-center p-2 rounded-xl"
                   style={{
-                    background: canAsk ? "var(--accent)" : "transparent",
-                    color: canAsk ? "var(--accent-fg)" : "var(--text-muted)",
+                    background: canAsk ? "var(--gradient-accent)" : "transparent",
+                    color: canAsk ? "#fff" : "var(--text-muted)",
+                    boxShadow: canAsk ? "var(--shadow-glow-teal)" : "none",
                   }}
                   aria-label="Send message"
                   title="Send message"
@@ -1309,8 +1311,12 @@ function StateCard({
           <motion.button
             type="button"
             onClick={onPrimary}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium"
-            style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
+            style={{
+              background: "var(--gradient-accent)",
+              color: "#fff",
+              boxShadow: "var(--shadow-glow-teal)",
+            }}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 400, damping: 17 }}

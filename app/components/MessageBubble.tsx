@@ -177,11 +177,12 @@ const MessageBubble = React.memo(function MessageBubble({
             style={{
               width: 30,
               height: 30,
-              background: "var(--accent-brand-soft)",
-              border: "1px solid var(--border)",
+              background: "var(--gradient-accent-soft)",
+              border: "1px solid var(--border-hover)",
+              boxShadow: "var(--shadow-glow-teal)",
             }}
           >
-            <Bot size={14} style={{ color: "var(--accent-brand)" }} />
+            <Bot size={14} style={{ color: "var(--accent-primary)" }} />
           </div>
         </div>
       ) : null}
@@ -195,11 +196,12 @@ const MessageBubble = React.memo(function MessageBubble({
         title={!isUser && !isStreaming ? getConfidenceTooltip(message.sources) : undefined}
         style={{
           maxWidth: isUser ? "75%" : "85%",
-          background: isUser ? "var(--accent)" : "var(--bg-surface)",
+          background: isUser ? "var(--gradient-accent)" : "var(--bg-surface)",
           border: isUser ? "none" : "1px solid var(--border)",
-          color: isUser ? "var(--accent-fg)" : "var(--text-primary)",
+          color: isUser ? "#fff" : "var(--text-primary)",
           borderTopRightRadius: isUser ? 6 : undefined,
           borderTopLeftRadius: !isUser ? 6 : undefined,
+          boxShadow: isUser ? "var(--shadow-glow-teal)" : undefined,
         }}
       >
         {isUser ? (

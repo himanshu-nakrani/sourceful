@@ -307,7 +307,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
             <button
               type="button"
               onClick={() => setIsChatOpen((current) => !current)}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-white transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-white transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
             >
               <MessageSquare className="h-4 w-4" />
               <span className="text-sm">{isChatOpen ? "Hide Chat" : "Show Chat"}</span>

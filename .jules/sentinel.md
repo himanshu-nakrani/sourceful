@@ -22,3 +22,8 @@
 **Vulnerability:** The rate limiter in RateLimitMiddleware combined the user's IP address with the first 24 characters of the Authorization header to form the rate limit bucket ID.
 **Learning:** Because the Authorization header is client-controlled, an attacker could generate arbitrary unique bucket IDs by randomizing the Authorization header, completely bypassing the rate limits.
 **Prevention:** Always use secure, trusted identifiers for rate limiting. Unauthenticated requests should be rate-limited strictly by the client IP address (or by combined IP + user agent if desired but IP is standard). Do not incorporate arbitrary untrusted client input into rate limit bucket generation.
+
+## 2025-04-26 - [CRITICAL] Server-Side Request Forgery (SSRF) in URL Ingest
+**Vulnerability:** The application allowed users to provide arbitrary URLs for ingestion, which were directly fetched by `httpx.AsyncClient` without validating the resolved IP address. This allowed users to bypass network perimeters and access internal network resources (e.g., `localhost`, loopback, and metadata services like AWS EC2 instance metadata `169.254.169.254`).
+**Learning:** Checking the URL string is insufficient because attackers can use DNS rebinding or direct IP addresses. We must resolve the hostname to an IP address at the moment of request and block restricted ranges.
+**Prevention:** Always validate resolved IP addresses for external fetching services. Using an `event_hook` on the HTTP client (`httpx.AsyncClient`) provides a clean point to interrupt requests to private, loopback, link-local, or multicast addresses right before the connection is made.

@@ -12,8 +12,11 @@ the app already relies on.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import ipaddress
 import logging
+import socket
 from typing import Any
 from urllib.parse import urlparse
 
@@ -77,6 +80,28 @@ def _derive_title_from_html(html: str, fallback: str) -> str:
     return raw[:300] or fallback
 
 
+async def _prevent_ssrf_hook(request: httpx.Request) -> None:
+    """Event hook to prevent SSRF by blocking access to restricted IP addresses."""
+    host = request.url.host
+    if not host:
+        return
+    try:
+        loop = asyncio.get_event_loop()
+        addrinfo = await loop.getaddrinfo(host, None)
+        for _, _, _, _, sockaddr in addrinfo:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast:
+                raise UrlIngestError(
+                    "URL resolves to a restricted network.",
+                    code="URL_RESTRICTED_NETWORK",
+                    status_code=403,
+                    details={"host": host},
+                )
+    except socket.gaierror:
+        # Ignore resolution errors here, they will fail naturally during the request
+        pass
+
+
 def _html_to_text(html: str) -> str:
     try:
         from bs4 import BeautifulSoup
@@ -104,6 +129,7 @@ async def _fetch_url(url: str) -> tuple[bytes, str, str]:
             timeout=FETCH_TIMEOUT_SECONDS,
             follow_redirects=True,
             headers={"User-Agent": "document-qa-url-ingest/1.0"},
+            event_hooks={"request": [_prevent_ssrf_hook]},
         ) as client:
             response = await client.get(url)
     except httpx.TimeoutException as exc:

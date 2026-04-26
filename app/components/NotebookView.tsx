@@ -242,7 +242,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
             <button
               type="button"
               onClick={closeNotebook}
-              className="rounded-lg p-2 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
+              className="rounded-lg p-2 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               aria-label="Close notebook"
               title="Close notebook"
             >
@@ -259,7 +259,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                 type="button"
                 onClick={() => changePage(-1)}
                 disabled={pageNumber <= 1}
-                className="rounded p-1.5 hover:bg-gray-200 disabled:opacity-50 dark:hover:bg-gray-700"
+                className="rounded p-1.5 hover:bg-gray-200 disabled:opacity-50 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 aria-label="Previous page"
                 title="Previous page"
               >
@@ -272,7 +272,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                 type="button"
                 onClick={() => changePage(1)}
                 disabled={!numPages || pageNumber >= numPages}
-                className="rounded p-1.5 hover:bg-gray-200 disabled:opacity-50 dark:hover:bg-gray-700"
+                className="rounded p-1.5 hover:bg-gray-200 disabled:opacity-50 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 aria-label="Next page"
                 title="Next page"
               >
@@ -284,7 +284,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
               <button
                 type="button"
                 onClick={() => setScale((current) => Math.max(0.5, current - 0.1))}
-                className="rounded p-1.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
+                className="rounded p-1.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 aria-label="Zoom out"
                 title="Zoom out"
               >
@@ -296,7 +296,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
               <button
                 type="button"
                 onClick={() => setScale((current) => Math.min(2, current + 0.1))}
-                className="rounded p-1.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
+                className="rounded p-1.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 aria-label="Zoom in"
                 title="Zoom in"
               >
@@ -307,7 +307,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
             <button
               type="button"
               onClick={() => setIsChatOpen((current) => !current)}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-white transition-colors hover:bg-blue-700"
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-white transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
             >
               <MessageSquare className="h-4 w-4" />
               <span className="text-sm">{isChatOpen ? "Hide Chat" : "Show Chat"}</span>
@@ -364,7 +364,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
               <button
                 type="button"
                 onClick={() => setIsChatOpen(false)}
-                className="rounded p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="rounded p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 aria-label="Hide chat"
                 title="Hide chat"
               >
@@ -402,7 +402,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                                 key={citation.chunk_id}
                                 type="button"
                                 onClick={() => handleCitationClick(citation)}
-                                className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs transition-colors hover:bg-yellow-100 dark:bg-gray-700 dark:hover:bg-yellow-900"
+                                className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs transition-colors hover:bg-yellow-100 dark:bg-gray-700 dark:hover:bg-yellow-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                                 title={citation.excerpt}
                               >
                                 <Highlighter className="h-3 w-3 text-yellow-600" />
@@ -444,7 +444,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                 <button
                   type="submit"
                   disabled={isLoading || !input.trim()}
-                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-white transition-colors hover:bg-blue-700 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
                   aria-label="Send message"
                   title="Send message"
                 >

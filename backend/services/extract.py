@@ -14,7 +14,7 @@ import csv
 import hashlib
 import io
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import PurePath
 
 logger = logging.getLogger("ragapp.extract")

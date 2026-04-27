@@ -182,7 +182,7 @@ async def enqueue_reprocess_job(
 
 
 async def claim_next_job() -> dict | None:
-    """Claim the next queued job for processing using SKIP LOCKED semantics.
+    """Claim the next queued job for processing using compare-and-swap.
 
     Returns the job if one is available and successfully claimed, otherwise None.
     Updates the job status to 'processing' and records the start time.

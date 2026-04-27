@@ -180,7 +180,9 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
               <div
                 className="flex items-center justify-center w-8 h-8 rounded-lg"
                 style={{
-                  background: `${feat.color}12`,
+                  background: feat.color.startsWith("var(")
+                    ? `color-mix(in srgb, ${feat.color} 7%, transparent)`
+                    : `${feat.color}12`,
                 }}
               >
                 <span style={{ color: feat.color }}>{feat.icon}</span>

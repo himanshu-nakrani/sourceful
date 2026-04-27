@@ -44,9 +44,7 @@ export default function WorkspaceMembersPanel({
   workspaceName,
   auth,
 }: WorkspaceMembersPanelProps) {
-  const isAnonymous = !auth.clientSessionId
-    ? false
-    : !((auth as { authToken?: string }).authToken);
+
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -247,7 +245,7 @@ export default function WorkspaceMembersPanel({
               </div>
             ) : null}
 
-            {isAnonymous ? (
+            {!canManage ? (
               <div
                 className="px-4 py-3 text-[11px] flex-shrink-0"
                 style={{
@@ -334,7 +332,7 @@ export default function WorkspaceMembersPanel({
                   ))}
                 </ul>
 
-                {!isAnonymous ? (
+                {canManage ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <input
                       value={memberUserId}
@@ -442,7 +440,7 @@ export default function WorkspaceMembersPanel({
                   ))}
                 </ul>
 
-                {!isAnonymous ? (
+                {canManage ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <input
                       value={inviteEmail}

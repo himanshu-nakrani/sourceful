@@ -175,6 +175,7 @@ async def workspace_analytics(
     now = datetime.now(timezone.utc)
     cutoff_7d = now - timedelta(days=7)
 
+    from backend.settings import settings
     cutoff_7d_str = cutoff_7d.strftime("%Y-%m-%d %H:%M:%S") if not settings.using_postgres else cutoff_7d.isoformat()
 
     messages_7d_row = await fetch_one(

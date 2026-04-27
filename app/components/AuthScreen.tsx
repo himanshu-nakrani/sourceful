@@ -95,18 +95,9 @@ export default function AuthScreen() {
       className="flex min-h-screen items-center justify-center px-4 py-10 relative overflow-hidden"
       style={{ background: "var(--bg-primary)" }}
     >
-      {/* Ambient orbs */}
-      <motion.div
-        className="absolute top-[-15%] left-[-8%] w-[450px] h-[450px] rounded-full pointer-events-none"
-        style={{ background: "radial-gradient(circle, rgba(99,102,241,0.12), transparent 70%)" }}
-        animate={{ scale: [1, 1.1, 1], x: [0, 20, 0] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute bottom-[-10%] right-[-8%] w-[400px] h-[400px] rounded-full pointer-events-none"
-        style={{ background: "radial-gradient(circle, rgba(34,197,94,0.08), transparent 70%)" }}
-        animate={{ scale: [1, 1.12, 1], x: [0, -15, 0] }}
-        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        style={{ background: "linear-gradient(90deg, transparent, var(--border-strong), transparent)" }}
       />
 
       <motion.div

@@ -34,12 +34,31 @@ _RANK = {role: idx for idx, role in enumerate(reversed(ROLES))}
 
 
 def role_at_least(role: str | None, minimum: str) -> bool:
+    """Check if a role meets or exceeds a minimum role level.
+
+    Uses the role hierarchy: viewer < editor < admin < owner.
+
+    Args:
+        role: The role to check (None returns False).
+        minimum: The minimum required role.
+
+    Returns:
+        True if role >= minimum, False otherwise.
+    """
     if not role:
         return False
     return _RANK.get(role, -1) >= _RANK.get(minimum, 99)
 
 
 def _serialize_member(row: dict[str, Any]) -> dict[str, Any]:
+    """Serialize a database row to a member dict.
+
+    Args:
+        row: The database row dict.
+
+    Returns:
+        A serialized member dict with email joined from users table.
+    """
     return {
         "id": row["id"],
         "workspace_id": row["workspace_id"],
@@ -51,6 +70,14 @@ def _serialize_member(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _serialize_invitation(row: dict[str, Any]) -> dict[str, Any]:
+    """Serialize a database row to an invitation dict.
+
+    Args:
+        row: The database row dict.
+
+    Returns:
+        A serialized invitation dict.
+    """
     return {
         "id": row["id"],
         "workspace_id": row["workspace_id"],
@@ -88,6 +115,14 @@ async def get_effective_role(
 
 
 async def list_members(workspace_id: str) -> list[dict[str, Any]]:
+    """List all members of a workspace.
+
+    Args:
+        workspace_id: The workspace ID.
+
+    Returns:
+        A list of serialized member dicts, ordered by joined_at ASC.
+    """
     rows = await fetch_all(
         """
         SELECT m.id, m.workspace_id, m.user_id, m.role, m.joined_at, u.email
@@ -104,6 +139,19 @@ async def list_members(workspace_id: str) -> list[dict[str, Any]]:
 async def add_member(
     workspace_id: str, *, user_id: str, role: str = "viewer"
 ) -> dict[str, Any]:
+    """Add a member to a workspace or update their role if already a member.
+
+    Args:
+        workspace_id: The workspace ID.
+        user_id: The user ID to add.
+        role: The role to assign (default: 'viewer').
+
+    Returns:
+        The serialized member dict.
+
+    Raises:
+        ValueError: If role is not a valid ROLES value.
+    """
     if role not in ROLES:
         raise ValueError(f"Invalid role: {role}")
     existing = await fetch_one(
@@ -141,6 +189,19 @@ async def add_member(
 async def update_member_role(
     workspace_id: str, *, member_id: str, role: str
 ) -> dict[str, Any] | None:
+    """Update a member's role in a workspace.
+
+    Args:
+        workspace_id: The workspace ID.
+        member_id: The member ID to update.
+        role: The new role.
+
+    Returns:
+        The updated member dict, or None if not found.
+
+    Raises:
+        ValueError: If role is not a valid ROLES value.
+    """
     if role not in ROLES:
         raise ValueError(f"Invalid role: {role}")
     existing = await fetch_one(
@@ -166,6 +227,15 @@ async def update_member_role(
 
 
 async def remove_member(workspace_id: str, member_id: str) -> bool:
+    """Remove a member from a workspace.
+
+    Args:
+        workspace_id: The workspace ID.
+        member_id: The member ID to remove.
+
+    Returns:
+        True if the member was removed, False if not found.
+    """
     existing = await fetch_one(
         "SELECT id FROM workspace_members WHERE id = ? AND workspace_id = ?",
         (member_id, workspace_id),
@@ -187,6 +257,21 @@ async def create_invitation(
     invited_by: str | None,
     expires_in_days: int | None = 14,
 ) -> dict[str, Any]:
+    """Create an invitation for a user to join a workspace.
+
+    Args:
+        workspace_id: The workspace ID.
+        email: The email address to invite.
+        role: The role to assign upon acceptance (default: 'viewer').
+        invited_by: Optional ID of the user who created the invitation.
+        expires_in_days: Days until the invitation expires (default: 14).
+
+    Returns:
+        The serialized invitation dict.
+
+    Raises:
+        ValueError: If role is invalid or email is empty.
+    """
     if role not in ROLES:
         raise ValueError(f"Invalid role: {role}")
     email = email.strip().lower()
@@ -213,6 +298,14 @@ async def create_invitation(
 
 
 async def list_invitations(workspace_id: str) -> list[dict[str, Any]]:
+    """List pending invitations for a workspace.
+
+    Args:
+        workspace_id: The workspace ID.
+
+    Returns:
+        A list of serialized invitation dicts, ordered by created_at DESC.
+    """
     rows = await fetch_all(
         "SELECT * FROM workspace_invitations WHERE workspace_id = ? ORDER BY created_at DESC",
         (workspace_id,),
@@ -221,6 +314,15 @@ async def list_invitations(workspace_id: str) -> list[dict[str, Any]]:
 
 
 async def revoke_invitation(workspace_id: str, invitation_id: str) -> bool:
+    """Revoke a pending invitation.
+
+    Args:
+        workspace_id: The workspace ID.
+        invitation_id: The invitation ID to revoke.
+
+    Returns:
+        True if the invitation was revoked, False if not found.
+    """
     existing = await fetch_one(
         "SELECT id FROM workspace_invitations WHERE id = ? AND workspace_id = ?",
         (invitation_id, workspace_id),

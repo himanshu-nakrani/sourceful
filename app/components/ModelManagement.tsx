@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Box, CheckCircle2, Cpu, KeyRound, RotateCcw, Sparkles, Zap } from "lucide-react";
+import { Box, CheckCircle2, Cpu, KeyRound, RotateCcw } from "lucide-react";
 
 import { type Provider } from "../lib/api";
 import { EASE_OUT } from "../lib/motion";
@@ -154,13 +154,13 @@ export default function ModelManagement() {
             variants={fadeUp}
           >
             <div className="flex items-center gap-2 mb-4">
-              <Sparkles size={14} style={{ color: "var(--accent-brand)" }} />
+              <Cpu size={14} style={{ color: "var(--accent-brand)" }} />
               <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
                 Chat Model
               </h3>
             </div>
             <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
-              Used for generating AI responses in document Q&A chat.
+              Used for generating assistant responses in document Q&A chat.
             </p>
             <div className="flex flex-col gap-1.5">
               {CHAT_MODEL_OPTIONS[settings.provider].map((model, i) => (
@@ -210,7 +210,7 @@ export default function ModelManagement() {
             variants={fadeUp}
           >
             <div className="flex items-center gap-2 mb-4">
-              <Zap size={14} style={{ color: "var(--accent-brand)" }} />
+              <Box size={14} style={{ color: "var(--accent-brand)" }} />
               <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
                 Embedding Model
               </h3>

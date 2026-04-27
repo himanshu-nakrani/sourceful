@@ -18,7 +18,7 @@ export function useWorkspaceRole(auth: ClientAuthContext, workspaceId: string | 
     }
     
     // Check cache first
-    const cacheKey = `${auth.clientSessionId}-${workspaceId}`;
+    const cacheKey = `${auth.clientSessionId}-${auth.providerApiKey ?? ""}-${workspaceId}`;
     const cached = roleCache.get(cacheKey);
     const now = Date.now();
     

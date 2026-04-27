@@ -175,34 +175,30 @@ async def workspace_analytics(
     now = datetime.now(timezone.utc)
     cutoff_7d = now - timedelta(days=7)
 
-    recent_messages = await fetch_all(
+    from backend.settings import settings
+    cutoff_7d_str = cutoff_7d.strftime("%Y-%m-%d %H:%M:%S") if not settings.using_postgres else cutoff_7d.isoformat()
+
+    messages_7d_row = await fetch_one(
         """
-        SELECT created_at, role
+        SELECT COUNT(*) AS cnt
         FROM messages
         WHERE conversation_id IN (SELECT id FROM conversations WHERE workspace_id = ?)
+          AND created_at >= ?
         """,
-        (workspace_id,),
+        (workspace_id, cutoff_7d_str),
     )
+    messages_7d = int((messages_7d_row or {}).get("cnt", 0) or 0)
 
-    recent_artifacts = await fetch_all(
+    artifacts_7d_row = await fetch_one(
         """
-        SELECT created_at, artifact_type
+        SELECT COUNT(*) AS cnt
         FROM workspace_artifacts
         WHERE workspace_id = ?
+          AND created_at >= ?
         """,
-        (workspace_id,),
+        (workspace_id, cutoff_7d_str),
     )
-
-    messages_7d = sum(
-        1
-        for row in recent_messages
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_7d
-    )
-    artifacts_7d = sum(
-        1
-        for row in recent_artifacts
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_7d
-    )
+    artifacts_7d = int((artifacts_7d_row or {}).get("cnt", 0) or 0)
 
     return {
         "totals": {

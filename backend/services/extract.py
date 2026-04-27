@@ -64,6 +64,19 @@ class ValidatedUpload:
 
 
 def validate_upload(filename: str, raw: bytes, declared_mime_type: str | None = None) -> ValidatedUpload:
+    """Validate an uploaded file and compute its metadata.
+
+    Args:
+        filename: The name of the uploaded file.
+        raw: The raw bytes of the file content.
+        declared_mime_type: Optional MIME type declared by the uploader.
+
+    Returns:
+        A ValidatedUpload object containing filename, suffix, mime_type, checksum, and size.
+
+    Raises:
+        FileValidationError: If the file type is unsupported or validation fails.
+    """
     suffix = PurePath(filename.lower()).suffix
     if suffix not in CANONICAL_MIME_TYPES:
         raise FileValidationError(f"Unsupported file type: {suffix}")
@@ -81,6 +94,22 @@ def validate_upload(filename: str, raw: bytes, declared_mime_type: str | None = 
 
 
 def sniff_mime_type(filename: str, raw: bytes, declared_mime_type: str | None = None) -> str:
+    """Detect the MIME type of a file based on its extension and content.
+
+    Performs basic content validation (magic bytes for PDF, ZIP structure for Office docs,
+    UTF-8 validity for text files).
+
+    Args:
+        filename: The name of the file.
+        raw: The raw bytes of the file content.
+        declared_mime_type: Optional MIME type declared by the uploader.
+
+    Returns:
+        The canonical MIME type for the file.
+
+    Raises:
+        FileValidationError: If the file content does not match its extension.
+    """
     suffix = PurePath(filename.lower()).suffix
     canonical = CANONICAL_MIME_TYPES.get(suffix)
     if canonical is None:
@@ -244,7 +273,19 @@ def _extract_pdf_pypdf(raw: bytes) -> ExtractedDocument:
 # ---- XLSX extraction -----------------------------------------------
 
 def _extract_xlsx(raw: bytes) -> ExtractedDocument:
-    """Sheet-aware XLSX extraction. Each sheet becomes sections; tables are detected."""
+    """Extract text from an XLSX file, treating each sheet as a separate section.
+
+    Detects tables and formats them as markdown. Single-row sheets are treated as text.
+
+    Args:
+        raw: The raw bytes of the XLSX file.
+
+    Returns:
+        An ExtractedDocument containing sections for each sheet.
+
+    Raises:
+        ValueError: If openpyxl is not installed or the file is empty.
+    """
     try:
         from openpyxl import load_workbook  # type: ignore
     except ImportError as exc:
@@ -304,7 +345,19 @@ def _extract_xlsx(raw: bytes) -> ExtractedDocument:
 # ---- PPTX extraction -----------------------------------------------
 
 def _extract_pptx(raw: bytes) -> ExtractedDocument:
-    """Slide-level PPTX extraction."""
+    """Extract text from a PPTX file, treating each slide as a separate section.
+
+    Extracts tables as markdown and combines text from all shapes on each slide.
+
+    Args:
+        raw: The raw bytes of the PPTX file.
+
+    Returns:
+        An ExtractedDocument containing sections for each slide.
+
+    Raises:
+        ValueError: If python-pptx is not installed or the file is empty.
+    """
     try:
         from pptx import Presentation  # type: ignore
     except ImportError as exc:
@@ -419,6 +472,21 @@ def _extract_html(raw: bytes) -> ExtractedDocument:
 # ---- Main dispatch -------------------------------------------------
 
 def extract_document(*, filename: str, raw: bytes) -> ExtractedDocument:
+    """Extract text and metadata from a document based on its file type.
+
+    Dispatches to the appropriate extraction function based on the file extension.
+    Supports PDF, TXT, MD, DOCX, CSV, XLSX, PPTX, and HTML.
+
+    Args:
+        filename: The name of the file (used to determine type).
+        raw: The raw bytes of the file content.
+
+    Returns:
+        An ExtractedDocument containing extracted sections and metadata.
+
+    Raises:
+        ValueError: If the file type is unsupported or extraction fails.
+    """
     suffix = PurePath(filename.lower()).suffix
 
     if suffix == ".pdf":

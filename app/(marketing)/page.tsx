@@ -348,8 +348,12 @@ export default function LandingPage() {
                   <div
                     className="inline-flex items-center justify-center w-10 h-10 rounded-xl mb-4"
                     style={{
-                      background: `${feature.color}15`,
-                      border: `1px solid ${feature.color}25`,
+                      background: feature.color.startsWith("var(")
+                        ? `color-mix(in srgb, ${feature.color} 8%, transparent)`
+                        : `${feature.color}15`,
+                      border: feature.color.startsWith("var(")
+                        ? `1px solid color-mix(in srgb, ${feature.color} 15%, transparent)`
+                        : `1px solid ${feature.color}25`,
                     }}
                   >
                     <feature.icon size={18} style={{ color: feature.color }} />
@@ -430,8 +434,12 @@ export default function LandingPage() {
                 <div
                   className="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4"
                   style={{
-                    background: `${layer.color}12`,
-                    border: `1px solid ${layer.color}20`,
+                    background: layer.color.startsWith("var(")
+                      ? `color-mix(in srgb, ${layer.color} 7%, transparent)`
+                      : `${layer.color}12`,
+                    border: layer.color.startsWith("var(")
+                      ? `1px solid color-mix(in srgb, ${layer.color} 12%, transparent)`
+                      : `1px solid ${layer.color}20`,
                   }}
                 >
                   <layer.icon size={22} style={{ color: layer.color }} />

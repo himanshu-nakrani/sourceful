@@ -27,6 +27,16 @@ ARTIFACT_TYPES = {
 
 
 def _serialize(row: dict[str, Any]) -> dict[str, Any]:
+    """Serialize a database row to an artifact dict.
+
+    Parses the metadata_json field and returns a clean artifact representation.
+
+    Args:
+        row: The database row dict.
+
+    Returns:
+        A serialized artifact dict with parsed metadata.
+    """
     metadata: dict[str, Any] = {}
     raw_meta = row.get("metadata_json")
     if raw_meta:
@@ -56,6 +66,18 @@ async def list_artifacts(
     *,
     artifact_type: str | None = None,
 ) -> list[dict[str, Any]]:
+    """List artifacts in a workspace, optionally filtered by type.
+
+    Args:
+        workspace_id: The workspace ID.
+        artifact_type: Optional artifact type to filter by.
+
+    Returns:
+        A list of serialized artifact dicts, ordered by updated_at DESC.
+
+    Raises:
+        ValueError: If artifact_type is not a valid ARTIFACT_TYPES value.
+    """
     if artifact_type and artifact_type not in ARTIFACT_TYPES:
         raise ValueError(f"Invalid artifact_type: {artifact_type}")
     if artifact_type:
@@ -76,6 +98,15 @@ async def list_artifacts(
 
 
 async def get_artifact(artifact_id: str, workspace_id: str) -> dict[str, Any] | None:
+    """Retrieve a single artifact by ID.
+
+    Args:
+        artifact_id: The artifact ID.
+        workspace_id: The workspace ID (for scoping).
+
+    Returns:
+        The serialized artifact dict, or None if not found.
+    """
     row = await fetch_one(
         "SELECT * FROM workspace_artifacts WHERE id = ? AND workspace_id = ?",
         (artifact_id, workspace_id),
@@ -93,6 +124,23 @@ async def create_artifact(
     source_message_id: str | None = None,
     created_by: str | None = None,
 ) -> dict[str, Any]:
+    """Create a new artifact in a workspace.
+
+    Args:
+        workspace_id: The workspace ID.
+        artifact_type: The type of artifact (must be in ARTIFACT_TYPES).
+        title: The artifact title.
+        content: The artifact content.
+        metadata: Optional metadata dict.
+        source_message_id: Optional source message ID for provenance.
+        created_by: Optional creator ID.
+
+    Returns:
+        The created artifact dict.
+
+    Raises:
+        ValueError: If artifact_type is invalid, title is empty, or content is empty.
+    """
     if artifact_type not in ARTIFACT_TYPES:
         raise ValueError(f"Invalid artifact_type: {artifact_type}")
     title_clean = title.strip()
@@ -133,6 +181,23 @@ async def update_artifact(
     content: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
+    """Update an existing artifact.
+
+    Only updates fields that are provided (partial update).
+
+    Args:
+        artifact_id: The artifact ID.
+        workspace_id: The workspace ID.
+        title: Optional new title.
+        content: Optional new content.
+        metadata: Optional new metadata dict.
+
+    Returns:
+        The updated artifact dict, or None if not found.
+
+    Raises:
+        ValueError: If title or content is provided but empty.
+    """
     existing = await get_artifact(artifact_id, workspace_id)
     if not existing:
         return None
@@ -164,6 +229,15 @@ async def update_artifact(
 
 
 async def delete_artifact(artifact_id: str, workspace_id: str) -> bool:
+    """Delete an artifact from a workspace.
+
+    Args:
+        artifact_id: The artifact ID.
+        workspace_id: The workspace ID.
+
+    Returns:
+        True if the artifact was deleted, False if it didn't exist.
+    """
     existing = await get_artifact(artifact_id, workspace_id)
     if not existing:
         return False

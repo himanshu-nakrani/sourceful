@@ -201,7 +201,7 @@ class UrlSourceAdapter(SourceAdapter):
                 success=True,
                 content=content,
                 checksum=new_checksum,
-                synced_at=datetime.utcnow(),
+                synced_at=datetime.now(timezone.utc),
                 changed=True,
             )
         except SourceFetchError as e:
@@ -209,7 +209,7 @@ class UrlSourceAdapter(SourceAdapter):
                 success=False,
                 error=e.message,
                 checksum=last_checksum,
-                synced_at=datetime.utcnow(),
+                synced_at=datetime.now(timezone.utc),
                 changed=False,
             )
 

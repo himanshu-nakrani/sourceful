@@ -32,6 +32,26 @@ async def enqueue_ingest_job(
     raw: bytes,
     workspace_id: str | None = None,
 ) -> tuple[dict, dict | None, bool]:
+    """Enqueue a document ingestion job, handling deduplication.
+
+    Checks if a document with the same checksum already exists. If so, returns
+    the existing document and optionally attaches it to a workspace. Otherwise,
+    creates a new document and job entry.
+
+    Args:
+        owner_id: The owner's session or user ID.
+        provider: The embedding provider ('openai' or 'gemini').
+        embedding_model: The embedding model to use.
+        provider_api_key: API key for the provider.
+        filename: The name of the uploaded file.
+        mime_type: The MIME type of the file.
+        checksum: SHA-256 checksum of the file content.
+        raw: The raw bytes of the file content.
+        workspace_id: Optional workspace ID to attach the document to.
+
+    Returns:
+        A tuple of (document_dict, job_dict_or_None, was_deduplicated_bool).
+    """
     existing = await fetch_one(
         """
         SELECT * FROM documents
@@ -99,6 +119,22 @@ async def enqueue_reprocess_job(
     provider_api_key: str | None,
     embedding_model: str | None = None,
 ) -> tuple[dict, dict]:
+    """Enqueue a reprocessing job for an existing document.
+
+    Re-embeds and re-indexes a document with a new model or provider.
+
+    Args:
+        owner_id: The owner's session or user ID.
+        document_id: The ID of the document to reprocess.
+        provider_api_key: Optional API key override.
+        embedding_model: Optional embedding model override.
+
+    Returns:
+        A tuple of (document_dict, job_dict).
+
+    Raises:
+        ValueError: If the document is not found.
+    """
     document = await fetch_one(
         "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
         (document_id, owner_id),
@@ -146,6 +182,14 @@ async def enqueue_reprocess_job(
 
 
 async def claim_next_job() -> dict | None:
+    """Claim the next queued job for processing using SKIP LOCKED semantics.
+
+    Returns the job if one is available and successfully claimed, otherwise None.
+    Updates the job status to 'processing' and records the start time.
+
+    Returns:
+        The claimed job dict, or None if no jobs are available.
+    """
     retry_due_sql = "NOW()" if settings.using_postgres else "CURRENT_TIMESTAMP"
     row = await fetch_one(
         f"""
@@ -187,6 +231,15 @@ async def claim_next_job() -> dict | None:
 
 
 async def get_job(owner_id: str, job_id: str) -> dict | None:
+    """Retrieve a job by ID for a specific owner.
+
+    Args:
+        owner_id: The owner's session or user ID.
+        job_id: The job ID to retrieve.
+
+    Returns:
+        The job dict if found, otherwise None.
+    """
     return await fetch_one(
         "SELECT * FROM document_jobs WHERE id = ? AND owner_id = ?",
         (job_id, owner_id),
@@ -194,6 +247,22 @@ async def get_job(owner_id: str, job_id: str) -> dict | None:
 
 
 async def process_job(job: dict) -> None:
+    """Process a document ingestion job through extraction, chunking, and embedding.
+
+    This is the main worker function that:
+    1. Extracts text from the document
+    2. Chunks the text according to configured strategy
+    3. Optionally applies contextual retrieval enrichment
+    4. Generates embeddings for all chunks
+    5. Stores chunks in the vector store
+    6. Optionally builds a knowledge graph
+    7. Updates document and job status
+
+    Handles errors with exponential backoff retry up to max_attempts.
+
+    Args:
+        job: The job dict containing all necessary metadata.
+    """
     job_id = job["id"]
     document_id = job["document_id"]
     owner_id = job["owner_id"]
@@ -438,6 +507,22 @@ async def _process_vertex_search_job(
 
 
 async def _build_chunks(job: dict):
+    """Build chunk payloads from the document or existing chunks.
+
+    If the job has payload_bytes, extracts text and chunks it according to
+    the configured strategy (parent-child, semantic, or fixed-size).
+    Otherwise, reuses existing chunks from the database for reprocessing.
+
+    Args:
+        job: The job dict containing payload or document_id.
+
+    Returns:
+        A list of ChunkPayload objects.
+
+    Raises:
+        ValueError: If no payload or existing chunks are available,
+                    or if the document produces too many chunks.
+    """
     payload_bytes = job.get("payload_bytes")
     if payload_bytes:
         extracted = extract_document(filename=job["payload_filename"], raw=bytes(payload_bytes))
@@ -486,6 +571,15 @@ async def _build_chunks(job: dict):
 
 
 async def _resolve_page_count(job: dict, chunks) -> int | None:
+    """Resolve the page count from the document or chunk metadata.
+
+    Args:
+        job: The job dict (may contain payload_bytes).
+        chunks: The list of chunk payloads.
+
+    Returns:
+        The page count if available, otherwise None.
+    """
     if job.get("payload_bytes"):
         extracted = extract_document(filename=job["payload_filename"], raw=bytes(job["payload_bytes"]))
         return extracted.page_count
@@ -569,6 +663,14 @@ async def _maybe_build_graph(job: dict, chunks) -> None:
 
 
 async def worker_forever(stop_event: asyncio.Event | None = None) -> None:
+    """Run the worker loop, claiming and processing jobs indefinitely.
+
+    Polls for queued jobs at the configured interval and processes them.
+    Stops if the optional stop_event is set.
+
+    Args:
+        stop_event: Optional event to signal graceful shutdown.
+    """
     while True:
         if stop_event and stop_event.is_set():
             return
@@ -580,6 +682,16 @@ async def worker_forever(stop_event: asyncio.Event | None = None) -> None:
 
 
 def _next_retry_timestamp(attempt_count: int):
+    """Calculate the next retry timestamp with exponential backoff.
+
+    Delay formula: min(120, 5 * 2^(attempt_count - 1)) seconds.
+
+    Args:
+        attempt_count: The current attempt number (1-indexed).
+
+    Returns:
+        A datetime object for Postgres or a formatted string for SQLite.
+    """
     # Exponential backoff in seconds: 5, 10, 20 ... capped at 120s.
     delay = min(120, 5 * (2 ** max(0, attempt_count - 1)))
     due = datetime.now(timezone.utc) + timedelta(seconds=delay)

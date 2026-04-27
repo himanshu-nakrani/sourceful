@@ -13,6 +13,14 @@ TIMESTAMP_SQL = "NOW()" if settings.using_postgres else "CURRENT_TIMESTAMP"
 
 
 def _serialize(row: dict[str, Any]) -> dict[str, Any]:
+    """Serialize a database row to a sync run dict.
+
+    Args:
+        row: The database row dict.
+
+    Returns:
+        A serialized sync run dict.
+    """
     return {
         "id": row["id"],
         "workspace_id": row["workspace_id"],
@@ -26,6 +34,17 @@ def _serialize(row: dict[str, Any]) -> dict[str, Any]:
 
 
 async def start_run(*, workspace_id: str, source_id: str) -> str:
+    """Start a new sync run for a workspace source.
+
+    Creates a sync run record and updates the source's last_sync_status.
+
+    Args:
+        workspace_id: The workspace ID.
+        source_id: The source ID to sync.
+
+    Returns:
+        The new run ID.
+    """
     run_id = str(uuid.uuid4())
     await execute(
         f"""
@@ -51,6 +70,20 @@ async def finish_run(
     error_message: str | None = None,
     checksum: str | None = None,
 ) -> None:
+    """Complete a sync run with success or error status.
+
+    Updates the run record and mirrors the status to the source.
+
+    Args:
+        run_id: The run ID to complete.
+        source_id: The source ID to update.
+        status: Either 'success' or 'error'.
+        error_message: Optional error message if status is 'error'.
+        checksum: Optional content checksum for change detection.
+
+    Raises:
+        ValueError: If status is not 'success' or 'error'.
+    """
     if status not in {"success", "error"}:
         raise ValueError(f"Invalid run status: {status}")
     await execute(
@@ -68,6 +101,16 @@ async def finish_run(
 
 
 async def list_runs(*, workspace_id: str, source_id: str, limit: int = 25) -> list[dict[str, Any]]:
+    """List sync runs for a workspace source.
+
+    Args:
+        workspace_id: The workspace ID.
+        source_id: The source ID.
+        limit: Maximum number of runs to return.
+
+    Returns:
+        A list of serialized sync run dicts, ordered by started_at DESC.
+    """
     rows = await fetch_all(
         f"""
         SELECT * FROM workspace_source_sync_runs
@@ -81,6 +124,15 @@ async def list_runs(*, workspace_id: str, source_id: str, limit: int = 25) -> li
 
 
 async def latest_run(*, workspace_id: str, source_id: str) -> dict[str, Any] | None:
+    """Get the most recent sync run for a workspace source.
+
+    Args:
+        workspace_id: The workspace ID.
+        source_id: The source ID.
+
+    Returns:
+        The serialized sync run dict, or None if no runs exist.
+    """
     row = await fetch_one(
         """
         SELECT * FROM workspace_source_sync_runs

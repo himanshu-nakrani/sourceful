@@ -305,7 +305,7 @@ export default function WorkspaceMembersPanel({
                           void handleRoleChange(member, e.target.value as WorkspaceRole)
                         }
                         disabled={busy}
-                        className="text-[11px] px-2 py-1 rounded-md outline-none"
+                        className="text-[11px] px-2 py-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
                         style={{
                           background: "var(--bg-primary)",
                           color: "var(--text-primary)",
@@ -338,7 +338,7 @@ export default function WorkspaceMembersPanel({
                       value={memberUserId}
                       onChange={(e) => setMemberUserId(e.target.value)}
                       placeholder="User ID"
-                      className="flex-1 min-w-[180px] bg-transparent text-xs outline-none rounded-lg px-2 py-1.5"
+                      className="flex-1 min-w-[180px] bg-transparent text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] rounded-lg px-2 py-1.5"
                       style={{
                         color: "var(--text-primary)",
                         background: "var(--bg-surface)",
@@ -348,7 +348,7 @@ export default function WorkspaceMembersPanel({
                     <select
                       value={memberRole}
                       onChange={(e) => setMemberRole(e.target.value as WorkspaceRole)}
-                      className="text-xs px-2 py-1.5 rounded-lg outline-none"
+                      className="text-xs px-2 py-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
                       style={{
                         color: "var(--text-primary)",
                         background: "var(--bg-surface)",
@@ -447,7 +447,7 @@ export default function WorkspaceMembersPanel({
                       onChange={(e) => setInviteEmail(e.target.value)}
                       placeholder="teammate@example.com"
                       type="email"
-                      className="flex-1 min-w-[200px] bg-transparent text-xs outline-none rounded-lg px-2 py-1.5"
+                      className="flex-1 min-w-[200px] bg-transparent text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] rounded-lg px-2 py-1.5"
                       style={{
                         color: "var(--text-primary)",
                         background: "var(--bg-surface)",
@@ -457,7 +457,7 @@ export default function WorkspaceMembersPanel({
                     <select
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value as WorkspaceRole)}
-                      className="text-xs px-2 py-1.5 rounded-lg outline-none"
+                      className="text-xs px-2 py-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
                       style={{
                         color: "var(--text-primary)",
                         background: "var(--bg-surface)",

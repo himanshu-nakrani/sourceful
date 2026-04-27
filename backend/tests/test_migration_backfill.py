@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, fetch_one
 
 
 @pytest.mark.asyncio

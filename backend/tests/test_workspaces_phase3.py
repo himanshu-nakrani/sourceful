@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from backend.database import execute, fetch_one
+from backend.database import execute
 
 
 HEADERS_OWNER = {"X-Client-Session": "ph3-owner"}

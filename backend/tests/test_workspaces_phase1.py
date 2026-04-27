@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, fetch_all
 
 
 HEADERS = {"X-Client-Session": "ph1-tester"}

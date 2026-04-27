@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DocRAG - Traceable Document Intelligence",
+  title: "DocRAG — AI-Powered Document Intelligence",
   description:
     "Upload PDFs, DOCX, and text files, index them with embeddings, then ask document questions with cited retrieval and source review. Supports OpenAI and Google Gemini.",
   keywords: ["RAG", "document QA", "citations", "embeddings", "OpenAI", "Gemini", "PDF"],

@@ -7,7 +7,7 @@ from httpx import AsyncClient
 @pytest.mark.asyncio
 async def test_e2e_workspace_lifecycle(client: AsyncClient):
     """Verify complete workspace lifecycle: create, add sources, chat, artifacts."""
-    from backend.database import execute, fetch_all, fetch_one
+    from backend.database import execute, fetch_one
     import uuid
 
     owner_scope = "test:e2e-workspace-lifecycle"
@@ -125,7 +125,7 @@ async def test_e2e_workspace_lifecycle(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_e2e_workspace_isolation(client: AsyncClient):
     """Verify that data is properly isolated between workspaces."""
-    from backend.database import execute, fetch_all, fetch_one
+    from backend.database import execute, fetch_all
     import uuid
 
     owner_scope = "test:e2e-workspace-isolation"
@@ -211,7 +211,7 @@ async def test_e2e_workspace_isolation(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_e2e_workspace_cascade_delete(client: AsyncClient):
     """Verify that deleting a workspace cascades to related data."""
-    from backend.database import execute, fetch_all, fetch_one
+    from backend.database import execute, fetch_one
     import uuid
 
     owner_scope = "test:e2e-cascade-delete"

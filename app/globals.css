@@ -3,8 +3,8 @@
 @import "tailwindcss";
 
 /* ===================================================================
-   Design System - DocRAG Precision Intelligence Workspace
-   Restrained material surfaces, provenance accents, and trust-first UI
+   Design System — Document RAG · Premium Redesign
+   UI/UX Pro Max — Modern Minimalism + Glassmorphism
    =================================================================== */
 
 :root {
@@ -23,27 +23,27 @@
   --text-muted: #3f3f46;
   --text-faint: #27272a;
 
-  /* --- Primary accent: reserved for trust/provenance cues --- */
+  /* --- Primary accent: Teal-to-Violet gradient system --- */
   --accent-primary: #14b8a6;
   --accent-primary-hover: #2dd4bf;
   --accent-primary-soft: rgba(20, 184, 166, 0.08);
-  --accent-primary-glow: rgba(20, 184, 166, 0.08);
+  --accent-primary-glow: rgba(20, 184, 166, 0.15);
 
   --accent-secondary: #8b5cf6;
   --accent-secondary-hover: #a78bfa;
   --accent-secondary-soft: rgba(139, 92, 246, 0.08);
 
-  /* Accent gradient: use sparingly for provenance cues, not default chrome */
+  /* CTA gradient */
   --gradient-accent: linear-gradient(135deg, #14b8a6 0%, #8b5cf6 100%);
   --gradient-accent-hover: linear-gradient(135deg, #2dd4bf 0%, #a78bfa 100%);
-  --gradient-accent-soft: linear-gradient(135deg, rgba(20,184,166,0.07) 0%, rgba(139,92,246,0.07) 100%);
+  --gradient-accent-soft: linear-gradient(135deg, rgba(20,184,166,0.12) 0%, rgba(139,92,246,0.12) 100%);
 
   /* Solid action (buttons, send) */
   --accent: #f4f4f5;
   --accent-fg: #09090b;
   --accent-hover: #d4d4d8;
   --accent-soft: rgba(244, 244, 245, 0.04);
-  --accent-glow: rgba(244, 244, 245, 0.04);
+  --accent-glow: rgba(244, 244, 245, 0.08);
 
   /* Backward-compat alias for existing code using --accent-brand */
   --accent-brand: #14b8a6;
@@ -83,11 +83,11 @@
   --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
   --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.55);
-  --shadow-glow-teal: 0 0 16px rgba(20, 184, 166, 0.06);
-  --shadow-glow-violet: 0 0 16px rgba(139, 92, 246, 0.06);
-  --shadow-glow: 0 0 14px rgba(20, 184, 166, 0.05);
+  --shadow-glow-teal: 0 0 24px rgba(20, 184, 166, 0.12);
+  --shadow-glow-violet: 0 0 24px rgba(139, 92, 246, 0.12);
+  --shadow-glow: 0 0 20px rgba(20, 184, 166, 0.1);
 
-  /* --- Translucent material overlays --- */
+  /* --- Glass --- */
   --glass-bg: rgba(9, 9, 11, 0.72);
   --glass-border: rgba(255, 255, 255, 0.06);
   --glass-blur: 20px;
@@ -162,7 +162,7 @@
   --accent-primary: #0d9488;
   --accent-primary-hover: #0f766e;
   --accent-primary-soft: rgba(13, 148, 136, 0.06);
-  --accent-primary-glow: rgba(13, 148, 136, 0.06);
+  --accent-primary-glow: rgba(13, 148, 136, 0.1);
 
   --accent-secondary: #7c3aed;
   --accent-secondary-hover: #6d28d9;
@@ -170,7 +170,7 @@
 
   --gradient-accent: linear-gradient(135deg, #0d9488 0%, #7c3aed 100%);
   --gradient-accent-hover: linear-gradient(135deg, #0f766e 0%, #6d28d9 100%);
-  --gradient-accent-soft: linear-gradient(135deg, rgba(13,148,136,0.05) 0%, rgba(124,58,237,0.05) 100%);
+  --gradient-accent-soft: linear-gradient(135deg, rgba(13,148,136,0.08) 0%, rgba(124,58,237,0.08) 100%);
 
   --accent: #0c0a09;
   --accent-fg: #fafafa;
@@ -200,9 +200,9 @@
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.1);
   --shadow-xl: 0 20px 56px rgba(0, 0, 0, 0.14);
-  --shadow-glow-teal: 0 0 14px rgba(13, 148, 136, 0.05);
-  --shadow-glow-violet: 0 0 14px rgba(124, 58, 237, 0.05);
-  --shadow-glow: 0 0 14px rgba(13, 148, 136, 0.04);
+  --shadow-glow-teal: 0 0 20px rgba(13, 148, 136, 0.08);
+  --shadow-glow-violet: 0 0 20px rgba(124, 58, 237, 0.08);
+  --shadow-glow: 0 0 20px rgba(13, 148, 136, 0.06);
 
   --glass-bg: rgba(255, 255, 255, 0.88);
   --glass-border: rgba(0, 0, 0, 0.06);
@@ -367,6 +367,14 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0); }
 }
 
+@keyframes aurora {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(30px, -30px) rotate(90deg); }
+  50% { transform: translate(-20px, 20px) rotate(180deg); }
+  75% { transform: translate(15px, 10px) rotate(270deg); }
+  100% { transform: translate(0, 0) rotate(360deg); }
+}
+
 @keyframes meshGradient {
   0%, 100% { background-position: 0% 50%; }
   25% { background-position: 100% 0%; }
@@ -439,6 +447,10 @@ body {
   animation: ripple 1.5s ease-out infinite;
 }
 
+.animate-aurora {
+  animation: aurora 20s ease-in-out infinite;
+}
+
 .animate-mesh {
   background-size: 400% 400%;
   animation: meshGradient 15s ease infinite;
@@ -459,7 +471,7 @@ body {
 .stagger-8 { animation-delay: 0.32s; }
 
 /* ===================================================================
-   Translucent material utility
+   Glass morphism utility
    =================================================================== */
 
 .glass {
@@ -487,7 +499,7 @@ body {
   border-radius: inherit;
 }
 
-/* Gradient text utility - reserved for small provenance/status accents */
+/* Gradient text utility */
 .gradient-text {
   background: var(--gradient-accent);
   -webkit-background-clip: text;
@@ -687,9 +699,9 @@ body {
   --accent-primary: #10b981;
   --accent-primary-hover: #34d399;
   --accent-primary-soft: rgba(16, 185, 129, 0.08);
-  --accent-primary-glow: rgba(16, 185, 129, 0.08);
+  --accent-primary-glow: rgba(16, 185, 129, 0.15);
   --gradient-accent: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
-  --shadow-glow: 0 0 14px rgba(16, 185, 129, 0.05);
+  --shadow-glow: 0 0 20px rgba(16, 185, 129, 0.1);
   --focus-ring: rgba(16, 185, 129, 0.4);
   --focus-ring-strong: rgba(16, 185, 129, 0.7);
 }
@@ -701,9 +713,9 @@ body {
   --accent-primary: #f59e0b;
   --accent-primary-hover: #fbbf24;
   --accent-primary-soft: rgba(245, 158, 11, 0.08);
-  --accent-primary-glow: rgba(245, 158, 11, 0.08);
+  --accent-primary-glow: rgba(245, 158, 11, 0.15);
   --gradient-accent: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
-  --shadow-glow: 0 0 14px rgba(245, 158, 11, 0.05);
+  --shadow-glow: 0 0 20px rgba(245, 158, 11, 0.1);
   --focus-ring: rgba(245, 158, 11, 0.4);
   --focus-ring-strong: rgba(245, 158, 11, 0.7);
 }
@@ -795,7 +807,7 @@ body {
 }
 
 /* ===================================================================
-   Confidence rail (left border provenance cue on assistant messages)
+   Confidence rail (left border glow on assistant messages)
    =================================================================== */
 
 .confidence-high-rail {
@@ -846,4 +858,55 @@ body {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
   border-color: var(--border-hover);
+}
+
+/* ===================================================================
+   Bento grid for landing page
+   =================================================================== */
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .bento-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .bento-grid { grid-template-columns: 1fr; }
+}
+
+/* Feature card in bento */
+.bento-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s var(--motion-spring);
+}
+
+.bento-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--gradient-accent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.bento-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.bento-card:hover::before {
+  opacity: 0.6;
 }

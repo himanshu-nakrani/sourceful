@@ -9,14 +9,13 @@ at an authenticated user that has been seeded as a workspace member.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi import Request
 
-from backend.database import execute, fetch_one
+from backend.database import execute
 from backend.routers.deps import RequestContext
 from backend.services import workspace_members, workspace_service
 from backend.services.workspace_rbac import check_workspace_role

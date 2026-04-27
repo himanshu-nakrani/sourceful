@@ -17,7 +17,7 @@ interface SourceGroup {
   citations: Array<{ citation: Citation; globalIndex: number }>;
 }
 
-// Rendering optimization:
+// ⚡ BOLT OPTIMIZATION:
 // Wrapped SourceCard in React.memo to prevent unnecessary re-renders of source
 // citations for older messages during rapid state updates from token streaming.
 const SourceCard = React.memo(function SourceCard({ sources }: SourceCardProps) {

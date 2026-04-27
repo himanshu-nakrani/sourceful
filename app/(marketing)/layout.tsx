@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "DocRAG — AI-Powered Document Intelligence",
-  description: "Enterprise-grade RAG platform with advanced retrieval, multi-modal ingestion, and agentic capabilities.",
+  title: "DocRAG - Traceable Document Intelligence",
+  description: "Self-hostable document QA workspace with cited retrieval, source review, and workspace controls.",
 };
 
 export default function MarketingLayout({

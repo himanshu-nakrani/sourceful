@@ -10,7 +10,6 @@ import {
   PanelLeftOpen,
   RefreshCcw,
   Settings,
-  Sparkles,
   StopCircle,
   ArrowUp,
   Bug,
@@ -495,7 +494,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           animate={{ y: [0, -4, 0] }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Sparkles size={24} style={{ color: "var(--accent-brand)" }} />
+          <FileText size={24} style={{ color: "var(--accent-brand)" }} />
         </motion.div>
         <h3
           className="text-lg font-semibold mb-1"
@@ -1369,7 +1368,7 @@ function ActiveLearningHintBanner({ hint }: { hint: ActiveLearningHint }) {
       role="note"
       aria-label="Retrieval suggestion"
     >
-      <Sparkles size={12} style={{ marginTop: 2 }} />
+      <Focus size={12} style={{ marginTop: 2 }} />
       <div className="flex-1 leading-snug">
         <div style={{ fontWeight: 500 }}>{hint.suggestion}</div>
         <div style={{ color: "var(--text-muted)" }}>

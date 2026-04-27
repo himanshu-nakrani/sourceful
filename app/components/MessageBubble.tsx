@@ -114,7 +114,7 @@ function CitationPills({
   );
 }
 
-// ⚡ BOLT OPTIMIZATION:
+// Streaming optimization:
 // Wrapped MessageBubble in React.memo to prevent expensive ReactMarkdown and
 // SyntaxHighlighter re-renders for all previous messages in the chat history
 // during rapid state updates from token streaming.

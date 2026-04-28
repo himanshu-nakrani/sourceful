@@ -305,7 +305,7 @@ export default function WorkspaceMembersPanel({
                           void handleRoleChange(member, e.target.value as WorkspaceRole)
                         }
                         disabled={busy}
-                        className="text-[11px] px-2 py-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
+className="text-[11px] px-2 py-1 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring-strong)]"
                         style={{
                           background: "var(--bg-primary)",
                           color: "var(--text-primary)",

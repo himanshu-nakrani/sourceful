@@ -318,7 +318,7 @@ export default function WorkspaceNotesPanel({
                         value={draftTitle}
                         onChange={(e) => setDraftTitle(e.target.value)}
                         placeholder="Title"
-                        className="flex-1 bg-transparent text-sm font-semibold outline-none rounded-lg px-2 py-1.5"
+                        className="flex-1 bg-transparent text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] rounded-lg px-2 py-1.5"
                         style={{
                           color: "var(--text-primary)",
                           background: "var(--bg-surface)",
@@ -343,7 +343,7 @@ export default function WorkspaceNotesPanel({
                       onChange={canEdit ? (e) => setDraftContent(e.target.value) : undefined}
                       readOnly={!canEdit}
                       placeholder={canEdit ? "Write your note in markdown…" : "Read-only"}
-                      className="flex-1 min-h-0 mx-4 mb-3 p-3 text-xs leading-relaxed resize-none outline-none rounded-lg"
+                      className="flex-1 min-h-0 mx-4 mb-3 p-3 text-xs leading-relaxed resize-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] rounded-lg"
                       style={{
                         background: "var(--bg-surface)",
                         color: "var(--text-primary)",

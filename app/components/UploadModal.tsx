@@ -312,7 +312,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
                     onChange={(e) => setUrlValue(e.target.value)}
                     placeholder="https://example.com/article"
                     disabled={submitting}
-                    className="rounded-lg px-3 py-2 text-sm outline-none"
+className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring-strong)]"
                     style={{
                       background: "var(--bg-surface)",
                       color: "var(--text-primary)",
@@ -332,7 +332,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
                     onChange={(e) => setUrlTitle(e.target.value)}
                     placeholder="Defaults to page title"
                     disabled={submitting}
-                    className="rounded-lg px-3 py-2 text-sm outline-none"
+                    className="rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
                     style={{
                       background: "var(--bg-surface)",
                       color: "var(--text-primary)",

@@ -679,7 +679,7 @@ def _sse_event(event: str, data: dict | str) -> bytes:
         if orjson is not None:
             payload_bytes = orjson.dumps(data)
         else:
-            payload_bytes = json.dumps(data).encode("utf-8")
+            payload_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
         return _TOKEN_PREFIX + payload_bytes + b"\n\n"
 
     if isinstance(data, str):

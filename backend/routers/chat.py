@@ -51,6 +51,8 @@ router = APIRouter()
 # This yields a measurable performance improvement when parsing message histories with many sources.
 _citation_list_adapter = TypeAdapter(list[Citation])
 
+_TOKEN_PREFIX = b"event: token\ndata: "
+
 
 async def _resolve_workspace_documents(
     *,
@@ -671,6 +673,15 @@ async def _generate_chat_response(
 
 
 def _sse_event(event: str, data: dict | str) -> bytes:
+    if event == "token" and isinstance(data, dict):
+        # ⚡ BOLT OPTIMIZATION: Fast path for high-frequency token events.
+        # Bypasses string encoding and datetime parsing overhead.
+        if orjson is not None:
+            payload_bytes = orjson.dumps(data)
+        else:
+            payload_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        return _TOKEN_PREFIX + payload_bytes + b"\n\n"
+
     if isinstance(data, str):
         payload_bytes = data.encode("utf-8")
     elif orjson is not None:

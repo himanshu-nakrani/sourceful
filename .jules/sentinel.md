@@ -31,3 +31,8 @@
 **Vulnerability:** The `UrlSourceAdapter` in `backend/connectors/adapter.py` fetched arbitrary URLs provided by users via `httpx.AsyncClient` without validating the resolved IP addresses. This could allow an attacker to bypass network perimeters and probe internal network resources (e.g., `localhost`, loopback, or private IP ranges).
 **Learning:** Checking the URL string is not enough to prevent SSRF. Attackers can use DNS rebinding or direct IP addresses. It's critical to resolve the hostname to an IP address at the moment of request and block restricted ranges.
 **Prevention:** Always validate resolved IP addresses for external fetching services. Using an `event_hook` on the HTTP client (`httpx.AsyncClient`) with `ipaddress` provides a reliable way to interrupt requests to private, loopback, link-local, or multicast addresses right before the connection is established.
+
+## 2025-04-29 - [CRITICAL] Refactoring SSRF Protection
+**Vulnerability:** The SSRF protection hook was duplicated across multiple connector files. In addition, there was a risk of breaking integrations like Confluence that might genuinely be hosted on private internal networks.
+**Learning:** Security protections should be centralized in a utility module to avoid code duplication and ensure consistent enforcement across the codebase. Applying strict SSRF rules (blocking private IPs) on connectors that might validly point to on-premise servers (like Jira/Confluence) requires careful consideration and potentially different risk models, although here it was applied universally per the current requirements.
+**Prevention:** Always extract common security hooks (like `prevent_ssrf_hook`) into a central `backend/utils/network.py` or similar location.

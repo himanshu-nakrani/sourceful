@@ -143,31 +143,20 @@ class UrlSourceAdapter(SourceAdapter):
         """Fetch content from a URL."""
         import hashlib
         import httpx
-        import asyncio
-        import ipaddress
-        import socket
+        from backend.utils.network import prevent_ssrf_hook
 
-        async def _prevent_ssrf_hook(request: httpx.Request) -> None:
-            """Event hook to prevent SSRF by blocking access to restricted IP addresses."""
-            host = request.url.host
-            if not host:
-                return
+        async def _prevent_ssrf_hook_with_error(request: httpx.Request) -> None:
             try:
-                loop = asyncio.get_event_loop()
-                addrinfo = await loop.getaddrinfo(host, None)
-                for _, _, _, _, sockaddr in addrinfo:
-                    ip = ipaddress.ip_address(sockaddr[0])
-                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
-                        raise SourceFetchError(
-                            "URL resolves to a restricted network.",
-                            code="URL_RESTRICTED_NETWORK",
-                            status_code=403,
-                            details={"host": host},
-                        )
-            except socket.gaierror:
-                pass
+                await prevent_ssrf_hook(request)
+            except RuntimeError as exc:
+                raise SourceFetchError(
+                    "URL resolves to a restricted network.",
+                    code="URL_RESTRICTED_NETWORK",
+                    status_code=403,
+                    details={"host": request.url.host},
+                ) from exc
 
-        async with httpx.AsyncClient(timeout=30.0, event_hooks={"request": [_prevent_ssrf_hook]}) as client:
+        async with httpx.AsyncClient(timeout=30.0, event_hooks={"request": [_prevent_ssrf_hook_with_error]}) as client:
             try:
                 response = await client.get(source_url, follow_redirects=True)
                 response.raise_for_status()

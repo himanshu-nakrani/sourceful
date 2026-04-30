@@ -56,11 +56,14 @@ class ConfluenceConnector(BaseConnector):
 
         try:
             import httpx
+            from backend.utils.network import get_ssrf_event_hooks
         except ImportError:
             raise RuntimeError("httpx not installed")
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(
+                timeout=30.0, event_hooks=get_ssrf_event_hooks()
+            ) as client:
                 auth = self._auth()
                 headers = self._headers()
 
@@ -69,7 +72,6 @@ class ConfluenceConnector(BaseConnector):
                     self._api_url("/spaces"),
                     auth=auth if self._is_cloud else None,
                     headers=headers,
-                    timeout=30,
                 )
 
                 if response.status_code == 200:
@@ -88,13 +90,18 @@ class ConfluenceConnector(BaseConnector):
 
         try:
             import httpx
+            from backend.utils.network import get_ssrf_event_hooks
         except ImportError:
             raise RuntimeError("httpx not installed")
 
         # Get spaces to crawl
-        space_keys = self.config.options.get("space_keys", []) if self.config.options else []
+        space_keys = (
+            self.config.options.get("space_keys", []) if self.config.options else []
+        )
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            timeout=30.0, event_hooks=get_ssrf_event_hooks()
+        ) as client:
             auth = self._auth()
             headers = self._headers()
 
@@ -105,7 +112,6 @@ class ConfluenceConnector(BaseConnector):
                         self._api_url("/spaces"),
                         auth=auth if self._is_cloud else None,
                         headers=headers,
-                        timeout=30,
                     )
                     if response.status_code == 200:
                         data = response.json()
@@ -136,11 +142,12 @@ class ConfluenceConnector(BaseConnector):
                             params=params,
                             auth=auth if self._is_cloud else None,
                             headers=headers,
-                            timeout=30,
                         )
 
                         if response.status_code != 200:
-                            print(f"Error fetching pages for space {space_key}: {response.status_code}")
+                            print(
+                                f"Error fetching pages for space {space_key}: {response.status_code}"
+                            )
                             break
 
                         data = response.json()
@@ -159,7 +166,9 @@ class ConfluenceConnector(BaseConnector):
                             modified_at = None
                             if modified_str:
                                 try:
-                                    modified_at = datetime.fromisoformat(modified_str.replace("Z", "+00:00"))
+                                    modified_at = datetime.fromisoformat(
+                                        modified_str.replace("Z", "+00:00")
+                                    )
                                 except ValueError:
                                     pass
 
@@ -203,6 +212,7 @@ class ConfluenceConnector(BaseConnector):
 
         try:
             import httpx
+            from backend.utils.network import get_ssrf_event_hooks
         except ImportError:
             raise RuntimeError("httpx not installed")
 
@@ -210,18 +220,21 @@ class ConfluenceConnector(BaseConnector):
         auth = self._auth()
         headers = self._headers()
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            timeout=30.0, event_hooks=get_ssrf_event_hooks()
+        ) as client:
             # Get page content with body storage
             response = await client.get(
                 self._api_url(f"/pages/{page_id}"),
                 params={"body-format": "storage"},
                 auth=auth if self._is_cloud else None,
                 headers=headers,
-                timeout=30,
             )
 
             if response.status_code != 200:
-                raise RuntimeError(f"Failed to fetch page {page_id}: {response.status_code}")
+                raise RuntimeError(
+                    f"Failed to fetch page {page_id}: {response.status_code}"
+                )
 
             data = response.json()
             body = data.get("body", {}).get("storage", {}).get("value", "")
@@ -254,6 +267,7 @@ class ConfluenceConnector(BaseConnector):
                     )
 
                     import hashlib
+
                     new_hash = hashlib.sha256(content).hexdigest()[:32]
 
                     if existing:

@@ -37,15 +37,17 @@ class NotionConnector(BaseConnector):
 
         try:
             import httpx
+            from backend.utils.network import get_ssrf_event_hooks
         except ImportError:
             raise RuntimeError("httpx not installed")
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(
+                timeout=30.0, event_hooks=get_ssrf_event_hooks()
+            ) as client:
                 response = await client.get(
                     f"{self._base_url}/users",
                     headers=self._headers(),
-                    timeout=30,
                 )
                 if response.status_code == 200:
                     return True, None
@@ -60,11 +62,14 @@ class NotionConnector(BaseConnector):
 
         try:
             import httpx
+            from backend.utils.network import get_ssrf_event_hooks
         except ImportError:
             raise RuntimeError("httpx not installed")
 
         page_cursor = None
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            timeout=30.0, event_hooks=get_ssrf_event_hooks()
+        ) as client:
             while True:
                 try:
                     # Search for pages (excludes databases)
@@ -79,7 +84,6 @@ class NotionConnector(BaseConnector):
                         f"{self._base_url}/search",
                         headers=self._headers(),
                         json=body,
-                        timeout=30,
                     )
                     response.raise_for_status()
                     data = response.json()
@@ -91,8 +95,7 @@ class NotionConnector(BaseConnector):
                         title = ""
                         if "title" in title_prop:
                             title = "".join(
-                                t.get("plain_text", "")
-                                for t in title_prop["title"]
+                                t.get("plain_text", "") for t in title_prop["title"]
                             )
                         if not title:
                             title = f"Untitled ({page_id[:8]})"
@@ -105,7 +108,9 @@ class NotionConnector(BaseConnector):
                         modified_at = None
                         if modified_str:
                             try:
-                                modified_at = datetime.fromisoformat(modified_str.replace("Z", "+00:00"))
+                                modified_at = datetime.fromisoformat(
+                                    modified_str.replace("Z", "+00:00")
+                                )
                             except ValueError:
                                 pass
 
@@ -116,7 +121,9 @@ class NotionConnector(BaseConnector):
                         created_at = None
                         if created_str:
                             try:
-                                created_at = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                                created_at = datetime.fromisoformat(
+                                    created_str.replace("Z", "+00:00")
+                                )
                             except ValueError:
                                 pass
 
@@ -149,20 +156,24 @@ class NotionConnector(BaseConnector):
 
         try:
             import httpx
+            from backend.utils.network import get_ssrf_event_hooks
         except ImportError:
             raise RuntimeError("httpx not installed")
 
         blocks = []
         block_cursor = None
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            timeout=30.0, event_hooks=get_ssrf_event_hooks()
+        ) as client:
             while True:
                 url = f"{self._base_url}/blocks/{page_id}/children"
                 if block_cursor:
                     url += f"?start_cursor={block_cursor}"
 
                 response = await client.get(
-                    url, headers=self._headers(), timeout=30
+                    url,
+                    headers=self._headers(),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -253,6 +264,7 @@ class NotionConnector(BaseConnector):
                     )
 
                     import hashlib
+
                     new_hash = hashlib.sha256(content).hexdigest()[:32]
 
                     if existing:

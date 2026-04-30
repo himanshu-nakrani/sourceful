@@ -13,7 +13,7 @@ async def prevent_ssrf_hook(request: httpx.Request) -> None:
         addrinfo = await loop.getaddrinfo(host, None)
         for _, _, _, _, sockaddr in addrinfo:
             ip = ipaddress.ip_address(sockaddr[0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+            if not ip.is_global:
                 raise RuntimeError(
                     "URL resolves to a restricted network.",
                 )

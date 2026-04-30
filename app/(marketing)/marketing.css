@@ -1,0 +1,552 @@
+/* ===================================================================
+   Marketing Theme — Warm Editorial Aesthetic
+   Fraunces + Instrument Sans · Terracotta + Sage · Cream background
+   =================================================================== */
+
+.marketing {
+  font-family: var(--font-instrument-sans), system-ui, -apple-system, sans-serif;
+
+  /* ── Brand palette ─────────────────────────────────────────────── */
+  --mk-cream: #FDFBF7;
+  --mk-warm-sand: #F5F0E8;
+  --mk-clay: #EBE3D7;
+  --mk-espresso: #1C1814;
+  --mk-warm-gray: #6B6054;
+  --mk-stone: #A69888;
+  --mk-terracotta: #D35D47;
+  --mk-terracotta-hover: #E87763;
+  --mk-sage: #4A7C59;
+  --mk-sage-hover: #5C9A6E;
+  --mk-sunset: #E8925D;
+
+  /* ── Map to existing CSS variables ─────────────────────────────── */
+  --bg-primary: var(--mk-cream);
+  --bg-secondary: var(--mk-warm-sand);
+  --bg-tertiary: var(--mk-clay);
+  --bg-surface: #FFFFFF;
+  --bg-surface-hover: #F9F3EB;
+  --bg-elevated: #EDE6DB;
+  --bg-highest: #E3D9CA;
+
+  --text-primary: var(--mk-espresso);
+  --text-secondary: var(--mk-warm-gray);
+  --text-tertiary: var(--mk-stone);
+  --text-muted: #C4B8A8;
+  --text-faint: #DFD4C4;
+
+  --accent-primary: var(--mk-terracotta);
+  --accent-primary-hover: var(--mk-terracotta-hover);
+  --accent-primary-soft: rgba(211, 93, 71, 0.06);
+  --accent-primary-glow: rgba(211, 93, 71, 0.12);
+
+  --accent-secondary: var(--mk-sage);
+  --accent-secondary-hover: var(--mk-sage-hover);
+  --accent-secondary-soft: rgba(74, 124, 89, 0.06);
+
+  --gradient-accent: linear-gradient(135deg, #D35D47 0%, var(--mk-sunset) 100%);
+  --gradient-accent-hover: linear-gradient(135deg, #E87763 0%, #EFA87D 100%);
+  --gradient-accent-soft: linear-gradient(135deg, rgba(211,93,71,0.05) 0%, rgba(232,146,93,0.05) 100%);
+
+  --accent: var(--mk-espresso);
+  --accent-fg: var(--mk-cream);
+  --accent-hover: #3D3530;
+  --accent-soft: rgba(28, 24, 20, 0.04);
+  --accent-glow: rgba(28, 24, 20, 0.06);
+
+  --accent-brand: var(--mk-terracotta);
+  --accent-brand-hover: var(--mk-terracotta-hover);
+  --accent-brand-soft: rgba(211, 93, 71, 0.06);
+
+  --success: var(--mk-sage);
+  --success-soft: rgba(74, 124, 89, 0.06);
+  --warning: #D97706;
+  --warning-soft: rgba(217, 119, 6, 0.06);
+  --error: #DC2626;
+  --error-soft: rgba(220, 38, 38, 0.06);
+  --info: #4A7C59;
+  --info-soft: rgba(74, 124, 89, 0.06);
+
+  --border: rgba(28, 24, 20, 0.06);
+  --border-hover: rgba(28, 24, 20, 0.12);
+  --border-accent: rgba(28, 24, 20, 0.2);
+  --border-strong: rgba(28, 24, 20, 0.28);
+
+  --shadow-xs: 0 1px 2px rgba(28, 24, 20, 0.03);
+  --shadow-sm: 0 2px 8px rgba(28, 24, 20, 0.04);
+  --shadow-md: 0 4px 20px rgba(28, 24, 20, 0.06);
+  --shadow-lg: 0 16px 48px rgba(28, 24, 20, 0.08);
+  --shadow-xl: 0 24px 64px rgba(28, 24, 20, 0.1);
+  --shadow-glow-teal: 0 0 24px rgba(211, 93, 71, 0.1);
+  --shadow-glow-violet: 0 0 24px rgba(74, 124, 89, 0.08);
+  --shadow-glow: 0 0 20px rgba(211, 93, 71, 0.08);
+
+  --glass-bg: rgba(253, 251, 247, 0.85);
+  --glass-border: rgba(28, 24, 20, 0.06);
+  --glass-blur: 20px;
+
+  --surface-1: var(--bg-secondary);
+  --surface-2: var(--bg-surface);
+  --surface-3: var(--bg-elevated);
+
+  --focus-ring: rgba(211, 93, 71, 0.3);
+  --focus-ring-strong: rgba(211, 93, 71, 0.5);
+
+  --confidence-high: var(--mk-sage);
+  --confidence-high-soft: rgba(74, 124, 89, 0.06);
+  --confidence-high-rail: rgba(74, 124, 89, 0.12);
+  --confidence-med: var(--mk-terracotta);
+  --confidence-med-soft: rgba(211, 93, 71, 0.06);
+  --confidence-low: #D97706;
+  --confidence-low-soft: rgba(217, 119, 6, 0.06);
+  --confidence-unverified: #DC2626;
+  --confidence-unverified-soft: rgba(220, 38, 38, 0.06);
+
+  --provenance-strong: var(--mk-sage);
+  --provenance-strong-soft: rgba(74, 124, 89, 0.06);
+  --provenance-weak: #D35D47;
+  --provenance-weak-soft: rgba(211, 93, 71, 0.06);
+
+  /* ── Typography tokens ─────────────────────────────────────────── */
+  --text-xs: 0.6875rem;
+  --text-label: 0.75rem;
+  --text-body-sm: 0.8125rem;
+  --text-body: 0.875rem;
+  --text-body-lg: 0.9375rem;
+  --text-title-sm: 1.0625rem;
+  --text-title: 1.25rem;
+  --text-heading: 1.5rem;
+  --text-display-sm: 2rem;
+  --text-display: 2.5rem;
+  --text-display-lg: 3.5rem;
+
+  /* ── Motion ────────────────────────────────────────────────────── */
+  --motion-fast: 0.15s;
+  --motion-normal: 0.25s;
+  --motion-slow: 0.4s;
+  --motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-in: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+/* ── Grain texture overlay ───────────────────────────────────────── */
+
+.marketing .grain-bg {
+  position: relative;
+}
+
+.marketing .grain-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+}
+
+/* ── Editorial heading ───────────────────────────────────────────── */
+
+.marketing .editorial-heading {
+  font-family: var(--font-fraunces), 'Times New Roman', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.marketing .editorial-display {
+  font-family: var(--font-fraunces), 'Times New Roman', Georgia, serif;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+}
+
+/* ── Accent divider line ─────────────────────────────────────────── */
+
+.marketing .accent-divider {
+  width: 72px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--gradient-accent);
+}
+
+.marketing .accent-divider-sm {
+  width: 40px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--gradient-accent);
+}
+
+/* ── Feature cards (editorial style) ─────────────────────────────── */
+
+.marketing .feature-card {
+  background: var(--bg-surface);
+  border-left: 3px solid transparent;
+  border-image: var(--gradient-accent) 1;
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  padding: 1.75rem;
+  transition: transform 0.3s var(--motion-spring), box-shadow 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.marketing .feature-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-accent-soft);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  border-radius: inherit;
+}
+
+.marketing .feature-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+
+.marketing .feature-card:hover::after {
+  opacity: 1;
+}
+
+/* ── Architecture timeline ───────────────────────────────────────── */
+
+.marketing .timeline-step {
+  position: relative;
+  padding-left: 2.5rem;
+}
+
+.marketing .timeline-step::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--gradient-accent);
+}
+
+.marketing .timeline-step::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1.5rem;
+  bottom: -1.5rem;
+  width: 2px;
+  background: var(--border-hover);
+  border-radius: 1px;
+}
+
+.marketing .timeline-step:last-child::after {
+  display: none;
+}
+
+/* ── Tech pill ───────────────────────────────────────────────────── */
+
+.marketing .tech-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-full);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.marketing .tech-pill:hover {
+  border-color: var(--mk-terracotta);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(211, 93, 71, 0.08);
+}
+
+/* ── CTA button (warm) ───────────────────────────────────────────── */
+
+.marketing .btn-primary-warm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 2rem;
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--gradient-accent);
+  color: #FFFFFF;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  text-decoration: none;
+}
+
+.marketing .btn-primary-warm:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(211, 93, 71, 0.25);
+}
+
+.marketing .btn-outline-warm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 2rem;
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-primary);
+  border: 1.5px solid var(--border-hover);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  text-decoration: none;
+}
+
+.marketing .btn-outline-warm:hover {
+  border-color: var(--mk-terracotta);
+  background: rgba(211, 93, 71, 0.03);
+}
+
+/* ── Decorative radial blobs ─────────────────────────────────────── */
+
+.marketing .warm-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.marketing .warm-blob-terracotta {
+  background: radial-gradient(circle, rgba(211, 93, 71, 0.08), transparent 65%);
+}
+
+.marketing .warm-blob-sage {
+  background: radial-gradient(circle, rgba(74, 124, 89, 0.05), transparent 65%);
+}
+
+.marketing .warm-blob-sunset {
+  background: radial-gradient(circle, rgba(232, 146, 93, 0.06), transparent 65%);
+}
+
+/* ── Staggered reveal animation ──────────────────────────────────── */
+
+@keyframes editorialReveal {
+  from { opacity: 0; filter: blur(8px); transform: translateY(16px); }
+  to { opacity: 1; filter: blur(0px); transform: translateY(0); }
+}
+
+.marketing .reveal {
+  animation: editorialReveal 0.7s var(--motion-spring) forwards;
+  opacity: 0;
+}
+
+.marketing .reveal-1 { animation-delay: 0.05s; }
+.marketing .reveal-2 { animation-delay: 0.15s; }
+.marketing .reveal-3 { animation-delay: 0.25s; }
+.marketing .reveal-4 { animation-delay: 0.35s; }
+.marketing .reveal-5 { animation-delay: 0.45s; }
+.marketing .reveal-6 { animation-delay: 0.55s; }
+
+/* ── In-view reveal ──────────────────────────────────────────────── */
+
+@keyframes fadeUpIn {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.marketing .fade-up {
+  animation: fadeUpIn 0.6s var(--motion-spring) forwards;
+  opacity: 0;
+}
+
+/* ── Numbered step badge ─────────────────────────────────────────── */
+
+.marketing .step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  font-family: var(--font-fraunces), 'Times New Roman', serif;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  background: var(--bg-secondary);
+  color: var(--mk-terracotta);
+  border: 1.5px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Gradient text (override for warm palette) ───────────────────── */
+
+.marketing .gradient-text {
+  background: var(--gradient-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Bento card overrides for warm theme ─────────────────────────── */
+
+.marketing .bento-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s var(--motion-spring), box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.marketing .bento-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--gradient-accent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.marketing .bento-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-3px);
+}
+
+.marketing .bento-card:hover::before {
+  opacity: 0.7;
+}
+
+/* ── Grid pattern ────────────────────────────────────────────────── */
+
+.marketing .dot-grid {
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* ── Dark theme overrides ─────────────────────────────────────────── */
+
+:root:not([data-theme="light"]) .marketing {
+  --mk-cream: #141210;
+  --mk-warm-sand: #1C1815;
+  --mk-clay: #231F1B;
+  --mk-espresso: #F0ECE6;
+  --mk-warm-gray: #A89E94;
+  --mk-stone: #7D7368;
+  --mk-terracotta: #E87763;
+  --mk-terracotta-hover: #F09584;
+  --mk-sage: #6BAA7A;
+  --mk-sage-hover: #7FBD8E;
+  --mk-sunset: #EFA87D;
+
+  --bg-primary: var(--mk-cream);
+  --bg-secondary: var(--mk-warm-sand);
+  --bg-tertiary: var(--mk-clay);
+  --bg-surface: #282420;
+  --bg-surface-hover: #302C28;
+  --bg-elevated: #383430;
+  --bg-highest: #403C37;
+
+  --text-primary: var(--mk-espresso);
+  --text-secondary: var(--mk-warm-gray);
+  --text-tertiary: var(--mk-stone);
+  --text-muted: #5C544C;
+  --text-faint: #3D3731;
+
+  --accent-primary: var(--mk-terracotta);
+  --accent-primary-hover: var(--mk-terracotta-hover);
+  --accent-primary-soft: rgba(232, 119, 99, 0.1);
+  --accent-primary-glow: rgba(232, 119, 99, 0.15);
+
+  --accent-secondary: var(--mk-sage);
+  --accent-secondary-hover: var(--mk-sage-hover);
+  --accent-secondary-soft: rgba(107, 170, 122, 0.08);
+
+  --gradient-accent: linear-gradient(135deg, #E87763 0%, #EFA87D 100%);
+  --gradient-accent-hover: linear-gradient(135deg, #F09584 0%, #F5BA99 100%);
+  --gradient-accent-soft: linear-gradient(135deg, rgba(232,119,99,0.07) 0%, rgba(239,168,125,0.07) 100%);
+
+  --accent: #F0ECE6;
+  --accent-fg: #141210;
+  --accent-hover: #D8D2CA;
+  --accent-soft: rgba(240, 236, 230, 0.04);
+  --accent-glow: rgba(240, 236, 230, 0.06);
+
+  --accent-brand: var(--mk-terracotta);
+  --accent-brand-hover: var(--mk-terracotta-hover);
+  --accent-brand-soft: rgba(232, 119, 99, 0.1);
+
+  --success: var(--mk-sage);
+  --success-soft: rgba(107, 170, 122, 0.08);
+  --warning: #E8923C;
+  --warning-soft: rgba(232, 146, 60, 0.08);
+  --error: #F87171;
+  --error-soft: rgba(248, 113, 113, 0.08);
+  --info: var(--mk-sage);
+  --info-soft: rgba(107, 170, 122, 0.08);
+
+  --border: rgba(240, 236, 230, 0.06);
+  --border-hover: rgba(240, 236, 230, 0.12);
+  --border-accent: rgba(240, 236, 230, 0.2);
+  --border-strong: rgba(240, 236, 230, 0.28);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --shadow-glow-teal: 0 0 24px rgba(232, 119, 99, 0.12);
+  --shadow-glow-violet: 0 0 24px rgba(107, 170, 122, 0.08);
+  --shadow-glow: 0 0 20px rgba(232, 119, 99, 0.1);
+
+  --glass-bg: rgba(20, 18, 16, 0.85);
+  --glass-border: rgba(240, 236, 230, 0.06);
+
+  --surface-1: var(--bg-secondary);
+  --surface-2: var(--bg-surface);
+  --surface-3: var(--bg-elevated);
+
+  --focus-ring: rgba(232, 119, 99, 0.35);
+  --focus-ring-strong: rgba(232, 119, 99, 0.55);
+
+  --confidence-high: var(--mk-sage);
+  --confidence-high-soft: rgba(107, 170, 122, 0.06);
+  --confidence-high-rail: rgba(107, 170, 122, 0.12);
+  --confidence-med: var(--mk-terracotta);
+  --confidence-med-soft: rgba(232, 119, 99, 0.06);
+  --confidence-low: #E8923C;
+  --confidence-low-soft: rgba(232, 146, 60, 0.06);
+  --confidence-unverified: #F87171;
+  --confidence-unverified-soft: rgba(248, 113, 113, 0.06);
+
+  --provenance-strong: var(--mk-sage);
+  --provenance-strong-soft: rgba(107, 170, 122, 0.06);
+  --provenance-weak: var(--mk-terracotta);
+  --provenance-weak-soft: rgba(232, 119, 99, 0.06);
+}
+
+/* ── Responsive overrides ────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .marketing .editorial-display {
+    font-size: clamp(2rem, 8vw, 3.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing .reveal,
+  .marketing .fade-up {
+    animation: none;
+    opacity: 1;
+  }
+}

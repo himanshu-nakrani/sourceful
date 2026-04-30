@@ -21,7 +21,7 @@ export interface AppSettings {
   theme: "dark" | "light";
   highContrast: boolean;
   reducedMotion: boolean;
-  accentPack: "indigo" | "emerald" | "amber";
+  accentPack: "terracotta" | "emerald" | "amber";
   chatLayout: "default" | "focus" | "research";
 }
 
@@ -113,7 +113,7 @@ function loadSettings(): AppSettings {
       theme: "dark",
       highContrast: false,
       reducedMotion: false,
-      accentPack: "indigo",
+      accentPack: "terracotta",
       chatLayout: "default",
     };
   }
@@ -130,7 +130,7 @@ function loadSettings(): AppSettings {
   let theme: "dark" | "light" = "dark";
   let highContrast = false;
   let reducedMotion = false;
-  let accentPack: "indigo" | "emerald" | "amber" = "indigo";
+  let accentPack: "terracotta" | "emerald" | "amber" = "terracotta";
   let chatLayout: "default" | "focus" | "research" = "default";
 
   // Load theme from localStorage regardless of auth state (it's not sensitive)
@@ -141,7 +141,7 @@ function loadSettings(): AppSettings {
       if (parsed.theme === "light" || parsed.theme === "dark") theme = parsed.theme;
       if (typeof parsed.highContrast === "boolean") highContrast = parsed.highContrast;
       if (typeof parsed.reducedMotion === "boolean") reducedMotion = parsed.reducedMotion;
-      if (parsed.accentPack === "emerald" || parsed.accentPack === "amber") accentPack = parsed.accentPack;
+      if (parsed.accentPack === "terracotta" || parsed.accentPack === "emerald" || parsed.accentPack === "amber") accentPack = parsed.accentPack;
       if (parsed.chatLayout === "focus" || parsed.chatLayout === "research") chatLayout = parsed.chatLayout;
     }
   } catch {
@@ -353,7 +353,7 @@ function reducer(state: AppState, action: Action): AppState {
           }
         }
         if (action.payload.accentPack !== undefined) {
-          if (next.accentPack === "indigo") {
+          if (next.accentPack === "terracotta") {
             document.documentElement.removeAttribute("data-accent");
           } else {
             document.documentElement.setAttribute("data-accent", next.accentPack);

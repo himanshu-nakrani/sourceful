@@ -254,9 +254,8 @@ export default function WorkspaceMembersPanel({
                   borderBottom: "1px solid var(--border)",
                 }}
               >
-                You&rsquo;re using an anonymous session. Members and invitations apply to
-                authenticated workspaces only — sign in to share this workspace with
-                teammates.
+                You don&rsquo;t have permission to manage members. Contact a workspace
+                owner or admin for access.
               </div>
             ) : null}
 

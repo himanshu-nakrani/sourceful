@@ -241,9 +241,9 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 Accent Color
               </span>
               <div className="flex gap-1.5">
-                {(["indigo", "emerald", "amber"] as const).map((pack) => {
-                  const colors = { indigo: "#14b8a6", emerald: "#10b981", amber: "#f59e0b" };
-                  const labels = { indigo: "Teal", emerald: "Emerald", amber: "Amber" };
+                {(["terracotta", "emerald", "amber"] as const).map((pack) => {
+                  const colors = { terracotta: "#d9775e", emerald: "#6baa7a", amber: "#e8923c" };
+                  const labels = { terracotta: "Terracotta", emerald: "Sage", amber: "Amber" };
                   const active = settings.accentPack === pack;
                   return (
                     <motion.button

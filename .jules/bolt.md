@@ -19,3 +19,7 @@
 ## 2026-04-25 - Avoid TypeAdapter(Any) for fallback serialization
 **Learning:** While `TypeAdapter.dump_json()` is very fast, using `TypeAdapter(Any)` as a fallback for generic dictionaries can subtly change the serialization output compared to `json.dumps(..., default=str)`. For instance, it formats datetimes with a strict ISO 8601 'T' separator, whereas `str(datetime)` uses a space. This can cause frontend parsing bugs if the client strictly expects the previous format.
 **Action:** When optimizing serialization with `orjson`, always retain the exact original `json.dumps` implementation as the fallback unless you are 100% certain the downstream consumer is format-agnostic.
+
+## 2026-04-28 - Optimize High-Frequency SSE Serialization
+**Learning:** For high-frequency Server-Sent Events (SSE) like streaming LLM tokens, general-purpose serialization with fallback parameters (`default=str`, `option=orjson.OPT_PASSTHROUGH_DATETIME`) and repeated string-to-byte encoding (`b"event: " + event_bytes`) introduces significant CPU latency per event.
+**Action:** When working with high-frequency SSE streaming, implement a fast-path for the most common events (like simple string tokens) that uses bare `orjson.dumps()` or a pre-compiled Pydantic `TypeAdapter` and concatenates pre-computed byte prefixes directly to minimize overhead.

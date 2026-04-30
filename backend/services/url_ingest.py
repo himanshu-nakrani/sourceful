@@ -12,17 +12,15 @@ the app already relies on.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
-import ipaddress
 import logging
-import socket
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
 from backend.database import fetch_one
+from backend.utils.network import prevent_ssrf_hook
 from backend.services import workspace_service
 from backend.services.jobs import enqueue_ingest_job
 from backend.services.provider_auth import provider_requires_api_key
@@ -81,25 +79,15 @@ def _derive_title_from_html(html: str, fallback: str) -> str:
 
 
 async def _prevent_ssrf_hook(request: httpx.Request) -> None:
-    """Event hook to prevent SSRF by blocking access to restricted IP addresses."""
-    host = request.url.host
-    if not host:
-        return
     try:
-        loop = asyncio.get_event_loop()
-        addrinfo = await loop.getaddrinfo(host, None)
-        for _, _, _, _, sockaddr in addrinfo:
-            ip = ipaddress.ip_address(sockaddr[0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast:
-                raise UrlIngestError(
-                    "URL resolves to a restricted network.",
-                    code="URL_RESTRICTED_NETWORK",
-                    status_code=403,
-                    details={"host": host},
-                )
-    except socket.gaierror:
-        # Ignore resolution errors here, they will fail naturally during the request
-        pass
+        await prevent_ssrf_hook(request)
+    except RuntimeError as exc:
+        raise UrlIngestError(
+            "URL resolves to a restricted network.",
+            code="URL_RESTRICTED_NETWORK",
+            status_code=403,
+            details={"host": request.url.host},
+        ) from exc
 
 
 def _html_to_text(html: str) -> str:

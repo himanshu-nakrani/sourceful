@@ -51,3 +51,5 @@ venv/
 
 # RAG / vectors / registry
 /data/
+node_output.log
+pnpm_output.log

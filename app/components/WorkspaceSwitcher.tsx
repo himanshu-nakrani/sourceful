@@ -200,7 +200,8 @@ export default function WorkspaceSwitcher() {
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Workspace name"
-                    className="w-full bg-transparent text-xs outline-none rounded-lg px-2 py-1.5"
+                    aria-label="Workspace name"
+                    className="w-full bg-transparent text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] rounded-lg px-2 py-1.5"
                     style={{
                       color: "var(--text-primary)",
                       background: "var(--bg-surface)",

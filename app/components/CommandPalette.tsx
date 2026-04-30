@@ -241,7 +241,7 @@ export default function CommandPalette({ open, onClose, onUpload, onSettings }: 
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a command or search…"
-                className="flex-1 bg-transparent text-sm outline-none"
+className="flex-1 bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring-strong)] rounded-lg px-2 py-1"
                 style={{ color: "var(--text-primary)" }}
                 aria-label="Command palette search"
               />

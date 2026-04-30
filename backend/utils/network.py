@@ -9,7 +9,7 @@ async def prevent_ssrf_hook(request: httpx.Request) -> None:
     if not host:
         return
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         addrinfo = await loop.getaddrinfo(host, None)
         for _, _, _, _, sockaddr in addrinfo:
             ip = ipaddress.ip_address(sockaddr[0])

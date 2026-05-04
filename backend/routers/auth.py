@@ -126,8 +126,10 @@ async def google_oauth_callback(request: Request, response: Response):
     if not code:
         raise HTTPException(status_code=400, detail={"error": "Missing authorization code.", "code": "MISSING_CODE"})
 
+    from backend.utils.network import get_ssrf_event_hooks
+
     # Exchange auth code for tokens
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(event_hooks=get_ssrf_event_hooks()) as client:
         token_res = await client.post(
             "https://oauth2.googleapis.com/token",
             data={

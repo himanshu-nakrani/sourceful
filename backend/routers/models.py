@@ -33,8 +33,9 @@ async def _fetch_openai_models(api_key: str) -> tuple[list[str], list[str]]:
     """
     try:
         import httpx
+        from backend.utils.network import get_ssrf_event_hooks
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(event_hooks=get_ssrf_event_hooks()) as client:
             response = await client.get(
                 "https://api.openai.com/v1/models",
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -72,8 +73,9 @@ async def _fetch_gemini_models(api_key: str) -> tuple[list[str], list[str]]:
     """
     try:
         import httpx
+        from backend.utils.network import get_ssrf_event_hooks
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(event_hooks=get_ssrf_event_hooks()) as client:
             response = await client.get(
                 f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
                 timeout=30.0,

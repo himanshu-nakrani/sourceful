@@ -52,6 +52,51 @@ interface Highlight {
   text: string;
 }
 
+// ⚡ BOLT OPTIMIZATION:
+// Wrapped NotebookMessageBubble in React.memo to prevent expensive React re-renders
+// for older messages during rapid state updates, such as when typing in the input
+// or when active highlights change.
+const NotebookMessageBubble = React.memo(function NotebookMessageBubble({
+  message,
+  onCitationClick,
+}: {
+  message: NotebookMessage;
+  onCitationClick: (citation: Citation) => void;
+}) {
+  return (
+    <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[85%] rounded-lg p-3 ${
+          message.role === "user"
+            ? "bg-blue-600 text-white"
+            : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white"
+        }`}
+      >
+        <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+        {message.citations && message.citations.length > 0 && (
+          <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
+            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Sources:</p>
+            <div className="flex flex-wrap gap-1">
+              {message.citations.map((citation, index) => (
+                <button
+                  key={citation.chunk_id}
+                  type="button"
+                  onClick={() => onCitationClick(citation)}
+                  className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs transition-colors hover:bg-yellow-100 dark:bg-gray-700 dark:hover:bg-yellow-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  title={citation.excerpt}
+                >
+                  <Highlighter className="h-3 w-3 text-yellow-600" />
+                  {citation.page_number ? `p. ${citation.page_number}` : `[${index + 1}]`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
 export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookViewProps) {
   const { state } = useStore();
   const { settings } = state;
@@ -160,11 +205,14 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
     setPageNumber((prev) => Math.max(1, Math.min(numPages || 1, prev + delta)));
   };
 
-  const goToPage = (page: number) => {
+  // ⚡ BOLT OPTIMIZATION:
+  // Wrapped goToPage and handleCitationClick in useCallback to ensure referential
+  // equality for props passed into the memoized NotebookMessageBubble component.
+  const goToPage = useCallback((page: number) => {
     setPageNumber(Math.max(1, Math.min(numPages || page, page)));
-  };
+  }, [numPages]);
 
-  const handleCitationClick = (citation: Citation) => {
+  const handleCitationClick = useCallback((citation: Citation) => {
     if (!citation.page_number) return;
     goToPage(citation.page_number);
     const nextHighlight = {
@@ -173,7 +221,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
     };
     setActiveHighlight(nextHighlight);
     window.setTimeout(() => setActiveHighlight(null), 3000);
-  };
+  }, [goToPage]);
 
   const handleSendMessage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -381,39 +429,11 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                 </div>
               ) : (
                 messages.map((message) => (
-                  <div
+                  <NotebookMessageBubble
                     key={message.id}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-lg p-3 ${
-                        message.role === "user"
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-                      {message.citations && message.citations.length > 0 && (
-                        <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
-                          <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Sources:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {message.citations.map((citation, index) => (
-                              <button
-                                key={citation.chunk_id}
-                                type="button"
-                                onClick={() => handleCitationClick(citation)}
-                                className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs transition-colors hover:bg-yellow-100 dark:bg-gray-700 dark:hover:bg-yellow-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                                title={citation.excerpt}
-                              >
-                                <Highlighter className="h-3 w-3 text-yellow-600" />
-                                {citation.page_number ? `p. ${citation.page_number}` : `[${index + 1}]`}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    message={message}
+                    onCitationClick={handleCitationClick}
+                  />
                 ))
               )}
               {activeHighlight && (

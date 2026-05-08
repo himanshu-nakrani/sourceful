@@ -270,7 +270,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           <button
             type="button"
             onClick={() => setSourcesOpen(true)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px]"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{
               background: "var(--bg-surface)",
               color: "var(--text-secondary)",
@@ -284,7 +284,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           <button
             type="button"
             onClick={() => setNotesOpen(true)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px]"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{
               background: "var(--bg-surface)",
               color: "var(--text-secondary)",
@@ -298,7 +298,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           <button
             type="button"
             onClick={() => setMembersOpen(true)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px]"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{
               background: "var(--bg-surface)",
               color: "var(--text-secondary)",
@@ -312,7 +312,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
           <button
             type="button"
             onClick={() => setAnalyticsOpen(true)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px]"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{
               background: "var(--bg-surface)",
               color: "var(--text-secondary)",

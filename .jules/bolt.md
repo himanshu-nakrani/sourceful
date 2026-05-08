@@ -23,3 +23,7 @@
 ## 2026-04-28 - Optimize High-Frequency SSE Serialization
 **Learning:** For high-frequency Server-Sent Events (SSE) like streaming LLM tokens, general-purpose serialization with fallback parameters (`default=str`, `option=orjson.OPT_PASSTHROUGH_DATETIME`) and repeated string-to-byte encoding (`b"event: " + event_bytes`) introduces significant CPU latency per event.
 **Action:** When working with high-frequency SSE streaming, implement a fast-path for the most common events (like simple string tokens) that uses bare `orjson.dumps()` or a pre-compiled Pydantic `TypeAdapter` and concatenates pre-computed byte prefixes directly to minimize overhead.
+
+## 2024-05-08 - Optimized sequential retrieval in _tool_compare_documents
+**Learning:** The `compare_documents` tool previously iterated through document IDs sequentially, creating an N+1 retrieval bottleneck because each `await retrieve()` call was blocking. Although the underlying `retrieve` function natively supports batching via `document_ids`, batching aggregates chunks globally. In situations like `compare_documents` where per-document `top_k` granularity and explicit result isolation are required, `asyncio.gather` must be used across individual `retrieve()` calls.
+**Action:** When implementing or refactoring features that fetch data for multiple distinct items (like documents) independently, evaluate if they can be parallelized with `asyncio.gather` instead of running in sequential loops to significantly reduce latency.

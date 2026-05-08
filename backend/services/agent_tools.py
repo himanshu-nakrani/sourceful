@@ -30,6 +30,7 @@ Deferred intentionally:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -280,8 +281,8 @@ async def _tool_compare_documents(ctx: AgentToolContext, args: dict[str, Any]) -
     aggregated_chunks: list[RetrievedChunk] = []
     seen_ids = {c.chunk_id for c in ctx.collected_chunks}
 
-    for doc_id in doc_ids:
-        result = await retrieve(
+    tasks = [
+        retrieve(
             RetrievalRequest(
                 query=query,
                 document_ids=[doc_id],
@@ -291,6 +292,11 @@ async def _tool_compare_documents(ctx: AgentToolContext, args: dict[str, Any]) -
                 min_score=ctx.min_score,
             ),
         )
+        for doc_id in doc_ids
+    ]
+    results = await asyncio.gather(*tasks)
+
+    for doc_id, result in zip(doc_ids, results):
         for chunk in result.chunks:
             if chunk.chunk_id in seen_ids:
                 continue

@@ -945,7 +945,7 @@ async def _apply_sqlite_v12_migration(conn: aiosqlite.Connection) -> None:
     import uuid as _uuid
 
     async def _columns(table: str) -> list[tuple]:
-        cursor = await conn.execute(f"PRAGMA table_info({table})")
+        cursor = await conn.execute("SELECT * FROM pragma_table_info(?)", (table,))
         rows = await cursor.fetchall()
         await cursor.close()
         return list(rows)

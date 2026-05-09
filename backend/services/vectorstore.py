@@ -259,7 +259,8 @@ async def query_similar_multi(
     """
     Search multiple documents for chunks similar to a query embedding and return the highest-scoring matches.
     
-    Runs per-document similarity searches, merges all retrieved chunks, filters by `min_score`, sorts by score descending, and returns up to `top_k` results.
+    Runs a single batched similarity search across all given document IDs, filtering by `min_score`,
+    sorting by score descending, and returning up to `top_k` results. This avoids the N+1 query problem.
     
     Parameters:
         document_ids (list[str]): Document IDs to search.
@@ -271,16 +272,42 @@ async def query_similar_multi(
     Returns:
         list[RetrievedChunk]: Retrieved chunks across the given documents, sorted by descending `score`, limited to `top_k`.
     """
-    tasks = [
-        query_similar(doc_id, owner_id, query_embedding, top_k, min_score)
-        for doc_id in document_ids
-    ]
-    results_per_doc = await asyncio.gather(*tasks)
-    merged: list[RetrievedChunk] = []
-    for chunks in results_per_doc:
-        merged.extend(chunks)
-    merged.sort(key=lambda c: c.score, reverse=True)
-    return merged[:top_k]
+    if not document_ids:
+        return []
+
+    placeholders = ", ".join(["?"] * len(document_ids))
+    if settings.using_postgres:
+        rows = await fetch_all(
+            f"""
+            SELECT id, document_id, content, page_number, parent_content,
+                   1 - (embedding <=> ?::vector) AS score
+            FROM document_chunks
+            WHERE document_id IN ({placeholders}) AND owner_id = ?
+            ORDER BY embedding <=> ?::vector
+            LIMIT ?
+            """,
+            (_vector_literal(query_embedding), *document_ids, owner_id, _vector_literal(query_embedding), top_k),
+        )
+        return [
+            RetrievedChunk(
+                chunk_id=row["id"],
+                document_id=row["document_id"],
+                excerpt=_excerpt_from_row(row),
+                score=float(row["score"] or 0.0),
+                page_number=row.get("page_number"),
+            )
+            for row in rows
+            if float(row["score"] or 0.0) >= min_score
+        ]
+
+    rows = await fetch_all(
+        f"SELECT id, document_id, content, page_number, parent_content, embedding_json FROM document_chunks WHERE document_id IN ({placeholders}) AND owner_id = ?",
+        (*document_ids, owner_id),
+    )
+    if not rows:
+        return []
+
+    return await asyncio.to_thread(_compute_similarities_sqlite, rows, query_embedding, top_k, min_score)
 
 
 # async def query_vertex_search(document_id: str, question: str, top_k: int) -> list[RetrievedChunk]:

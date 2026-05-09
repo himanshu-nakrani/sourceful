@@ -44,3 +44,8 @@
 **Vulnerability:** Found unmitigated `httpx.AsyncClient` usages in `backend/routers/auth.py` and `backend/routers/models.py`. The HTTP client calls were missing the `event_hooks=get_ssrf_event_hooks()` configuration, making them potentially vulnerable to Server-Side Request Forgery (SSRF) if input data (e.g. `redirect_uri`) could influence internal requests or redirect logic.
 **Learning:** `httpx.AsyncClient` MUST ALWAYS be instantiated with SSRF mitigation hooks (`get_ssrf_event_hooks()`) regardless of the endpoint being accessed, as redirects or API manipulations could cause requests to resolve to internal networks.
 **Prevention:** In the future, enforce that all external network calls using `httpx.AsyncClient` include `get_ssrf_event_hooks()` from `backend.utils.network`.
+
+## 2026-05-06 - [CRITICAL] SQL Injection in SQLite Migration Schema Queries
+**Vulnerability:** Found a SQL injection vulnerability in `backend/database.py` during a dynamic SQLite schema inspection query: `conn.execute(f"PRAGMA table_info({table})")`. Because it used Python f-string interpolation instead of parameterized queries, it was vulnerable to manipulation if `table` contained untrusted input.
+**Learning:** Standard SQLite `PRAGMA table_info()` syntax does not support parameter binding (`?`), which leads developers to mistakenly use string interpolation. However, SQLite introduced a table-valued function `pragma_table_info(?)` which *does* support safe parameterization while returning identical results.
+**Prevention:** For SQLite metadata queries requiring parameters, always use the table-valued function `pragma_table_info(?)` with standard query binding (`conn.execute("SELECT * FROM pragma_table_info(?)", (table,))`) instead of string interpolation.

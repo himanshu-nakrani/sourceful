@@ -30,3 +30,6 @@
 ## 2026-05-10 - Batched Similarity Queries
 **Learning:** When retrieving chunks for multiple documents simultaneously using `asyncio.gather` loops, the app suffers from N+1 query overhead which dramatically slows down multi-doc contexts. Instead of firing many individual `LIMIT X` searches, you can rewrite the operation natively using an `IN (...)` query across all documents simultaneously, then handle the `LIMIT` globally or in Python.
 **Action:** Always look to batch database operations using `IN (...)` where loops execute individual parameterized queries, as DB aggregation performs vastly better.
+## 2024-05-12 - Parallelize Extra Query Lanes to avoid N+1 Execution
+**Learning:** In the `retrieval_pipeline.py`, sequentially awaiting `_dense_search` within a loop across multiple extra query lanes (e.g. from HyDE / multi-query transformations) creates an N+1 execution bottleneck that scales linearly with the number of generated extra queries.
+**Action:** When a loop contains independent asynchronous I/O operations (such as generating multiple dense searches for pipeline RRF-fusion), always use `asyncio.gather(*tasks)` to dispatch these tasks concurrently. This significantly minimizes overall wait latency and improves batch search parallelism.

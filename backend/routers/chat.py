@@ -224,13 +224,20 @@ async def _maybe_transform_queries(
 
     with tracing.span(trace_span, "embed_transformed_queries", count=len(transformed)):
         lanes: list[tuple[str, list[float]]] = []
-        for tq in transformed:
-            try:
-                emb = await embed_query(provider, provider_api_key, embedding_model, tq.text)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("transform_embed_failed kind=%s err=%s", tq.kind, exc)
+        tasks = [
+            embed_query(provider, provider_api_key, embedding_model, tq.text)
+            for tq in transformed
+        ]
+        # ⚡ BOLT OPTIMIZATION:
+        # Use asyncio.gather to dispatch external embedding generation tasks concurrently
+        # instead of awaiting them sequentially in a loop, preventing N+1 execution bottlenecks.
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for tq, result in zip(transformed, results, strict=True):
+            if isinstance(result, Exception):
+                logger.warning("transform_embed_failed kind=%s err=%s", tq.kind, result)
                 continue
-            lanes.append((tq.kind, emb))
+            lanes.append((tq.kind, result))
     return lanes, [tq.kind for tq in transformed]
 
 

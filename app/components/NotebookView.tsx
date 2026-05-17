@@ -355,6 +355,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
             <button
               type="button"
               onClick={() => setIsChatOpen((current) => !current)}
+              aria-expanded={isChatOpen}
               className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-white transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
             >
               <MessageSquare className="h-4 w-4" />
@@ -458,6 +459,7 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                   onChange={(event) => setInput(event.target.value)}
                   type="text"
                   placeholder="Ask a question..."
+                  aria-label="Ask a question"
                   className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                   disabled={isLoading}
                 />

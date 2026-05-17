@@ -17,3 +17,7 @@
 ## 2024-04-21 - Added explicit focus rings to elements with outline-none
 **Learning:** Using `outline-none` on interactive elements without an explicit focus replacement breaks keyboard accessibility by completely hiding the default browser focus indicator. This is particularly prevalent in modern web apps that style inputs cleanly.
 **Action:** When using Tailwind's `outline-none` on interactive elements, always pair it with an explicit focus ring such as `focus-visible:ring-2 focus-visible:ring-[var(--accent)]` (or equivalent based on the design system) to provide a clear visual indicator for keyboard navigation.
+
+## 2024-05-18 - Notebook View Accessibility Improvements
+**Learning:** Found that the NotebookView component's chat toggle button was missing an `aria-expanded` state, and the chat input field was missing an explicit label (`aria-label`). While placeholders exist, explicit labels are crucial for robust screen reader support.
+**Action:** Next time, ensure all toggle buttons communicating open/closed states include dynamically bound `aria-expanded` attributes, and all form inputs without visual `<label>` tags receive an `aria-label`.

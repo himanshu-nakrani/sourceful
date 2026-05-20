@@ -26,6 +26,8 @@ from dataclasses import replace
 
 import httpx
 
+from backend.utils.network import get_ssrf_event_hooks
+
 from backend.services.vectorstore import RetrievedChunk
 from backend.settings import settings
 
@@ -85,7 +87,10 @@ async def _cohere_scores(query: str, documents: list[str]) -> list[float]:
         "documents": documents,
         "top_n": len(documents),
     }
-    async with httpx.AsyncClient(timeout=settings.reranker_timeout_seconds) as client:
+    async with httpx.AsyncClient(
+        timeout=settings.reranker_timeout_seconds,
+        event_hooks=get_ssrf_event_hooks(),
+    ) as client:
         response = await client.post(
             "https://api.cohere.com/v1/rerank",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -110,7 +115,10 @@ async def _jina_scores(query: str, documents: list[str]) -> list[float]:
         "documents": documents,
         "top_n": len(documents),
     }
-    async with httpx.AsyncClient(timeout=settings.reranker_timeout_seconds) as client:
+    async with httpx.AsyncClient(
+        timeout=settings.reranker_timeout_seconds,
+        event_hooks=get_ssrf_event_hooks(),
+    ) as client:
         response = await client.post(
             "https://api.jina.ai/v1/rerank",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},

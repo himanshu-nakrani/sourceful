@@ -33,3 +33,6 @@
 ## 2024-05-12 - Parallelize Extra Query Lanes to avoid N+1 Execution
 **Learning:** In the `retrieval_pipeline.py`, sequentially awaiting `_dense_search` within a loop across multiple extra query lanes (e.g. from HyDE / multi-query transformations) creates an N+1 execution bottleneck that scales linearly with the number of generated extra queries.
 **Action:** When a loop contains independent asynchronous I/O operations (such as generating multiple dense searches for pipeline RRF-fusion), always use `asyncio.gather(*tasks)` to dispatch these tasks concurrently. This significantly minimizes overall wait latency and improves batch search parallelism.
+## 2024-05-24 - Prevent N+1 bottlenecks when embedding transformed queries
+**Learning:** Sequential processing in loops (`await` within a `for` loop) can create significant N+1 bottlenecks when executing independent IO-bound tasks like fetching query embeddings. In the context of `_maybe_transform_queries`, waiting for each alternative query embedding sequentially introduces unacceptable latency.
+**Action:** Always batch independent asynchronous IO tasks using `asyncio.gather(*tasks, return_exceptions=True)` when processing a collection of inputs concurrently. This allows parallel execution and prevents latency accumulation.

@@ -25,6 +25,7 @@ FTS were available.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -136,6 +137,50 @@ async def _candidate_entities(
     return out
 
 
+async def _fetch_chunks_for_doc(
+    doc_id: str,
+    owner_id: str,
+    names: list[str],
+    limit: int
+) -> list[tuple[RetrievedChunk, int]]:
+    if not names:
+        return []
+    like_clauses = " OR ".join(["LOWER(content) LIKE ?"] * len(names))
+    sql = f"""
+        SELECT id, document_id, content, page_number, parent_content
+        FROM document_chunks
+        WHERE document_id = ? AND owner_id = ?
+          AND ({like_clauses})
+        LIMIT ?
+    """
+    like_params = [f"%{name.lower()}%" for name in names]
+    params: tuple = (doc_id, owner_id, *like_params, limit)
+    try:
+        rows = await fetch_all(sql, params)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("graph_chunk_lookup_failed doc=%s err=%s", doc_id, exc)
+        return []
+
+    doc_results = []
+    for row in rows:
+        content = (row.get("content") or "").lower()
+        mentions = sum(1 for name in names if name.lower() in content)
+        if mentions == 0:
+            continue
+        excerpt = row.get("parent_content") if settings.retrieval_parent_doc_enabled else None
+        excerpt = excerpt or row["content"]
+        chunk = RetrievedChunk(
+            chunk_id=row["id"],
+            document_id=row["document_id"],
+            excerpt=excerpt,
+            # Cap at 1.0 so downstream score consumers behave.
+            score=min(1.0, mentions / max(1, len(names))),
+            page_number=row.get("page_number"),
+        )
+        doc_results.append((chunk, mentions))
+    return doc_results
+
+
 async def _fetch_chunks_for_entities(
     owner_id: str, entity_rows: list[dict], limit: int
 ) -> list[tuple[RetrievedChunk, int]]:
@@ -152,43 +197,19 @@ async def _fetch_chunks_for_entities(
     for row in entity_rows:
         by_doc.setdefault(row["document_id"], []).append(row)
 
-    results: list[tuple[RetrievedChunk, int]] = []
+    tasks = []
     for doc_id, ents in by_doc.items():
         names = [e["name"] for e in ents if e.get("name")]
         if not names:
             continue
-        like_clauses = " OR ".join(["LOWER(content) LIKE ?"] * len(names))
-        sql = f"""
-            SELECT id, document_id, content, page_number, parent_content
-            FROM document_chunks
-            WHERE document_id = ? AND owner_id = ?
-              AND ({like_clauses})
-            LIMIT ?
-        """
-        like_params = [f"%{name.lower()}%" for name in names]
-        params: tuple = (doc_id, owner_id, *like_params, limit)
-        try:
-            rows = await fetch_all(sql, params)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("graph_chunk_lookup_failed doc=%s err=%s", doc_id, exc)
-            continue
+        tasks.append(_fetch_chunks_for_doc(doc_id, owner_id, names, limit))
 
-        for row in rows:
-            content = (row.get("content") or "").lower()
-            mentions = sum(1 for name in names if name.lower() in content)
-            if mentions == 0:
-                continue
-            excerpt = row.get("parent_content") if settings.retrieval_parent_doc_enabled else None
-            excerpt = excerpt or row["content"]
-            chunk = RetrievedChunk(
-                chunk_id=row["id"],
-                document_id=row["document_id"],
-                excerpt=excerpt,
-                # Cap at 1.0 so downstream score consumers behave.
-                score=min(1.0, mentions / max(1, len(names))),
-                page_number=row.get("page_number"),
-            )
-            results.append((chunk, mentions))
+    doc_results_list = await asyncio.gather(*tasks)
+
+    results: list[tuple[RetrievedChunk, int]] = []
+    for doc_results in doc_results_list:
+        results.extend(doc_results)
+
     return results
 
 

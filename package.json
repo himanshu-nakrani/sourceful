@@ -1,5 +1,6 @@
 {
   "name": "document-qa",
+  "description": "Self-hostable document Q&A (RAG): Next.js + FastAPI, BYOK OpenAI/Gemini, cited streaming chat, background ingestion, workspaces/RBAC, PostgreSQL+pgvector.",
   "version": "0.1.0",
   "private": true,
   "engines": {

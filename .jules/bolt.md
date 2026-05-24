@@ -45,3 +45,7 @@
 ## 2024-05-27 - Batch document entity chunk fetching
 **Learning:** In `_fetch_chunks_for_entities`, querying chunk overlap sequentially for each document inside a dictionary loop creates an N+1 database bottleneck during graph traversal.
 **Action:** Even when parameterized queries per-document are needed, always batch independent I/O loop iterations via `asyncio.gather(*tasks)` to allow concurrent execution and dramatically reduce wait times on slow networks or large batches.
+
+## 2026-05-15 - Optimize computation overhead in hidden UI panels
+**Learning:** Functions that iterate over an entire array of items (e.g. `computeMetrics` running string splitting and regex mapping on every message in chat history) cause significant O(N) CPU overhead when triggered rapidly during Server-Sent Events (SSE) streaming. This is especially wasteful if the panel displaying the metrics is currently hidden (e.g., in a dropdown or drawer).
+**Action:** Use a `WeakMap` to cache expensive derivations per-object so that only modified objects incur the cost during array re-renders. Furthermore, short-circuit the computation entirely (e.g., by returning the last known value via `useRef`) when the visual component is not `open`.

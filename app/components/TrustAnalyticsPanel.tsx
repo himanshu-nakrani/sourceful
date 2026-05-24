@@ -23,6 +23,8 @@ interface TrustMetrics {
   sourceDepth: number;
 }
 
+const messageStatsCache = new WeakMap<Message, { wordCount: number; citationCount: number }>();
+
 function computeMetrics(messages: Message[], latencyMs?: number | null): TrustMetrics {
   const assistantMsgs = messages.filter((m) => m.role === "assistant");
   const totalResponses = assistantMsgs.length;
@@ -33,10 +35,20 @@ function computeMetrics(messages: Message[], latencyMs?: number | null): TrustMe
 
   for (const msg of assistantMsgs) {
     if (msg.sources) allSources.push(...msg.sources);
-    const wordCount = msg.content.split(/\s+/).filter(Boolean).length;
-    totalWords += wordCount;
-    const citationMatches = msg.content.match(/\[\d+\]/g);
-    totalCitations += citationMatches?.length ?? 0;
+
+    let stats = messageStatsCache.get(msg);
+    if (!stats) {
+      const wordCount = msg.content.split(/\s+/).filter(Boolean).length;
+      const citationMatches = msg.content.match(/\[\d+\]/g);
+      stats = {
+        wordCount,
+        citationCount: citationMatches?.length ?? 0
+      };
+      messageStatsCache.set(msg, stats);
+    }
+
+    totalWords += stats.wordCount;
+    totalCitations += stats.citationCount;
   }
 
   const avgScore =

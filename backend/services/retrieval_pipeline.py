@@ -15,6 +15,7 @@ deliberately stateless; callers own embedding and LLM generation.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -114,11 +115,16 @@ async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = 
             "extra_query_lanes",
             lanes=len(req.extra_query_embeddings),
         ) as xq_span:
-            total_hits = 0
-            for _label, embedding in req.extra_query_embeddings:
-                hits = await _dense_search(
+            tasks = [
+                _dense_search(
                     req.document_ids, req.owner_id, embedding, dense_k, req.min_score
                 )
+                for _label, embedding in req.extra_query_embeddings
+            ]
+            results = await asyncio.gather(*tasks)
+
+            total_hits = 0
+            for hits in results:
                 extra_lanes.append((hits, settings.hybrid_vector_weight * 0.5))
                 total_hits += len(hits)
             xq_span.update(hits=total_hits)

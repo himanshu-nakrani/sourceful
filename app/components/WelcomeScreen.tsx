@@ -415,6 +415,7 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email"
+              aria-label="Email address"
               required
               className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-200 focus:ring-2 focus:ring-[var(--accent-primary)]"
               style={{
@@ -428,6 +429,7 @@ function LoginPrompt({ onBack }: { onBack: () => void }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
+              aria-label="Password"
               required
               minLength={mode === "signup" ? 8 : undefined}
               className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-200 focus:ring-2 focus:ring-[var(--accent-primary)]"

@@ -360,9 +360,11 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               <div className="flex flex-col gap-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input
+                    type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="Email"
+                    aria-label="Email"
                     className="rounded-xl px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                   />
@@ -371,6 +373,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Password"
+                    aria-label="Password"
                     className="rounded-xl px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
                   />

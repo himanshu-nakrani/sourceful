@@ -49,3 +49,8 @@
 **Vulnerability:** Found a SQL injection vulnerability in `backend/database.py` during a dynamic SQLite schema inspection query: `conn.execute(f"PRAGMA table_info({table})")`. Because it used Python f-string interpolation instead of parameterized queries, it was vulnerable to manipulation if `table` contained untrusted input.
 **Learning:** Standard SQLite `PRAGMA table_info()` syntax does not support parameter binding (`?`), which leads developers to mistakenly use string interpolation. However, SQLite introduced a table-valued function `pragma_table_info(?)` which *does* support safe parameterization while returning identical results.
 **Prevention:** For SQLite metadata queries requiring parameters, always use the table-valued function `pragma_table_info(?)` with standard query binding (`conn.execute("SELECT * FROM pragma_table_info(?)", (table,))`) instead of string interpolation.
+
+## 2026-05-19 - SSRF vulnerability in reranker external requests
+**Vulnerability:** Found unmitigated `httpx.AsyncClient` usages in `backend/services/reranker.py`. The HTTP client calls to Cohere and Jina APIs were missing the `event_hooks=get_ssrf_event_hooks()` configuration, making them potentially vulnerable to Server-Side Request Forgery (SSRF) if the APIs returned unexpected redirects or if configurations were manipulated.
+**Learning:** `httpx.AsyncClient` MUST ALWAYS be instantiated with SSRF mitigation hooks (`get_ssrf_event_hooks()`) as a defense-in-depth measure, even when URLs appear hardcoded, to protect against DNS rebinding, unexpected redirects, or future configuration changes.
+**Prevention:** Always enforce that all external network calls using `httpx.AsyncClient` include `get_ssrf_event_hooks()` from `backend.utils.network`.

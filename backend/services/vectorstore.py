@@ -275,18 +275,20 @@ async def query_similar_multi(
     if not document_ids:
         return []
 
-    placeholders = ", ".join(["?"] * len(document_ids))
+    placeholders = ",".join("?" for _ in document_ids)
+
     if settings.using_postgres:
+        params = [_vector_literal(query_embedding), owner_id] + document_ids + [_vector_literal(query_embedding), top_k]
         rows = await fetch_all(
             f"""
             SELECT id, document_id, content, page_number, parent_content,
                    1 - (embedding <=> ?::vector) AS score
             FROM document_chunks
-            WHERE document_id IN ({placeholders}) AND owner_id = ?
+            WHERE owner_id = ? AND document_id IN ({placeholders})
             ORDER BY embedding <=> ?::vector
             LIMIT ?
             """,
-            (_vector_literal(query_embedding), *document_ids, owner_id, _vector_literal(query_embedding), top_k),
+            tuple(params),
         )
         return [
             RetrievedChunk(
@@ -300,9 +302,10 @@ async def query_similar_multi(
             if float(row["score"] or 0.0) >= min_score
         ]
 
+    params = [owner_id] + document_ids
     rows = await fetch_all(
-        f"SELECT id, document_id, content, page_number, parent_content, embedding_json FROM document_chunks WHERE document_id IN ({placeholders}) AND owner_id = ?",
-        (*document_ids, owner_id),
+        f"SELECT id, document_id, content, page_number, parent_content, embedding_json FROM document_chunks WHERE owner_id = ? AND document_id IN ({placeholders})",
+        tuple(params),
     )
     if not rows:
         return []

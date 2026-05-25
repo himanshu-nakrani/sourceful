@@ -259,7 +259,8 @@ async def query_similar_multi(
     """
     Search multiple documents for chunks similar to a query embedding and return the highest-scoring matches.
     
-    Runs a single batched similarity search across all documents using an IN clause, filters by `min_score`, sorts by score descending, and returns up to `top_k` results.
+    Runs a single batched similarity search across all given document IDs, filtering by `min_score`,
+    sorting by score descending, and returning up to `top_k` results. This avoids the N+1 query problem.
     
     Parameters:
         document_ids (list[str]): Document IDs to search.
@@ -274,7 +275,7 @@ async def query_similar_multi(
     if not document_ids:
         return []
 
-    placeholders = ",".join("?" for _ in document_ids)
+    placeholders = ", ".join("?" for _ in document_ids)
 
     if settings.using_postgres:
         params = [_vector_literal(query_embedding), owner_id] + document_ids + [_vector_literal(query_embedding), top_k]

@@ -275,7 +275,7 @@ async def query_similar_multi(
     if not document_ids:
         return []
 
-    placeholders = ",".join("?" for _ in document_ids)
+    placeholders = ", ".join("?" for _ in document_ids)
 
     if settings.using_postgres:
         params = [_vector_literal(query_embedding), owner_id] + document_ids + [_vector_literal(query_embedding), top_k]

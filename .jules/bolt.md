@@ -48,3 +48,7 @@
 ## 2024-05-27 - Batch document entity chunk fetching
 **Learning:** In `_fetch_chunks_for_entities`, querying chunk overlap sequentially for each document inside a dictionary loop creates an N+1 database bottleneck during graph traversal.
 **Action:** Even when parameterized queries per-document are needed, always batch independent I/O loop iterations via `asyncio.gather(*tasks)` to allow concurrent execution and dramatically reduce wait times on slow networks or large batches.
+
+## 2024-05-30 - Memoize expensive operations on referentially stable objects with WeakMap
+**Learning:** During SSE streaming, components like `TrustAnalyticsPanel` recalculate metrics for all messages. Since earlier messages are referentially stable, parsing them on every render cycle causes O(N) CPU overhead, leading to UI jitter.
+**Action:** When mapping over items that maintain referential equality across state updates, use a `WeakMap` to cache expensive derivations (like regex matching or string splitting). This avoids memory leaks while making subsequent calculations O(1).

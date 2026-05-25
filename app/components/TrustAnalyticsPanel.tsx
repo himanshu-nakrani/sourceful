@@ -23,6 +23,12 @@ interface TrustMetrics {
   sourceDepth: number;
 }
 
+// ⚡ BOLT OPTIMIZATION:
+// Cached computationally expensive regex matching and string splitting for
+// TrustAnalyticsPanel messages. Messages maintain referential equality across
+// renders during SSE streaming, allowing O(1) retrieval instead of O(N) recalculation.
+const _messageMetricsCache = new WeakMap<Message, { wordCount: number; citations: number }>();
+
 function computeMetrics(messages: Message[], latencyMs?: number | null): TrustMetrics {
   const assistantMsgs = messages.filter((m) => m.role === "assistant");
   const totalResponses = assistantMsgs.length;
@@ -33,10 +39,18 @@ function computeMetrics(messages: Message[], latencyMs?: number | null): TrustMe
 
   for (const msg of assistantMsgs) {
     if (msg.sources) allSources.push(...msg.sources);
-    const wordCount = msg.content.split(/\s+/).filter(Boolean).length;
-    totalWords += wordCount;
-    const citationMatches = msg.content.match(/\[\d+\]/g);
-    totalCitations += citationMatches?.length ?? 0;
+
+    let cached = _messageMetricsCache.get(msg);
+    if (!cached) {
+      cached = {
+        wordCount: msg.content.split(/\s+/).filter(Boolean).length,
+        citations: msg.content.match(/\[\d+\]/g)?.length ?? 0
+      };
+      _messageMetricsCache.set(msg, cached);
+    }
+
+    totalWords += cached.wordCount;
+    totalCitations += cached.citations;
   }
 
   const avgScore =

@@ -90,7 +90,26 @@ function MiniBar({ value, max, color }: { value: number; max: number; color: str
 }
 
 export default function TrustAnalyticsPanel({ open, onClose, messages, latencyMs }: TrustAnalyticsPanelProps) {
-  const metrics = useMemo(() => computeMetrics(messages, latencyMs), [messages, latencyMs]);
+  // ⚡ BOLT OPTIMIZATION:
+  // Short-circuit expensive metrics computation when the panel is logically closed.
+  // Because older messages maintain referential equality across state updates, we can avoid
+  // recalculating the entire array by returning a placeholder when `!open`.
+  // This reduces CPU overhead during SSE streaming, ensuring high-frequency re-renders
+  // are buttery smooth for hidden elements without breaking the AnimatePresence exit animations.
+  const metrics = useMemo(() => {
+    if (!open) {
+      return {
+        totalResponses: 0,
+        avgScore: 0,
+        highConfidence: 0,
+        lowConfidence: 0,
+        citationDensity: 0,
+        avgLatencyMs: null,
+        sourceDepth: 0,
+      };
+    }
+    return computeMetrics(messages, latencyMs);
+  }, [messages, latencyMs, open]);
 
   return (
     <AnimatePresence>

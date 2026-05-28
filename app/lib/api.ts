@@ -1207,7 +1207,12 @@ export async function logout(): Promise<void> {
 
 export async function me(): Promise<AuthUser | null> {
   const res = await apiFetch("/api/auth/me", { headers: baseHeaders({}) });
-  if (res.status === 401) return null;
+  if (res.status === 401) {
+    // Fix #10: clear the stale auth token so subsequent requests don't keep
+    // sending an expired/revoked Bearer token and tripping 401 repeatedly.
+    updateStoredSession({ authToken: null });
+    return null;
+  }
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }

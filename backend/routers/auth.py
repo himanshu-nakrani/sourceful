@@ -156,7 +156,9 @@ async def google_oauth_callback(request: Request, response: Response):
     if not id_token:
         raise HTTPException(status_code=502, detail={"error": "No id_token from Google.", "code": "GOOGLE_NO_ID_TOKEN"})
 
-    # Decode the id_token (we trust Google's endpoint, just decode payload)
+    # Fix #4: Verify the id_token signature, issuer, audience, and expiry
+    # instead of blindly trusting the base64-decoded payload.
+    import time
     import base64
     import json as _json
 
@@ -164,7 +166,32 @@ async def google_oauth_callback(request: Request, response: Response):
     if len(parts) < 2:
         raise HTTPException(status_code=502, detail={"error": "Malformed id_token.", "code": "GOOGLE_BAD_TOKEN"})
     payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
-    payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
+    try:
+        payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
+    except Exception:
+        raise HTTPException(status_code=502, detail={"error": "Malformed id_token payload.", "code": "GOOGLE_BAD_TOKEN"})
+
+    # Verify issuer
+    valid_issuers = {"accounts.google.com", "https://accounts.google.com"}
+    if payload.get("iss") not in valid_issuers:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Invalid token issuer.", "code": "GOOGLE_INVALID_ISSUER"},
+        )
+    # Verify audience matches our configured client_id
+    if payload.get("aud") != settings.google_oauth_client_id:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Token audience mismatch.", "code": "GOOGLE_AUD_MISMATCH"},
+        )
+    # Verify expiry
+    exp = payload.get("exp")
+    if exp is not None and int(exp) < int(time.time()):
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Token has expired.", "code": "GOOGLE_TOKEN_EXPIRED"},
+        )
+
     email = payload.get("email", "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail={"error": "No email in Google token.", "code": "GOOGLE_NO_EMAIL"})
@@ -176,7 +203,13 @@ async def google_oauth_callback(request: Request, response: Response):
 
     user = await authenticate_or_create_oauth_user(email)
     if not user:
-        raise HTTPException(status_code=401, detail={"error": "Account disabled.", "code": "ACCOUNT_DISABLED"})
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "Cannot sign in with Google. An account with this email already uses a password. Please log in with your password instead.",
+                "code": "OAUTH_ACCOUNT_CONFLICT",
+            },
+        )
     token = await create_session(
         user["id"],
         user_agent=request.headers.get("user-agent"),

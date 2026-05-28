@@ -68,13 +68,16 @@ async def _resolve_workspace_documents(
     exactly those ``workspace_sources`` rows (each of which may reference a
     document). The result is ordered by document ``created_at`` ascending so
     the primary-document choice is deterministic.
+
+    Fix #1: scope by workspace_id (not owner_id) so workspace members who
+    didn't personally upload a doc can still see ready documents after RBAC
+    has already cleared them.
     """
     base_query = """
         SELECT DISTINCT d.*
         FROM documents d
         {join}
-        WHERE d.owner_id = ?
-          AND d.workspace_id = ?
+        WHERE d.workspace_id = ?
           AND d.provider = ?
           AND d.status = 'ready'
         {where_extra}
@@ -87,10 +90,10 @@ async def _resolve_workspace_documents(
             join="JOIN workspace_sources ws ON ws.document_id = d.id AND ws.workspace_id = d.workspace_id",
             where_extra=f"AND ws.id IN ({placeholders})",
         )
-        params = (owner_id, workspace_id, provider, *source_ids)
+        params = (workspace_id, provider, *source_ids)
     else:
         query = base_query.format(join="", where_extra="")
-        params = (owner_id, workspace_id, provider)
+        params = (workspace_id, provider)
     rows = await fetch_all(query, params)
     return rows
 
@@ -160,11 +163,21 @@ async def _load_ready_document(
     context: RequestContext,
     document_id: str,
     provider: str,
+    workspace_id: str | None = None,
 ):
-    document = await fetch_one(
-        "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
-        (document_id.strip(), context.owner_id),
-    )
+    # Fix #1: when a workspace_id is provided (RBAC already passed), allow
+    # loading documents that belong to that workspace even if the caller is
+    # not the uploader. Fall back to owner_id scoping for non-workspace calls.
+    if workspace_id:
+        document = await fetch_one(
+            "SELECT * FROM documents WHERE id = ? AND workspace_id = ?",
+            (document_id.strip(), workspace_id),
+        )
+    else:
+        document = await fetch_one(
+            "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
+            (document_id.strip(), context.owner_id),
+        )
     if not document:
         return None, api_error_response(
             request=request,
@@ -820,22 +833,30 @@ async def _stream_chat_response(
                             yield _sse_event("token", {"delta": delta})
                     else:
                         loop = asyncio.get_running_loop()
-                        queue: asyncio.Queue[str | None] = asyncio.Queue()
+                        queue: asyncio.Queue[str | None | Exception] = asyncio.Queue(maxsize=64)
 
                         def _run_gemini():
                             try:
                                 for piece in stream_gemini_text(provider_api_key, model.strip(), prompt):
                                     loop.call_soon_threadsafe(queue.put_nowait, piece)
+                            except Exception as exc:
+                                loop.call_soon_threadsafe(queue.put_nowait, exc)
                             finally:
                                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-                        loop.run_in_executor(None, _run_gemini)
-                        while True:
-                            piece = await queue.get()
-                            if piece is None:
-                                break
-                            collected.append(piece)
-                            yield _sse_event("token", {"delta": piece})
+                        gemini_future = loop.run_in_executor(None, _run_gemini)
+                        try:
+                            while True:
+                                piece = await queue.get()
+                                if piece is None:
+                                    break
+                                if isinstance(piece, Exception):
+                                    raise piece
+                                collected.append(piece)
+                                yield _sse_event("token", {"delta": piece})
+                        finally:
+                            # Ensure executor thread completes even if we exit early
+                            await asyncio.shield(gemini_future)
             except APIError as exc:
                 metrics.inc("chat_stream_failures_total", reason="provider_api_error")
                 yield _sse_event("error", {"error": str(exc), "code": "PROVIDER_API_ERROR"})
@@ -1026,6 +1047,7 @@ async def chat(
         context=context,
         document_id=body.document_id,
         provider=body.provider,
+        workspace_id=getattr(body, "workspace_id", None),
     )
     if error_response:
         return error_response
@@ -1075,6 +1097,7 @@ async def chat_stream(
         context=context,
         document_id=body.document_id,
         provider=body.provider,
+        workspace_id=getattr(body, "workspace_id", None),
     )
     if error_response:
         return error_response

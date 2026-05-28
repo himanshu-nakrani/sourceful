@@ -39,6 +39,22 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fix #11: cancellation ref to abort pollJob when the modal closes or unmounts
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    if (open) {
+      cancelledRef.current = false;
+    }
+  }, [open]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
+
   useEffect(() => {
     if (open && initialFile) {
       setFile(initialFile);
@@ -64,13 +80,15 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
 
   const handleClose = () => {
     if (submitting) return;
+    cancelledRef.current = true;
     reset();
     onClose();
   };
 
   const pollJob = async (jobId: string, documentId: string) => {
-    while (true) {
+    while (!cancelledRef.current) {
       const nextJob = await getJob(auth, jobId);
+      if (cancelledRef.current) return;
       setJob(nextJob);
       setStatus(
         nextJob.status === "ready"

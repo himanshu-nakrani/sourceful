@@ -351,10 +351,12 @@ async def enqueue_url_source(
     )
 
     # Attach the document to the workspace for cross-feature visibility.
+    # Fix #2: use COALESCE to avoid clobbering an existing workspace_id when
+    # the document was deduplicated from a different workspace.
     from backend.database import execute
 
     await execute(
-        "UPDATE documents SET workspace_id = ? WHERE id = ? AND owner_id = ?",
+        "UPDATE documents SET workspace_id = COALESCE(workspace_id, ?) WHERE id = ? AND owner_id = ?",
         (workspace_id, document["id"], owner_scope),
     )
 

@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from dataclasses import dataclass
 
 from fastapi import Depends, Header, HTTPException, Request
 from backend.auth import get_user_from_session
 from backend.settings import settings
 from backend.services.provider_auth import normalize_provider_api_key
+
+# Fix #5: HMAC secret used to sign anonymous session IDs so clients cannot
+# impersonate each other by guessing/sharing the X-Client-Session header value.
+_ANON_SESSION_SECRET = (settings.default_superuser_password or "fallback-hmac-key").encode("utf-8")
 
 
 @dataclass(slots=True)
@@ -79,10 +85,14 @@ async def get_request_context(
                 is_authenticated=True,
             )
     # Allow anonymous access with client session ID
+    # Fix #5: HMAC the raw client-session value so the owner_id is
+    # deterministic for the same header value but cannot be guessed/forged by
+    # another client who doesn't know the HMAC secret.
     client_session = _read_client_session(request)
     if client_session:
+        signed = hmac.new(_ANON_SESSION_SECRET, client_session.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
         return RequestContext(
-            owner_id=f"anon:{client_session}",
+            owner_id=f"anon:{signed}",
             request_id=getattr(request.state, "request_id", "unknown"),
             client_ip=request.client.host if request.client else "unknown",
             user_id=None,

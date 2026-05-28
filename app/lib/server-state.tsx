@@ -81,6 +81,9 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
   const [chunkPreview, setChunkPreview] = useState<ChunkPreview[]>([]);
   const [chunkPreviewLoading, setChunkPreviewLoading] = useState(false);
 
+  // Fix #9: sequence counter to ignore stale responses from selectConversation
+  const selectConversationSeqRef = React.useRef(0);
+
   const refreshDocuments = useCallback(async () => {
     if (!auth.clientSessionId) return;
     setDocumentsLoading(true);
@@ -176,17 +179,24 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
         setMessages([]);
         return;
       }
+      // Fix #9: track request sequence to ignore stale responses
+      const seq = ++selectConversationSeqRef.current;
       setMessagesLoading(true);
       try {
         const conversation = await getConversation(auth, conversationId);
+        // Only apply if this is still the latest request
+        if (seq !== selectConversationSeqRef.current) return;
         setMessages(conversation.messages);
         setMessagesError(null);
       } catch (error) {
+        if (seq !== selectConversationSeqRef.current) return;
         setMessagesError(
           error instanceof Error ? error.message : "Unable to load messages."
         );
       } finally {
-        setMessagesLoading(false);
+        if (seq === selectConversationSeqRef.current) {
+          setMessagesLoading(false);
+        }
       }
     },
     [auth, dispatch]

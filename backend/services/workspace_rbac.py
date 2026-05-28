@@ -78,9 +78,21 @@ async def check_workspace_role(
             code="WORKSPACE_NOT_FOUND",
             details={"workspace_id": workspace_id},
         )
+    # Fix #7: refuse to compute roles when owner_scope is missing. Legacy
+    # rows with NULL owner_scope could accidentally grant "owner" to any
+    # caller because the fallback `or context.owner_id` would match.
+    workspace_owner_scope = workspace.get("owner_scope")
+    if not workspace_owner_scope:
+        return None, api_error_response(
+            request=request,
+            status_code=500,
+            error="Workspace is missing owner_scope. Please contact support.",
+            code="WORKSPACE_OWNER_SCOPE_MISSING",
+            details={"workspace_id": workspace_id},
+        )
     role = await workspace_members.get_effective_role(
         workspace_id=workspace_id,
-        workspace_owner_scope=workspace.get("owner_scope") or context.owner_id,
+        workspace_owner_scope=workspace_owner_scope,
         caller_owner_scope=context.owner_id,
         caller_user_id=context.user_id,
     )

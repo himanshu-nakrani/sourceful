@@ -94,11 +94,21 @@ async def create_user(email: str, password: str, role: str = "user") -> dict[str
 
 
 async def authenticate_or_create_oauth_user(email: str) -> dict[str, Any] | None:
-    """Find or create a user from Google OAuth. No password is set for OAuth users."""
+    """Find or create a user from Google OAuth. No password is set for OAuth users.
+
+    Fix #3: refuse to merge into an existing local-password account. Only
+    allow OAuth login if the existing account was originally created via OAuth
+    (password_hash == "oauth_no_password") or if no account exists yet.
+    """
     normalized_email = email.strip().lower()
     existing = await get_user_by_email(normalized_email)
     if existing:
         if not bool(existing.get("is_active")):
+            return None
+        # Block OAuth login for accounts that have a real password set.
+        # This prevents account takeover via a Google account with the same email.
+        password_hash = str(existing.get("password_hash", ""))
+        if password_hash and password_hash != "oauth_no_password":
             return None
         return _normalize_user(existing) or {}
     now = _utcnow().isoformat()

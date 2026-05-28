@@ -283,17 +283,28 @@ function persistSettings(next: AppSettings, isAuthenticated: boolean): void {
 
   // Only persist other settings for authenticated users
   if (isAuthenticated) {
-    localStorage.setItem(
-      "rag-prefs",
-      JSON.stringify({
-        provider: next.provider,
-        chatModel: next.chatModel,
-        embeddingModel: next.embeddingModel,
-        topK: next.topK,
-        similarityThreshold: next.similarityThreshold,
-        theme: next.theme,
-      })
-    );
+    try {
+      const rawPrefs = localStorage.getItem("rag-prefs");
+      const existing = rawPrefs ? JSON.parse(rawPrefs) : {};
+      localStorage.setItem(
+        "rag-prefs",
+        JSON.stringify({
+          ...existing,
+          provider: next.provider,
+          chatModel: next.chatModel,
+          embeddingModel: next.embeddingModel,
+          topK: next.topK,
+          similarityThreshold: next.similarityThreshold,
+          theme: next.theme,
+          highContrast: next.highContrast,
+          reducedMotion: next.reducedMotion,
+          accentPack: next.accentPack,
+          chatLayout: next.chatLayout,
+        })
+      );
+    } catch {
+      // ignore
+    }
   }
 
   // Always persist session-scoped secrets so anonymous users can resume after refresh.

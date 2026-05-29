@@ -323,7 +323,7 @@ className="text-[11px] px-2 py-1 rounded-lg outline-none focus-visible:ring-2 fo
                         disabled={busy}
                         className="p-1.5 rounded-md"
                         style={{ color: "var(--error)" }}
-                        title="Remove member"
+                        title="Remove member" aria-label="Remove member"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -431,7 +431,7 @@ className="text-[11px] px-2 py-1 rounded-lg outline-none focus-visible:ring-2 fo
                         disabled={busy}
                         className="p-1.5 rounded-md"
                         style={{ color: "var(--error)" }}
-                        title="Revoke invitation"
+                        title="Revoke invitation" aria-label="Revoke invitation"
                       >
                         <Trash2 size={13} />
                       </button>

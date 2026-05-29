@@ -833,30 +833,55 @@ async def _stream_chat_response(
                             yield _sse_event("token", {"delta": delta})
                     else:
                         loop = asyncio.get_running_loop()
+                        # Bounded queue provides backpressure so a fast Gemini
+                        # stream can't grow memory without bound.
                         queue: asyncio.Queue[str | None | Exception] = asyncio.Queue(maxsize=64)
 
                         def _run_gemini():
+                            # Use run_coroutine_threadsafe(...).result() rather
+                            # than call_soon_threadsafe(put_nowait, ...). On a
+                            # bounded queue, put_nowait raises QueueFull from
+                            # inside the event-loop callback (outside this
+                            # try/except), which silently drops tokens or the
+                            # final sentinel and can hang the consumer forever.
+                            # put() applies real backpressure and surfaces any
+                            # error here so it propagates via the queue.
+                            def _put(item: str | None | Exception) -> None:
+                                asyncio.run_coroutine_threadsafe(queue.put(item), loop).result()
+
                             try:
                                 for piece in stream_gemini_text(provider_api_key, model.strip(), prompt):
-                                    loop.call_soon_threadsafe(queue.put_nowait, piece)
+                                    _put(piece)
                             except Exception as exc:
-                                loop.call_soon_threadsafe(queue.put_nowait, exc)
+                                _put(exc)
                             finally:
-                                loop.call_soon_threadsafe(queue.put_nowait, None)
+                                _put(None)
 
-                        gemini_future = loop.run_in_executor(None, _run_gemini)
+                        loop.run_in_executor(None, _run_gemini)
+                        consumed_sentinel = False
                         try:
                             while True:
                                 piece = await queue.get()
                                 if piece is None:
+                                    consumed_sentinel = True
                                     break
                                 if isinstance(piece, Exception):
                                     raise piece
                                 collected.append(piece)
                                 yield _sse_event("token", {"delta": piece})
                         finally:
-                            # Ensure executor thread completes even if we exit early
-                            await asyncio.shield(gemini_future)
+                            # If we exited before consuming the sentinel (client
+                            # disconnect or a raised exception), the producer
+                            # thread may be blocked putting into the bounded
+                            # queue. Drain remaining items — awaiting get()
+                            # suspends (no busy-loop) and frees queue slots — so
+                            # the producer reaches its finally, emits the
+                            # sentinel, and the executor thread exits cleanly.
+                            if not consumed_sentinel:
+                                while True:
+                                    item = await queue.get()
+                                    if item is None:
+                                        break
             except APIError as exc:
                 metrics.inc("chat_stream_failures_total", reason="provider_api_error")
                 yield _sse_event("error", {"error": str(exc), "code": "PROVIDER_API_ERROR"})
@@ -1153,18 +1178,12 @@ async def rerun_chat_message(
         OR
         Response: An API error response describing the failure (e.g., document/conversation/message not found or validation/generation errors).
     """
-    document, error_response = await _load_ready_document(
-        request=request,
-        context=context,
-        document_id=body.document_id,
-        provider=body.provider,
-    )
-    if error_response:
-        return error_response
-    assert document is not None
-
+    # Fix: resolve the conversation first so we can scope the document load by
+    # the conversation's workspace_id. Without this, rerunning a message in a
+    # shared workspace fails because _load_ready_document would fall back to
+    # owner_id scoping and reject documents the caller didn't personally upload.
     conversation = await fetch_one(
-        "SELECT id, document_id FROM conversations WHERE id = ? AND owner_id = ?",
+        "SELECT id, document_id, workspace_id FROM conversations WHERE id = ? AND owner_id = ?",
         (body.conversation_id, context.owner_id),
     )
     if not conversation:
@@ -1182,6 +1201,17 @@ async def rerun_chat_message(
             error="Conversation does not belong to that document.",
             code="CONVERSATION_DOCUMENT_MISMATCH",
         )
+
+    document, error_response = await _load_ready_document(
+        request=request,
+        context=context,
+        document_id=body.document_id,
+        provider=body.provider,
+        workspace_id=conversation.get("workspace_id"),
+    )
+    if error_response:
+        return error_response
+    assert document is not None
 
     original_messages = await fetch_all(
         """

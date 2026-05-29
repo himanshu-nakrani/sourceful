@@ -201,14 +201,27 @@ async def google_oauth_callback(request: Request, response: Response):
             detail={"error": "Google account email is not verified.", "code": "GOOGLE_EMAIL_NOT_VERIFIED"},
         )
 
-    user = await authenticate_or_create_oauth_user(email)
-    if not user:
+    try:
+        user = await authenticate_or_create_oauth_user(email)
+    except ValueError as exc:
+        err_code = str(exc)
+        if err_code == "ACCOUNT_DISABLED":
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "Account disabled.", "code": "ACCOUNT_DISABLED"},
+            )
+        # OAUTH_ACCOUNT_CONFLICT (and any other value) -> password-account conflict.
         raise HTTPException(
             status_code=401,
             detail={
                 "error": "Cannot sign in with Google. An account with this email already uses a password. Please log in with your password instead.",
                 "code": "OAUTH_ACCOUNT_CONFLICT",
             },
+        )
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Account disabled.", "code": "ACCOUNT_DISABLED"},
         )
     token = await create_session(
         user["id"],

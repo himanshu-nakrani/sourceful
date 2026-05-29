@@ -175,12 +175,15 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
   const selectConversation = useCallback(
     async (conversationId: string | null) => {
       dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: conversationId });
+      // Fix #9: bump the sequence counter first so that a null selection
+      // (deselect) also invalidates any in-flight request. Otherwise a
+      // pending getConversation could resolve later and overwrite the cleared
+      // messages state.
+      const seq = ++selectConversationSeqRef.current;
       if (!conversationId) {
         setMessages([]);
         return;
       }
-      // Fix #9: track request sequence to ignore stale responses
-      const seq = ++selectConversationSeqRef.current;
       setMessagesLoading(true);
       try {
         const conversation = await getConversation(auth, conversationId);

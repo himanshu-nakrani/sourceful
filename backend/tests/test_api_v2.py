@@ -377,3 +377,99 @@ def test_ready_worker_heartbeat(client):
     response = client.get("/ready")
     assert response.status_code == 503
     assert response.json()["checks"]["worker_heartbeat"] == "stale"
+
+
+def test_chat_stream_gemini_backpressure_no_token_loss(client):
+    """Fix: a fast Gemini producer must not drop tokens or the sentinel.
+
+    The streaming handler hands tokens from a worker thread to the async
+    consumer through a bounded queue (maxsize=64). Emitting far more than 64
+    tokens exercises the backpressure path; every token must still arrive.
+    """
+    login_superuser(client)
+    response = client.post(
+        "/api/ingest",
+        data={"provider": "gemini"},
+        files={"file": ("gemini.txt", b"The capital of France is Paris.", "text/plain")},
+        headers=PROVIDER_HEADERS,
+    )
+    assert response.status_code == 202
+    ingest_payload = response.json()
+
+    with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
+        mock_embed_texts.return_value = [[0.1] * 3]
+        job = asyncio.run(claim_next_job())
+        assert job is not None
+        asyncio.run(process_job(job))
+
+    token_count = 250  # well beyond the queue's maxsize of 64
+
+    def fake_gemini_stream(*_a, **_k):
+        for i in range(token_count):
+            yield f"t{i} "
+
+    with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
+        "backend.routers.chat.stream_gemini_text", fake_gemini_stream
+    ):
+        mock_embed_query.return_value = [0.1] * 3
+
+        stream_resp = client.post(
+            "/api/chat/stream",
+            headers=PROVIDER_HEADERS,
+            json={
+                "provider": "gemini",
+                "model": "gemini-2.5-flash",
+                "question": "What is the capital of France?",
+                "document_id": ingest_payload["document_id"],
+            },
+        )
+        assert stream_resp.status_code == 200
+        body = stream_resp.text
+        # Every emitted token must be present (no silent QueueFull drops).
+        assert body.count("event: token") == token_count
+        assert "t0 " in body and f"t{token_count - 1} " in body
+        # Stream must terminate cleanly (sentinel was not lost).
+        assert "event: message_saved" in body
+        assert "event: done" in body
+
+
+def test_chat_stream_gemini_propagates_producer_error(client):
+    """An exception raised inside the Gemini thread must surface as an error event."""
+    login_superuser(client)
+    response = client.post(
+        "/api/ingest",
+        data={"provider": "gemini"},
+        files={"file": ("gemini-err.txt", b"The capital of France is Paris.", "text/plain")},
+        headers=PROVIDER_HEADERS,
+    )
+    assert response.status_code == 202
+    ingest_payload = response.json()
+
+    with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
+        mock_embed_texts.return_value = [[0.1] * 3]
+        job = asyncio.run(claim_next_job())
+        assert job is not None
+        asyncio.run(process_job(job))
+
+    def failing_gemini_stream(*_a, **_k):
+        yield "partial "
+        raise RuntimeError("gemini blew up")
+
+    with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
+        "backend.routers.chat.stream_gemini_text", failing_gemini_stream
+    ):
+        mock_embed_query.return_value = [0.1] * 3
+
+        stream_resp = client.post(
+            "/api/chat/stream",
+            headers=PROVIDER_HEADERS,
+            json={
+                "provider": "gemini",
+                "model": "gemini-2.5-flash",
+                "question": "What is the capital of France?",
+                "document_id": ingest_payload["document_id"],
+            },
+        )
+        assert stream_resp.status_code == 200
+        body = stream_resp.text
+        assert "event: error" in body

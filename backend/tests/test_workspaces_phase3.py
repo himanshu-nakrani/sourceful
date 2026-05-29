@@ -6,11 +6,12 @@ import asyncio
 import uuid
 
 from backend.database import execute
+from backend.routers.deps import anon_owner_id
 
 
 HEADERS_OWNER = {"X-Client-Session": "ph3-owner"}
 HEADERS_OUTSIDER = {"X-Client-Session": "ph3-outsider"}
-OWNER = f"anon:{HEADERS_OWNER['X-Client-Session']}"
+OWNER = anon_owner_id(HEADERS_OWNER["X-Client-Session"])
 
 
 def _ws(client) -> str:

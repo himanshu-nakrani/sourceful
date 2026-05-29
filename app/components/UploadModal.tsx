@@ -39,19 +39,24 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fix #11: cancellation ref to abort pollJob when the modal closes or unmounts
-  const cancelledRef = useRef(false);
+  // Fix #11: track the active polling session so a stale pollJob loop exits
+  // when the modal is closed and quickly reopened. A boolean "cancelled" ref
+  // would be reset to false on reopen and let an in-flight loop resume,
+  // spawning concurrent loops that clobber each other's state. A monotonic
+  // counter avoids that: each loop captures its session id and bails out as
+  // soon as the active id changes (or is reset to 0 on close/unmount).
+  const pollSessionRef = useRef(0);
 
   useEffect(() => {
     if (open) {
-      cancelledRef.current = false;
+      pollSessionRef.current++;
     }
   }, [open]);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      cancelledRef.current = true;
+      pollSessionRef.current = 0;
     };
   }, []);
 
@@ -80,15 +85,17 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
 
   const handleClose = () => {
     if (submitting) return;
-    cancelledRef.current = true;
+    pollSessionRef.current = 0;
     reset();
     onClose();
   };
 
   const pollJob = async (jobId: string, documentId: string) => {
-    while (!cancelledRef.current) {
+    const session = pollSessionRef.current;
+    const isActive = () => session !== 0 && session === pollSessionRef.current;
+    while (isActive()) {
       const nextJob = await getJob(auth, jobId);
-      if (cancelledRef.current) return;
+      if (!isActive()) return;
       setJob(nextJob);
       setStatus(
         nextJob.status === "ready"

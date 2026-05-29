@@ -99,17 +99,22 @@ async def authenticate_or_create_oauth_user(email: str) -> dict[str, Any] | None
     Fix #3: refuse to merge into an existing local-password account. Only
     allow OAuth login if the existing account was originally created via OAuth
     (password_hash == "oauth_no_password") or if no account exists yet.
+
+    Raises ``ValueError`` with a specific code so the caller can return the
+    correct HTTP status/message:
+    - ``"ACCOUNT_DISABLED"`` when the account exists but is deactivated.
+    - ``"OAUTH_ACCOUNT_CONFLICT"`` when a local-password account owns the email.
     """
     normalized_email = email.strip().lower()
     existing = await get_user_by_email(normalized_email)
     if existing:
         if not bool(existing.get("is_active")):
-            return None
+            raise ValueError("ACCOUNT_DISABLED")
         # Block OAuth login for accounts that have a real password set.
         # This prevents account takeover via a Google account with the same email.
         password_hash = str(existing.get("password_hash", ""))
         if password_hash and password_hash != "oauth_no_password":
-            return None
+            raise ValueError("OAUTH_ACCOUNT_CONFLICT")
         return _normalize_user(existing) or {}
     now = _utcnow().isoformat()
     row = await execute_returning(

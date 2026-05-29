@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from backend.database import execute, fetch_one
+from backend.routers.deps import anon_owner_id
 
 HEADERS = {"X-Client-Session": "feedback-session"}
 
@@ -22,9 +23,9 @@ def _insert_assistant_message(
     conversation_id = conversation_id or str(uuid.uuid4())
     message_id = str(uuid.uuid4())
     # Owner scoping is derived from the session header by
-    # backend.routers.deps.get_request_context; we mirror the same
-    # ``anon:{session}`` prefix it produces.
-    owner_id = f"anon:{HEADERS['X-Client-Session']}"
+    # backend.routers.deps.get_request_context; we use the same HMAC-signing
+    # helper it relies on so the seeded owner_id matches the API's scope.
+    owner_id = anon_owner_id(HEADERS["X-Client-Session"])
 
     async def _seed():
         # Insert a minimal document row to satisfy FK from conversations.
@@ -120,7 +121,7 @@ def test_feedback_rejects_user_role_message(client):
 
     conversation_id = str(uuid.uuid4())
     user_message_id = str(uuid.uuid4())
-    owner_id = f"anon:{HEADERS['X-Client-Session']}"
+    owner_id = anon_owner_id(HEADERS["X-Client-Session"])
 
     async def _seed():
         await execute(

@@ -11,11 +11,12 @@ import asyncio
 import uuid
 
 from backend.database import execute, fetch_all
+from backend.routers.deps import anon_owner_id
 
 
 HEADERS = {"X-Client-Session": "ph1-tester"}
 PROVIDER_HEADERS = {**HEADERS, "X-Provider-Api-Key": "test-provider-key"}
-OWNER = f"anon:{HEADERS['X-Client-Session']}"
+OWNER = anon_owner_id(HEADERS["X-Client-Session"])
 
 
 def _bootstrap_workspace(client) -> str:

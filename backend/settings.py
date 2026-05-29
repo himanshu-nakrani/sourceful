@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     default_superuser_email: str = Field(default="admin@example.com", alias="DEFAULT_SUPERUSER_EMAIL")
     default_superuser_password: str = Field(..., alias="DEFAULT_SUPERUSER_PASSWORD")
 
+    # Fix #5: dedicated secret for HMAC-signing anonymous X-Client-Session
+    # values. Falls back to the superuser password (then a constant) only when
+    # unset so existing/dev deployments keep working, but production should set
+    # ANON_SESSION_SECRET to a strong, dedicated value.
+    anon_session_secret: str = Field(default="", alias="ANON_SESSION_SECRET")
+
     default_embedding_model_openai: str = Field(
         default="text-embedding-3-small",
         alias="DEFAULT_EMBEDDING_MODEL_OPENAI",

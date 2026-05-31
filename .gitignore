@@ -53,3 +53,6 @@ venv/
 /data/
 node_output.log
 pnpm_output.log
+
+# local-only drafts
+docs/launch-posts.md

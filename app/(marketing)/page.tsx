@@ -261,7 +261,7 @@ export default function LandingPage() {
                 />
               </Link>
               <a
-                href="https://github.com/himanshu-nakrani/document-qa"
+                href="https://github.com/himanshu-nakrani/sourceful"
                 className="btn-outline-warm"
               >
                 <GitBranch size={16} />
@@ -598,7 +598,7 @@ export default function LandingPage() {
                   fontFamily: "var(--font-fraunces), serif",
                 }}
               >
-                DocRAG
+                Sourceful
               </span>
             </div>
             <div
@@ -606,7 +606,7 @@ export default function LandingPage() {
               style={{ fontFamily: "var(--font-instrument-sans), sans-serif" }}
             >
               <a
-                href="https://github.com/himanshu-nakrani/document-qa"
+                href="https://github.com/himanshu-nakrani/sourceful"
                 className="transition-colors hover:opacity-70"
                 style={{ color: "var(--text-tertiary)" }}
               >

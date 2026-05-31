@@ -1,20 +1,20 @@
 {
-  "name": "document-qa",
+  "name": "sourceful",
   "description": "Self-hostable document Q&A (RAG): Next.js + FastAPI, BYOK OpenAI/Gemini, cited streaming chat, background ingestion, workspaces/RBAC, PostgreSQL+pgvector.",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "author": "Himanshu Nakrani",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/himanshu-nakrani/document-qa.git"
+    "url": "git+https://github.com/himanshu-nakrani/sourceful.git"
   },
   "bugs": {
-    "url": "https://github.com/himanshu-nakrani/document-qa/issues"
+    "url": "https://github.com/himanshu-nakrani/sourceful/issues"
   },
-  "homepage": "https://github.com/himanshu-nakrani/document-qa#readme",
+  "homepage": "https://github.com/himanshu-nakrani/sourceful#readme",
   "keywords": [
     "rag",
-    "document-qa",
+    "sourceful",
     "nextjs",
     "fastapi",
     "pgvector",

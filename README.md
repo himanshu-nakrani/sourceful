@@ -1,4 +1,4 @@
-# DocRAG — Document Question-Answering Platform
+# Sourceful — Document Question-Answering Platform
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
@@ -49,7 +49,7 @@
 
 ### What problem it solves
 
-Teams accumulate knowledge in PDFs, DOCX files, spreadsheets, and internal wikis, but generic chatbots cannot answer questions **grounded in those specific documents** without a retrieval pipeline. DocRAG closes that gap: it ingests files, embeds them into a vector index, retrieves relevant passages at query time, and generates answers that cite the exact chunks used.
+Teams accumulate knowledge in PDFs, DOCX files, spreadsheets, and internal wikis, but generic chatbots cannot answer questions **grounded in those specific documents** without a retrieval pipeline. Sourceful closes that gap: it ingests files, embeds them into a vector index, retrieves relevant passages at query time, and generates answers that cite the exact chunks used.
 
 ### Why it exists
 
@@ -164,7 +164,7 @@ open http://localhost:3000/dashboard
 
 ## Architecture Overview
 
-DocRAG is a **four-process** system in production: browser → Next.js → FastAPI API → background worker → database.
+Sourceful is a **four-process** system in production: browser → Next.js → FastAPI API → background worker → database.
 
 ```mermaid
 flowchart TB
@@ -255,7 +255,7 @@ flowchart LR
 ## Folder Structure
 
 ```
-document-qa/
+sourceful/
 ├── app/                          # Next.js App Router (frontend)
 │   ├── (marketing)/              # Public landing page
 │   ├── dashboard/                # Main authenticated app shell
@@ -319,8 +319,8 @@ document-qa/
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/himanshu-nakrani/document-qa.git
-cd document-qa
+git clone https://github.com/himanshu-nakrani/sourceful.git
+cd sourceful
 cp .env.example .env
 # Edit .env — at minimum set DEFAULT_SUPERUSER_PASSWORD
 ```

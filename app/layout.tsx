@@ -23,7 +23,7 @@ const instrumentSans = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "DocRAG — AI-Powered Document Intelligence",
+  title: "Sourceful — AI-Powered Document Intelligence",
   description:
     "Upload PDFs, DOCX, and text files, index them with embeddings, then ask document questions with cited retrieval and source review. Supports OpenAI and Google Gemini.",
   keywords: ["RAG", "document QA", "citations", "embeddings", "OpenAI", "Gemini", "PDF"],

@@ -9,7 +9,7 @@ This project is under active development. Security fixes are applied to the
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, report them privately using GitHub's **[Private Vulnerability Reporting](https://github.com/himanshu-nakrani/document-qa/security/advisories/new)**
+Instead, report them privately using GitHub's **[Private Vulnerability Reporting](https://github.com/himanshu-nakrani/sourceful/security/advisories/new)**
 feature on this repository.
 
 When reporting, please include:

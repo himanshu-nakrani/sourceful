@@ -116,7 +116,7 @@ async def _fetch_url(url: str) -> tuple[bytes, str, str]:
         async with httpx.AsyncClient(
             timeout=FETCH_TIMEOUT_SECONDS,
             follow_redirects=True,
-            headers={"User-Agent": "document-qa-url-ingest/1.0"},
+            headers={"User-Agent": "sourceful-url-ingest/1.0"},
             event_hooks={"request": [_prevent_ssrf_hook]},
         ) as client:
             response = await client.get(url)

@@ -1,7 +1,7 @@
 import "./marketing.css";
 
 export const metadata = {
-  title: "DocRAG — AI-Powered Document Intelligence",
+  title: "Sourceful — AI-Powered Document Intelligence",
   description: "Enterprise-grade RAG platform with advanced retrieval, multi-modal ingestion, and agentic capabilities.",
 };
 

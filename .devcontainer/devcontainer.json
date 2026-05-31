@@ -1,5 +1,5 @@
 {
-  "name": "document-qa (Next.js + FastAPI)",
+  "name": "sourceful (Next.js + FastAPI)",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/python:1": {

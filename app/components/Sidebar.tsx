@@ -244,7 +244,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
             className="font-bold text-sm"
             style={{ color: "var(--text-primary)", letterSpacing: "-0.025em" }}
           >
-            DocRAG
+            Sourceful
           </span>
         </div>
         <motion.button

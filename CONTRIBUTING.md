@@ -1,4 +1,4 @@
-# Contributing to document-qa
+# Contributing to Sourceful
 
 Thanks for your interest in contributing! This project is an open, self-hostable RAG application built with Next.js and FastAPI. Contributions of all kinds — bug reports, fixes, features, docs — are welcome.
 

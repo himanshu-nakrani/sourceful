@@ -154,7 +154,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
             className="text-3xl font-bold mb-2"
             style={{ color: "var(--text-primary)", letterSpacing: "-0.03em" }}
           >
-            Welcome to <span className="gradient-text">DocRAG</span>
+            Welcome to <span className="gradient-text">Sourceful</span>
           </h1>
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
             Upload documents, ask questions, get grounded answers

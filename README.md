@@ -319,7 +319,7 @@ document-qa/
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-org/document-qa.git
+git clone https://github.com/himanshu-nakrani/document-qa.git
 cd document-qa
 cp .env.example .env
 # Edit .env — at minimum set DEFAULT_SUPERUSER_PASSWORD
@@ -975,6 +975,10 @@ CI runs on push/PR to `main` ([`.github/workflows/ci.yml`](./.github/workflows/c
 ---
 
 ## Contributing
+
+Contributions are welcome — bug reports, fixes, features, and docs improvements. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. To report a security issue privately, see [SECURITY.md](SECURITY.md).
+
+Quick checklist:
 
 1. Fork and create a feature branch.
 2. Run targeted tests first, then `pytest -q backend/tests` for cross-cutting changes.

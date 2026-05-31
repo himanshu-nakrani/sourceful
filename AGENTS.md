@@ -1,5 +1,9 @@
 # AGENTS.md
 
+> **Audience:** contributors and AI coding agents working on this repo. This is
+> internal developer guidance — code layout, run commands, and testing
+> expectations. End-user setup and usage docs live in `README.md`.
+
 ## Repository overview
 
 - This repo is a self-hostable document QA/RAG app with a Next.js frontend at the repo root and a FastAPI backend in `backend/`.

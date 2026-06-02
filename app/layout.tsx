@@ -30,10 +30,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * Root HTML layout that applies global fonts, viewport settings, and a pre-paint theme selection.
+ * Root HTML layout that applies global fonts, viewport settings, and pre-paint attribute selection.
  *
  * Injects a viewport meta tag and an inline script that reads `localStorage.getItem('rag-prefs')`
- * and sets `document.documentElement`'s `data-theme` attribute to `"light"` before the first paint when the saved theme is `"light"`.
+ * and sets `document.documentElement`'s `data-theme`, `data-contrast`, `data-motion`, and `data-accent`
+ * attributes before the first paint to prevent Flash of Unstyled Content (FOUC).
  *
  * @param children - The page content to render inside the document body
  * @returns The root HTML element containing the configured head and body with the provided `children`

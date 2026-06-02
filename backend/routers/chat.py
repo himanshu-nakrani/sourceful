@@ -1049,6 +1049,9 @@ async def _resolve_or_create_conversation(
     # document's workspace, falling back to the caller's default.
     workspace_id = getattr(body, "workspace_id", None) or None
     if not workspace_id and body.document_id:
+        # When body.workspace_id is absent, we intentionally pass an empty string
+        # for ws_id_check so the OR clause is a no-op. This ensures only owner-scoped
+        # documents are matched, preventing accidental matches with shared workspace docs.
         ws_id_check = workspace_id or ""
         doc_row = await fetch_one(
             "SELECT workspace_id FROM documents WHERE id = ? AND (owner_id = ? OR workspace_id = ?)",
@@ -1281,6 +1284,9 @@ async def rerun_chat_message(
     next_conversation_id = str(uuid.uuid4())
     title = rerun_message["content"][:80] + ("..." if len(rerun_message["content"]) > 80 else "")
     # Phase 0: inherit the workspace of the document being rerun.
+    # When body.workspace_id is absent, we intentionally pass an empty string
+    # for ws_id_check so the OR clause is a no-op, ensuring only owner-scoped
+    # documents are matched.
     ws_id_check = getattr(body, "workspace_id", None) or ""
     doc_row = await fetch_one(
         "SELECT workspace_id FROM documents WHERE id = ? AND (owner_id = ? OR workspace_id = ?)",

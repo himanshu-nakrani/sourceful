@@ -20,10 +20,14 @@ _sqlite: aiosqlite.Connection | None = None
 _init_lock = asyncio.Lock() # Added lock
 
 
-def _sql(query: str) -> str:
+def sql_format(query: str) -> str:
+    """Format a query string with ? placeholders to %s for PostgreSQL."""
     if settings.using_postgres:
         return query.replace("?", "%s")
     return query
+
+# Keep _sql as an alias for backward compatibility within this module
+_sql = sql_format
 
 
 async def init_db() -> None:
@@ -1194,6 +1198,41 @@ async def fetch_all(query: str, params: tuple[Any, ...] = ()) -> list[dict[str, 
     rows = await cursor.fetchall()
     await cursor.close()
     return [dict(row) for row in rows]
+
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def transaction():
+    """Context manager for atomic database operations.
+    
+    Yields a connection/cursor pair that can be used to execute multiple
+    statements atomically. If an exception occurs, the transaction is rolled back.
+    """
+    await init_db()
+    if settings.using_postgres:
+        assert _pg_pool is not None
+        async with _pg_pool.connection() as conn:
+            # Disable autocommit for this transaction
+            conn.autocommit = False
+            try:
+                async with conn.cursor() as cur:
+                    yield cur
+                await conn.commit()
+            except Exception:
+                await conn.rollback()
+                raise
+            finally:
+                conn.autocommit = True
+        return
+
+    assert _sqlite is not None
+    try:
+        yield _sqlite
+        await _sqlite.commit()
+    except Exception:
+        await _sqlite.rollback()
+        raise
 
 
 async def execute(query: str, params: tuple[Any, ...] = ()) -> None:

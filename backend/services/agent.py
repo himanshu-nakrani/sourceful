@@ -230,6 +230,7 @@ async def run_agent(
     allowed_document_ids: list[str],
     top_k: int,
     min_score: float = 0.0,
+    workspace_id: str | None = None,
     trace_span: tracing._Span | None = None,
 ) -> AgentRunResult:
     """Run the planner ↔ tools loop and return harvested chunks + telemetry."""
@@ -243,6 +244,7 @@ async def run_agent(
         embedding_model=embedding_model,
         top_k=top_k,
         min_score=min_score,
+        workspace_id=workspace_id,
     )
 
     max_iter = max(1, settings.retrieval_agent_max_iterations)

@@ -67,6 +67,7 @@ class AgentToolContext:
     embedding_model: str
     top_k: int
     min_score: float = 0.0
+    workspace_id: str | None = None
     # Chunks accumulated across all tool calls this turn. The agent
     # inspects this to decide when to stop and also dedupes by chunk_id.
     collected_chunks: list[RetrievedChunk] = field(default_factory=list)
@@ -164,6 +165,7 @@ async def _tool_search_chunks(ctx: AgentToolContext, args: dict[str, Any]) -> To
             query_embedding=embedding,
             top_k=top_k,
             min_score=ctx.min_score,
+            workspace_id=ctx.workspace_id,
         ),
     )
 
@@ -202,15 +204,17 @@ async def _tool_get_document_summary(ctx: AgentToolContext, args: dict[str, Any]
         raise ToolArgumentError("document_id must reference an allowed document")
     document_id = doc_ids[0]
 
+    ws_id = ctx.workspace_id or ""
     rows = await fetch_all(
         """
-        SELECT content, page_number, chunk_index, chunk_type
-        FROM document_chunks
-        WHERE document_id = ? AND owner_id = ?
-        ORDER BY chunk_index ASC
+        SELECT c.content, c.page_number, c.chunk_index, c.chunk_type
+        FROM document_chunks c
+        JOIN documents d ON c.document_id = d.id
+        WHERE c.document_id = ? AND (c.owner_id = ? OR d.workspace_id = ?)
+        ORDER BY c.chunk_index ASC
         LIMIT ?
         """,
-        (document_id, ctx.owner_id, 5),
+        (document_id, ctx.owner_id, ws_id, 5),
     )
     if not rows:
         return ToolResult(payload={"document_id": document_id, "summary": "", "chunks_used": 0})
@@ -236,33 +240,39 @@ async def _tool_get_document_summary(ctx: AgentToolContext, args: dict[str, Any]
 
 
 async def _tool_list_documents(ctx: AgentToolContext, args: dict[str, Any]) -> ToolResult:
+    if not ctx.allowed_document_ids:
+        return ToolResult(payload={"documents": [], "count": 0})
+
     name_contains = args.get("name_contains")
-    rows = await fetch_all(
-        """
+    needle = (name_contains or "").strip().lower() if isinstance(name_contains, str) else ""
+    
+    placeholders = ", ".join("?" for _ in ctx.allowed_document_ids)
+    ws_id = ctx.workspace_id or ""
+    
+    query = f"""
         SELECT id, filename, status, provider, embedding_model, chunk_count
         FROM documents
-        WHERE owner_id = ?
-        ORDER BY created_at DESC
-        LIMIT 50
-        """,
-        (ctx.owner_id,),
-    )
-    filtered = []
-    needle = (name_contains or "").strip().lower() if isinstance(name_contains, str) else ""
-    for row in rows:
-        if row.get("id") not in ctx.allowed_document_ids:
-            continue
-        filename = (row.get("filename") or "").lower()
-        if needle and needle not in filename:
-            continue
-        filtered.append(
-            {
-                "id": row["id"],
-                "filename": row["filename"],
-                "status": row["status"],
-                "chunk_count": row.get("chunk_count", 0),
-            }
-        )
+        WHERE (owner_id = ? OR workspace_id = ?) AND id IN ({placeholders})
+    """
+    params: list = [ctx.owner_id, ws_id] + ctx.allowed_document_ids
+    
+    if needle:
+        query += " AND LOWER(filename) LIKE ?"
+        params.append(f"%{needle}%")
+        
+    query += " ORDER BY created_at DESC LIMIT 50"
+    
+    rows = await fetch_all(query, tuple(params))
+    
+    filtered = [
+        {
+            "id": row["id"],
+            "filename": row["filename"],
+            "status": row["status"],
+            "chunk_count": row.get("chunk_count", 0),
+        }
+        for row in rows
+    ]
     return ToolResult(payload={"documents": filtered, "count": len(filtered)})
 
 
@@ -290,6 +300,7 @@ async def _tool_compare_documents(ctx: AgentToolContext, args: dict[str, Any]) -
                 query_embedding=embedding,
                 top_k=top_k,
                 min_score=ctx.min_score,
+                workspace_id=ctx.workspace_id,
             ),
         )
         for doc_id in doc_ids

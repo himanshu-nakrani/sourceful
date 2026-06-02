@@ -201,6 +201,7 @@ async def query_similar(
     query_embedding: list[float],
     top_k: int,
     min_score: float = 0.0,
+    workspace_id: str | None = None,
 ) -> list[RetrievedChunk]:
     """
     Retrieve the most similar chunks for a single document using the provided query embedding.
@@ -211,21 +212,24 @@ async def query_similar(
         query_embedding (list[float]): Embedding vector representing the query.
         top_k (int): Maximum number of results to return.
         min_score (float): Minimum similarity score required for a result to be included.
+        workspace_id (str | None): Optional workspace ID to allow workspace-scoped access.
     
     Returns:
         list[RetrievedChunk]: Retrieved chunks meeting `min_score`, sorted by similarity descending and limited to `top_k`.
     """
+    ws_id = workspace_id or ""
     if settings.using_postgres:
         rows = await fetch_all(
             """
-            SELECT id, document_id, content, page_number, parent_content,
-                   1 - (embedding <=> ?::vector) AS score
-            FROM document_chunks
-            WHERE document_id = ? AND owner_id = ?
-            ORDER BY embedding <=> ?::vector
+            SELECT c.id, c.document_id, c.content, c.page_number, c.parent_content,
+                   1 - (c.embedding <=> ?::vector) AS score
+            FROM document_chunks c
+            JOIN documents d ON c.document_id = d.id
+            WHERE c.document_id = ? AND (c.owner_id = ? OR d.workspace_id = ?)
+            ORDER BY c.embedding <=> ?::vector
             LIMIT ?
             """,
-            (_vector_literal(query_embedding), document_id, owner_id, _vector_literal(query_embedding), top_k),
+            (_vector_literal(query_embedding), document_id, owner_id, ws_id, _vector_literal(query_embedding), top_k),
         )
         return [
             RetrievedChunk(
@@ -240,8 +244,13 @@ async def query_similar(
         ]
 
     rows = await fetch_all(
-        "SELECT id, document_id, content, page_number, parent_content, embedding_json FROM document_chunks WHERE document_id = ? AND owner_id = ?",
-        (document_id, owner_id),
+        """
+        SELECT c.id, c.document_id, c.content, c.page_number, c.parent_content, c.embedding_json
+        FROM document_chunks c
+        JOIN documents d ON c.document_id = d.id
+        WHERE c.document_id = ? AND (c.owner_id = ? OR d.workspace_id = ?)
+        """,
+        (document_id, owner_id, ws_id),
     )
     if not rows:
         return []
@@ -255,6 +264,7 @@ async def query_similar_multi(
     query_embedding: list[float],
     top_k: int,
     min_score: float = 0.0,
+    workspace_id: str | None = None,
 ) -> list[RetrievedChunk]:
     """
     Search multiple documents for chunks similar to a query embedding and return the highest-scoring matches.
@@ -268,6 +278,7 @@ async def query_similar_multi(
         query_embedding (list[float]): Embedding vector representing the query.
         top_k (int): Maximum number of results to return across all documents.
         min_score (float, optional): Minimum similarity score required for a result to be included. Defaults to 0.0.
+        workspace_id (str | None): Optional workspace ID to allow workspace-scoped access.
     
     Returns:
         list[RetrievedChunk]: Retrieved chunks across the given documents, sorted by descending `score`, limited to `top_k`.
@@ -276,16 +287,18 @@ async def query_similar_multi(
         return []
 
     placeholders = ", ".join("?" for _ in document_ids)
+    ws_id = workspace_id or ""
 
     if settings.using_postgres:
-        params = [_vector_literal(query_embedding), owner_id] + document_ids + [_vector_literal(query_embedding), top_k]
+        params = [_vector_literal(query_embedding), owner_id, ws_id] + document_ids + [_vector_literal(query_embedding), top_k]
         rows = await fetch_all(
             f"""
-            SELECT id, document_id, content, page_number, parent_content,
-                   1 - (embedding <=> ?::vector) AS score
-            FROM document_chunks
-            WHERE owner_id = ? AND document_id IN ({placeholders})
-            ORDER BY embedding <=> ?::vector
+            SELECT c.id, c.document_id, c.content, c.page_number, c.parent_content,
+                   1 - (c.embedding <=> ?::vector) AS score
+            FROM document_chunks c
+            JOIN documents d ON c.document_id = d.id
+            WHERE (c.owner_id = ? OR d.workspace_id = ?) AND c.document_id IN ({placeholders})
+            ORDER BY c.embedding <=> ?::vector
             LIMIT ?
             """,
             tuple(params),
@@ -302,9 +315,14 @@ async def query_similar_multi(
             if float(row["score"] or 0.0) >= min_score
         ]
 
-    params = [owner_id] + document_ids
+    params = [owner_id, ws_id] + document_ids
     rows = await fetch_all(
-        f"SELECT id, document_id, content, page_number, parent_content, embedding_json FROM document_chunks WHERE owner_id = ? AND document_id IN ({placeholders})",
+        f"""
+        SELECT c.id, c.document_id, c.content, c.page_number, c.parent_content, c.embedding_json
+        FROM document_chunks c
+        JOIN documents d ON c.document_id = d.id
+        WHERE (c.owner_id = ? OR d.workspace_id = ?) AND c.document_id IN ({placeholders})
+        """,
         tuple(params),
     )
     if not rows:

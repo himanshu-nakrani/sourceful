@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 from openai import APIError
 from pydantic import TypeAdapter
 
-from backend.database import execute, execute_many, fetch_all, fetch_one
+from backend.database import execute, execute_many, fetch_all, fetch_one, transaction, sql_format
 from backend.errors import api_error_response
 from backend.metrics import metrics
 from backend.models import ChatRequest, Citation, RerunMessageRequest
@@ -310,6 +310,7 @@ async def _run_agent_retrieval(
     extra_document_ids: list[str] | None,
     trace_span: tracing._Span | None,
     chat_model: str | None,
+    workspace_id: str | None = None,
 ):
     """Phase 3.1 dispatch: plan → tools → chunks, replacing the linear pipeline.
 
@@ -332,6 +333,7 @@ async def _run_agent_retrieval(
         allowed_document_ids=allowed,
         top_k=effective_top_k,
         min_score=effective_min_score,
+        workspace_id=workspace_id,
         trace_span=trace_span,
     )
     stages = {"retrieval_path": "agent", **result.stages}
@@ -359,14 +361,16 @@ async def _embed_and_retrieve(
     extra_document_ids: list[str] | None,
     trace_span: tracing._Span | None,
     chat_model: str | None = None,
+    workspace_id: str | None = None,
 ):
     """Embed the question and run the retrieval pipeline. Returns (chunks, stages, error_response)."""
     if extra_document_ids:
         all_doc_ids = [document["id"]] + list(extra_document_ids)
         placeholders = ", ".join(["?"] * len(all_doc_ids))
+        ws_id = workspace_id or ""
         rows = await fetch_all(
-            f"SELECT id, embedding_model FROM documents WHERE owner_id = ? AND id IN ({placeholders})",
-            (context.owner_id, *all_doc_ids),
+            f"SELECT id, embedding_model FROM documents WHERE (owner_id = ? OR workspace_id = ?) AND id IN ({placeholders})",
+            (context.owner_id, ws_id, *all_doc_ids),
         )
         models_by_id = {row["id"]: row["embedding_model"] for row in rows}
         expected_model = document["embedding_model"]
@@ -427,6 +431,7 @@ async def _embed_and_retrieve(
             query_embedding=question_embedding,
             top_k=effective_top_k,
             min_score=effective_min_score,
+            workspace_id=workspace_id,
             extra_query_embeddings=extra_lanes,
         ),
         trace_span=trace_span,
@@ -502,21 +507,39 @@ async def _save_turn(
     mode: str | None = None,
 ) -> None:
     user_message_id = str(uuid.uuid4())
-    await execute(
-        "INSERT INTO messages (id, owner_id, conversation_id, role, content) VALUES (?, ?, ?, 'user', ?)",
-        (user_message_id, context.owner_id, conversation_id, user_question),
-    )
-    await execute(
-        """
-        INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json, mode)
-        VALUES (?, ?, ?, 'assistant', ?, ?, ?)
-        """,
-        (assistant_message_id, context.owner_id, conversation_id, answer, sources_json, mode or "ask"),
-    )
-    await execute(
-        f"UPDATE conversations SET updated_at = {TIMESTAMP_SQL} WHERE id = ? AND owner_id = ?",
-        (conversation_id, context.owner_id),
-    )
+    async with transaction() as conn:
+        if settings.using_postgres:
+            await conn.execute(
+                sql_format("INSERT INTO messages (id, owner_id, conversation_id, role, content) VALUES (?, ?, ?, 'user', ?)"),
+                (user_message_id, context.owner_id, conversation_id, user_question),
+            )
+            await conn.execute(
+                sql_format("""
+                    INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json, mode)
+                    VALUES (?, ?, ?, 'assistant', ?, ?, ?)
+                """),
+                (assistant_message_id, context.owner_id, conversation_id, answer, sources_json, mode or "ask"),
+            )
+            await conn.execute(
+                sql_format(f"UPDATE conversations SET updated_at = {TIMESTAMP_SQL} WHERE id = ? AND owner_id = ?"),
+                (conversation_id, context.owner_id),
+            )
+        else:
+            await conn.execute(
+                "INSERT INTO messages (id, owner_id, conversation_id, role, content) VALUES (?, ?, ?, 'user', ?)",
+                (user_message_id, context.owner_id, conversation_id, user_question),
+            )
+            await conn.execute(
+                """
+                INSERT INTO messages (id, owner_id, conversation_id, role, content, sources_json, mode)
+                VALUES (?, ?, ?, 'assistant', ?, ?, ?)
+                """,
+                (assistant_message_id, context.owner_id, conversation_id, answer, sources_json, mode or "ask"),
+            )
+            await conn.execute(
+                f"UPDATE conversations SET updated_at = {TIMESTAMP_SQL} WHERE id = ? AND owner_id = ?",
+                (conversation_id, context.owner_id),
+            )
 
 
 async def _generate_chat_response(
@@ -577,6 +600,7 @@ async def _generate_chat_response(
                 extra_document_ids=extra_document_ids,
                 trace_span=trace_span,
                 chat_model=model,
+                workspace_id=workspace_id,
             )
         else:
             chunks, stages, err = await _embed_and_retrieve(
@@ -591,6 +615,7 @@ async def _generate_chat_response(
                 extra_document_ids=extra_document_ids,
                 trace_span=trace_span,
                 chat_model=model,
+                workspace_id=workspace_id,
             )
         if err is not None:
             return err
@@ -753,6 +778,7 @@ async def _stream_chat_response(
                     extra_document_ids=extra_document_ids,
                     trace_span=trace_span,
                     chat_model=model,
+                    workspace_id=workspace_id,
                 )
             else:
                 chunks, stages, err = await _embed_and_retrieve(
@@ -767,6 +793,7 @@ async def _stream_chat_response(
                     extra_document_ids=extra_document_ids,
                     trace_span=trace_span,
                     chat_model=model,
+                    workspace_id=workspace_id,
                 )
             if err is not None:
                 # Serialize the error response's body through SSE.
@@ -879,8 +906,14 @@ async def _stream_chat_response(
                             # sentinel, and the executor thread exits cleanly.
                             if not consumed_sentinel:
                                 while True:
-                                    item = await queue.get()
-                                    if item is None:
+                                    try:
+                                        # Add a timeout to prevent indefinite hanging
+                                        # if the producer thread fails to emit the sentinel.
+                                        item = await asyncio.wait_for(queue.get(), timeout=5.0)
+                                        if item is None:
+                                            break
+                                    except asyncio.TimeoutError:
+                                        logger.warning("stream_queue_drain_timeout")
                                         break
             except APIError as exc:
                 metrics.inc("chat_stream_failures_total", reason="provider_api_error")
@@ -1016,9 +1049,10 @@ async def _resolve_or_create_conversation(
     # document's workspace, falling back to the caller's default.
     workspace_id = getattr(body, "workspace_id", None) or None
     if not workspace_id and body.document_id:
+        ws_id_check = workspace_id or ""
         doc_row = await fetch_one(
-            "SELECT workspace_id FROM documents WHERE id = ? AND owner_id = ?",
-            (body.document_id, context.owner_id),
+            "SELECT workspace_id FROM documents WHERE id = ? AND (owner_id = ? OR workspace_id = ?)",
+            (body.document_id, context.owner_id, ws_id_check),
         )
         if doc_row and doc_row.get("workspace_id"):
             workspace_id = doc_row["workspace_id"]
@@ -1247,9 +1281,10 @@ async def rerun_chat_message(
     next_conversation_id = str(uuid.uuid4())
     title = rerun_message["content"][:80] + ("..." if len(rerun_message["content"]) > 80 else "")
     # Phase 0: inherit the workspace of the document being rerun.
+    ws_id_check = getattr(body, "workspace_id", None) or ""
     doc_row = await fetch_one(
-        "SELECT workspace_id FROM documents WHERE id = ? AND owner_id = ?",
-        (body.document_id, context.owner_id),
+        "SELECT workspace_id FROM documents WHERE id = ? AND (owner_id = ? OR workspace_id = ?)",
+        (body.document_id, context.owner_id, ws_id_check),
     )
     rerun_workspace_id = (doc_row or {}).get("workspace_id")
     if not rerun_workspace_id:

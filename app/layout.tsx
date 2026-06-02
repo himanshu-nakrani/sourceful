@@ -55,7 +55,12 @@ export default function RootLayout({
     >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-        {/* Apply theme before first paint to prevent flash */}
+        {/* 
+          Apply theme before first paint to prevent Flash of Unstyled Content (FOUC).
+          Security note: This is a standard, safe pattern. It only reads from localStorage,
+          parses JSON, and sets predefined data attributes. It does not execute any 
+          user-controlled strings as code, and the try/catch prevents errors from invalid JSON.
+        */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var p=localStorage.getItem('rag-prefs');if(p){var d=JSON.parse(p);var r=document.documentElement;if(d.theme==='light')r.setAttribute('data-theme','light');if(d.highContrast)r.setAttribute('data-contrast','high');if(d.reducedMotion)r.setAttribute('data-motion','reduced');if(d.accentPack&&d.accentPack!=='terracotta')r.setAttribute('data-accent',d.accentPack);}}catch(e){}})();`,

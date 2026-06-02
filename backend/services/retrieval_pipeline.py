@@ -38,6 +38,7 @@ class RetrievalRequest:
     query_embedding: list[float]
     top_k: int
     min_score: float = 0.0
+    workspace_id: str | None = None
     hybrid_enabled: bool | None = None
     reranker_enabled: bool | None = None
     mmr_enabled: bool | None = None
@@ -61,10 +62,11 @@ async def _dense_search(
     embedding: list[float],
     k: int,
     min_score: float,
+    workspace_id: str | None = None,
 ) -> list[RetrievedChunk]:
     if len(document_ids) == 1:
-        return await query_similar(document_ids[0], owner_id, embedding, k, min_score)
-    return await query_similar_multi(document_ids, owner_id, embedding, k, min_score)
+        return await query_similar(document_ids[0], owner_id, embedding, k, min_score, workspace_id)
+    return await query_similar_multi(document_ids, owner_id, embedding, k, min_score, workspace_id)
 
 
 async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = None) -> RetrievalResult:
@@ -102,7 +104,7 @@ async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = 
     # --- Primary dense lane ---
     with tracing.span(trace_span, "dense_retrieval", k=dense_k) as dense_span:
         dense_hits = await _dense_search(
-            req.document_ids, req.owner_id, req.query_embedding, dense_k, req.min_score
+            req.document_ids, req.owner_id, req.query_embedding, dense_k, req.min_score, req.workspace_id
         )
         dense_span.update(hits=len(dense_hits))
     stages["dense_hits"] = len(dense_hits)
@@ -117,7 +119,7 @@ async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = 
         ) as xq_span:
             tasks = [
                 _dense_search(
-                    req.document_ids, req.owner_id, embedding, dense_k, req.min_score
+                    req.document_ids, req.owner_id, embedding, dense_k, req.min_score, req.workspace_id
                 )
                 for _label, embedding in req.extra_query_embeddings
             ]

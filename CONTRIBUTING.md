@@ -43,6 +43,10 @@ Use the GitHub issue tracker and follow the bug-report template. Please include:
 
 Do **not** open public issues for security vulnerabilities. See [SECURITY.md](SECURITY.md) for the disclosure process.
 
+## Governance
+
+How the project is run, who can merge, and how maintainers are added is documented in [GOVERNANCE.md](GOVERNANCE.md). Current maintainers are listed in [MAINTAINERS.md](MAINTAINERS.md). Release process lives in [RELEASING.md](RELEASING.md).
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).

@@ -59,7 +59,7 @@ The repository evolved from a Streamlit prototype (`legacy/`) into a **split-sta
 
 | Differentiator | How it shows up in code |
 |----------------|-------------------------|
-| **Bring Your Own Key (BYOK)** | Provider keys travel per-request via `X-Provider-Api-Key`; queued jobs temporarily store the key until the worker finishes (`document_jobs.provider_api_key`). |
+| **Bring Your Own Key (BYOK)** | Provider keys are stored in the browser session, sent only to your Sourceful backend via `X-Provider-Api-Key`, and temporarily retained in queued ingest jobs until the worker finishes (`document_jobs.provider_api_key`). |
 | **Durable ingestion** | Upload returns `202` immediately; `backend/worker.py` polls `document_jobs` and runs extract → chunk → embed → index (`backend/services/jobs.py`). |
 | **Dual storage path** | PostgreSQL + pgvector in production; SQLite + JSON embeddings locally when `DATABASE_URL` is unset (`backend/settings.py`). |
 | **Progressive RAG** | Advanced lanes (hybrid FTS, reranker, MMR, query transforms, GraphRAG, agent loop) default **off** — baseline behavior stays stable. |
@@ -128,8 +128,8 @@ open http://localhost:3000/dashboard
 
 | Package | Version | Role |
 |---------|---------|------|
-| [Next.js](https://nextjs.org) | 16.2 | App Router, standalone Docker output, API rewrites |
-| [React](https://react.dev) | 19.2 | UI runtime |
+| [Next.js](https://nextjs.org) | 16.2.2 | App Router, standalone Docker output, API rewrites |
+| [React](https://react.dev) | 19.2.4 | UI runtime |
 | [TypeScript](https://www.typescriptlang.org) | 5.x | Type-safe client |
 | [Tailwind CSS](https://tailwindcss.com) | 4.x | Styling (`app/globals.css`) |
 | [Framer Motion](https://www.framer.com/motion/) | 12.x | Motion / transitions |
@@ -192,8 +192,8 @@ flowchart TB
   end
 
   UI -->|fetch /api/*| NX
-  NX -->|proxy subset| R
-  UI -->|NEXT_PUBLIC_API_URL<br/>workspaces, artifacts| R
+  NX -->|proxy to BACKEND_URL| R
+  UI -.->|optional NEXT_PUBLIC_API_URL<br/>direct API origin| R
   R --> MW
   R --> PG
   R --> SQL
@@ -300,7 +300,7 @@ sourceful/
 | `backend/services/vectorstore.py` | pgvector / SQLite similarity queries |
 | `backend/routers/chat.py` | Chat, stream, rerun; wires retrieval + memory + grounding |
 | `app/lib/api.ts` | Frontend API surface (1300+ lines, mirrors backend contracts) |
-| `next.config.ts` | Rewrites `/api/*` subset to `BACKEND_URL` |
+| `next.config.ts` | Rewrites frontend `/api/*`, `/health`, `/ready`, and `/metrics` calls to `BACKEND_URL` |
 
 ---
 
@@ -365,8 +365,8 @@ Full template: [`.env.example`](./.env.example). Below is a reference grouped by
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NEXT_PUBLIC_API_URL` | _(empty)_ | **Set to `http://127.0.0.1:8000` for local dev.** When empty, `app/lib/api.ts` uses same-origin paths; Next.js rewrites only proxy a **subset** of routes (see [Known Issues](#known-issues--limitations)). |
-| `BACKEND_URL` | `http://127.0.0.1:8000` | Used by `next.config.ts` rewrites at build time. |
+| `NEXT_PUBLIC_API_URL` | _(empty)_ | Optional browser-visible API origin. Leave empty for same-origin `/api/*` calls through Next.js rewrites; set it when the API is hosted on a separate public origin. |
+| `BACKEND_URL` | `http://127.0.0.1:8000` | Server-side target used by `next.config.ts` rewrites at build time. |
 | `CORS_ORIGINS` | localhost ports | Comma-separated origins for FastAPI CORS. |
 
 ### Ingestion & retrieval tuning
@@ -711,7 +711,11 @@ All documents, jobs, conversations, and chunks are filtered by `owner_id`. Works
 
 ### Next.js API routing
 
-`next.config.ts` rewrites a **subset** of `/api/*` to `BACKEND_URL`. Workspace and artifact routes are **not** in the rewrite table — the frontend calls them via `NEXT_PUBLIC_API_URL` when set (`app/lib/api.ts` `url()` helper).
+`next.config.ts` rewrites the app's backend-facing routes (`/api/auth`, chat, ingest, documents, jobs, conversations, users, analytics, models, workspaces, feedback) plus `/health`, `/ready`, and `/metrics` to `BACKEND_URL`. When `NEXT_PUBLIC_API_URL` is empty, `app/lib/api.ts` uses those same-origin paths. Set `NEXT_PUBLIC_API_URL` only when browsers should call a separate public API origin directly.
+
+### Streaming UI state
+
+The chat UI treats every in-flight stream as a generation and applies SSE callbacks to a specific assistant message id. Late callbacks from a stopped stream are ignored, partial output is kept on abort, and conversation refresh errors are surfaced without deleting completed answers. Autoscroll follows only while the user is near the bottom, so long answers do not scroll-jack readers.
 
 ---
 
@@ -851,12 +855,7 @@ worker: python -m backend.worker
 
 ### Reverse proxy
 
-Proxy browser traffic to `web`. Either:
-
-- Expose API paths on the same host (extend `next.config.ts` rewrites), or
-- Set `NEXT_PUBLIC_API_URL` to the public API origin and configure `CORS_ORIGINS`.
-
-Also proxy `/health`, `/ready`, `/metrics` for monitoring.
+Proxy browser traffic to `web`. The default Next.js rewrites forward app API calls and `/health`, `/ready`, `/metrics` to `BACKEND_URL`. If the API is exposed on a different browser-visible origin instead, set `NEXT_PUBLIC_API_URL` to that origin and configure `CORS_ORIGINS` accordingly.
 
 ---
 
@@ -873,13 +872,7 @@ docker compose up --build
 | `worker` | — | same image, `python -m backend.worker` |
 | `web` | 3000 | root `Dockerfile` (Next standalone) |
 
-Compose sets `DATABASE_URL` for all Python services. For workspace features from the browser, add to `web` environment:
-
-```yaml
-NEXT_PUBLIC_API_URL: http://localhost:8000
-```
-
-(Or extend Next.js rewrites — see limitations below.)
+Compose sets `DATABASE_URL` for all Python services and `BACKEND_URL` for the web container. If you intentionally expose the API separately from the web origin, set `NEXT_PUBLIC_API_URL` for the `web` service as well.
 
 ### Backup
 
@@ -926,7 +919,7 @@ CI runs on push/PR to `main` ([`.github/workflows/ci.yml`](./.github/workflows/c
 
 ## Security Considerations
 
-- **BYOK** — provider keys are not stored long-term on users; job queue temporarily holds keys for worker processing.
+- **BYOK** — provider keys are stored in `sessionStorage["rag-session"]` in the browser, sent to your Sourceful backend as `X-Provider-Api-Key` for LLM/ingest requests, and temporarily held in `document_jobs.provider_api_key` while queued worker jobs run. Treat browser sessions, API logs, and the database as sensitive.
 - **Password storage** — PBKDF2-SHA256 with 480k iterations (`backend/auth.py`).
 - **Session tokens** — stored hashed in `auth_sessions`; HttpOnly cookies in browser mode.
 - **Owner scoping** — every query includes `owner_id`; agent tools cannot escape document allow-lists.
@@ -952,7 +945,6 @@ CI runs on push/PR to `main` ([`.github/workflows/ci.yml`](./.github/workflows/c
 | Limitation | Detail |
 |------------|--------|
 | **Worker required** | Upload/chat over indexed docs fails without `backend.worker` running. |
-| **Next.js rewrite gap** | `next.config.ts` does not proxy `/api/workspaces/*` or `/api/workspaces/*/artifacts/*`. Set `NEXT_PUBLIC_API_URL` or add rewrites. |
 | **SQLite dev fallback** | No hybrid FTS, reduced vector performance; not recommended for production. |
 | **Connectors** | Python + DB schema exist; no public connector REST API yet. |
 | **Usage / share APIs** | Tables migrated; HTTP endpoints not implemented. |
@@ -964,7 +956,6 @@ CI runs on push/PR to `main` ([`.github/workflows/ci.yml`](./.github/workflows/c
 
 ## Roadmap Suggestions
 
-- Add Next.js rewrites for workspaces, artifacts, and feedback (parity with `app/lib/api.ts`)
 - Expose connector CRUD + scheduled sync HTTP API atop `backend/connectors/`
 - Wire `share_links` and `usage_records` to UI + enforcement middleware
 - Optional OIDC / SSO beyond Google OAuth

@@ -18,6 +18,26 @@ logger = logging.getLogger("ragapp.database") # Added logger
 _pg_pool: AsyncConnectionPool | None = None
 _sqlite: aiosqlite.Connection | None = None
 _init_lock = asyncio.Lock() # Added lock
+_sqlite_tx_lock: asyncio.Lock | None = None
+_sqlite_tx_lock_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_sqlite_tx_lock() -> asyncio.Lock:
+    """Return the SQLite write lock for the current event loop.
+
+    Tests and scripts in this repo sometimes call async database helpers from
+    multiple short-lived event loops. asyncio locks are loop-bound once waited
+    on, so lazily recreate the lock when entering a new loop and the previous
+    lock is not held.
+    """
+    global _sqlite_tx_lock, _sqlite_tx_lock_loop
+    loop = asyncio.get_running_loop()
+    if _sqlite_tx_lock is None or _sqlite_tx_lock_loop is not loop:
+        if _sqlite_tx_lock is not None and _sqlite_tx_lock.locked():
+            raise RuntimeError("Cannot move SQLite transaction lock while it is held")
+        _sqlite_tx_lock = asyncio.Lock()
+        _sqlite_tx_lock_loop = loop
+    return _sqlite_tx_lock
 
 
 def sql_format(query: str) -> str:
@@ -1157,13 +1177,15 @@ async def close_db() -> None:
     
     Closes the PostgreSQL connection pool and/or the SQLite connection if they exist, and resets the corresponding module globals so the database layer can be reinitialized.
     """
-    global _pg_pool, _sqlite
+    global _pg_pool, _sqlite, _sqlite_tx_lock, _sqlite_tx_lock_loop
     if _pg_pool is not None:
         await _pg_pool.close()
         _pg_pool = None
     if _sqlite is not None:
         await _sqlite.close()
         _sqlite = None
+    _sqlite_tx_lock = None
+    _sqlite_tx_lock_loop = None
 
 
 async def fetch_one(query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
@@ -1213,26 +1235,20 @@ async def transaction():
     if settings.using_postgres:
         assert _pg_pool is not None
         async with _pg_pool.connection() as conn:
-            # Disable autocommit for this transaction
-            conn.autocommit = False
-            try:
+            async with conn.transaction():
                 async with conn.cursor() as cur:
                     yield cur
-                await conn.commit()
-            except Exception:
-                await conn.rollback()
-                raise
-            finally:
-                conn.autocommit = True
         return
 
     assert _sqlite is not None
-    try:
-        yield _sqlite
-        await _sqlite.commit()
-    except Exception:
-        await _sqlite.rollback()
-        raise
+    async with _get_sqlite_tx_lock():
+        await _sqlite.execute("BEGIN IMMEDIATE")
+        try:
+            yield _sqlite
+            await _sqlite.commit()
+        except Exception:
+            await _sqlite.rollback()
+            raise
 
 
 async def execute(query: str, params: tuple[Any, ...] = ()) -> None:
@@ -1245,8 +1261,9 @@ async def execute(query: str, params: tuple[Any, ...] = ()) -> None:
         return
 
     assert _sqlite is not None
-    await _sqlite.execute(query, params)
-    await _sqlite.commit()
+    async with _get_sqlite_tx_lock():
+        await _sqlite.execute(query, params)
+        await _sqlite.commit()
 
 
 async def execute_many(query: str, params_list: list[tuple[Any, ...]]) -> None:
@@ -1263,8 +1280,9 @@ async def execute_many(query: str, params_list: list[tuple[Any, ...]]) -> None:
         return
 
     assert _sqlite is not None
-    await _sqlite.executemany(query, params_list)
-    await _sqlite.commit()
+    async with _get_sqlite_tx_lock():
+        await _sqlite.executemany(query, params_list)
+        await _sqlite.commit()
 
 
 async def execute_returning(query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
@@ -1278,10 +1296,11 @@ async def execute_returning(query: str, params: tuple[Any, ...] = ()) -> dict[st
                 return dict(row) if row else None
 
     assert _sqlite is not None
-    cursor = await _sqlite.execute(query, params)
-    row = await cursor.fetchone()
-    await cursor.close()
-    await _sqlite.commit()
+    async with _get_sqlite_tx_lock():
+        cursor = await _sqlite.execute(query, params)
+        row = await cursor.fetchone()
+        await cursor.close()
+        await _sqlite.commit()
     return dict(row) if row else None
 
 
@@ -1296,9 +1315,10 @@ async def execute_script(statements: list[str]) -> None:
         return
 
     assert _sqlite is not None
-    for statement in statements:
-        await _sqlite.execute(statement)
-    await _sqlite.commit()
+    async with _get_sqlite_tx_lock():
+        for statement in statements:
+            await _sqlite.execute(statement)
+        await _sqlite.commit()
 
 
 async def current_schema_version() -> int:

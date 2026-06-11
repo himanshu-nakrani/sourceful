@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
       { source: "/api/users/:path*", destination: `${base}/users/:path*` },
       { source: "/api/analytics/:path*", destination: `${base}/analytics/:path*` },
       { source: "/api/models", destination: `${base}/models` },
+      { source: "/api/workspaces", destination: `${base}/workspaces` },
+      { source: "/api/workspaces/:path*", destination: `${base}/workspaces/:path*` },
       { source: "/api/feedback", destination: `${base}/feedback` },
       { source: "/api/feedback/:path*", destination: `${base}/feedback/:path*` },
       { source: "/health", destination: `${backendUrl}/health` },

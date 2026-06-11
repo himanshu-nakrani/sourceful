@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Request
 from backend.errors import api_error_response
 from backend.models import (
     CreateUrlSourceRequest,
+    AcceptWorkspaceInvitationRequest,
     CreateWorkspaceInvitationRequest,
     CreateWorkspaceMemberRequest,
     CreateWorkspaceRequest,
@@ -24,7 +25,7 @@ from backend.models import (
     WorkspaceSourceListResponse,
     WorkspaceSourceResponse,
 )
-from backend.routers.deps import RequestContext, get_request_context
+from backend.routers.deps import RequestContext, get_request_context, require_authenticated_context
 from backend.services import sync_runs, workspace_members, workspace_service
 from backend.services.workspace_rbac import check_workspace_role
 
@@ -85,9 +86,11 @@ async def get_workspace(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    workspace = await workspace_service.get_workspace(workspace_id, context.owner_id)
-    if not workspace:
-        return _not_found(request, workspace_id)
+    workspace, err = await check_workspace_role(
+        workspace_id=workspace_id, request=request, context=context, minimum="viewer"
+    )
+    if err:
+        return err
     return WorkspaceResponse(**workspace)
 
 
@@ -97,12 +100,14 @@ async def get_my_workspace_role(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    workspace = await workspace_service.get_workspace(workspace_id, context.owner_id)
-    if not workspace:
-        return _not_found(request, workspace_id)
+    workspace, err = await check_workspace_role(
+        workspace_id=workspace_id, request=request, context=context, minimum="viewer"
+    )
+    if err:
+        return err
     role = await workspace_members.get_effective_role(
         workspace_id=workspace_id,
-        workspace_owner_scope=workspace.get("owner_scope") or context.owner_id,
+        workspace_owner_scope=workspace["owner_scope"],
         caller_owner_scope=context.owner_id,
         caller_user_id=context.user_id,
     )
@@ -146,9 +151,11 @@ async def list_workspace_sources(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    workspace = await workspace_service.get_workspace(workspace_id, context.owner_id)
-    if not workspace:
-        return _not_found(request, workspace_id)
+    _, err = await check_workspace_role(
+        workspace_id=workspace_id, request=request, context=context, minimum="viewer"
+    )
+    if err:
+        return err
     sources = await workspace_service.list_sources(workspace_id)
     return WorkspaceSourceListResponse(
         sources=[WorkspaceSourceResponse(**s) for s in sources]
@@ -165,9 +172,11 @@ async def get_workspace_source(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    workspace = await workspace_service.get_workspace(workspace_id, context.owner_id)
-    if not workspace:
-        return _not_found(request, workspace_id)
+    _, err = await check_workspace_role(
+        workspace_id=workspace_id, request=request, context=context, minimum="viewer"
+    )
+    if err:
+        return err
     source = await workspace_service.get_source(source_id, workspace_id)
     if not source:
         return api_error_response(
@@ -255,6 +264,7 @@ async def reprocess_workspace_source(
             owner_id=context.owner_id,
             document_id=source["document_id"],
             provider_api_key=provider_api_key or "",
+            workspace_id=workspace_id,
         )
     except ValueError as exc:
         return api_error_response(
@@ -351,9 +361,11 @@ async def list_workspace_members(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    workspace = await workspace_service.get_workspace(workspace_id, context.owner_id)
-    if not workspace:
-        return _not_found(request, workspace_id)
+    _, err = await check_workspace_role(
+        workspace_id=workspace_id, request=request, context=context, minimum="viewer"
+    )
+    if err:
+        return err
     members = await workspace_members.list_members(workspace_id)
     return WorkspaceMemberListResponse(
         members=[WorkspaceMemberResponse(**m) for m in members]
@@ -523,6 +535,44 @@ async def create_workspace_invitation(
     return WorkspaceInvitationResponse(**invitation)
 
 
+
+@router.post(
+    "/workspaces/invitations/accept",
+    response_model=WorkspaceInvitationResponse,
+)
+async def accept_workspace_invitation(
+    body: AcceptWorkspaceInvitationRequest,
+    request: Request,
+    context: RequestContext = Depends(require_authenticated_context),
+):
+    assert context.user_id
+    try:
+        invitation = await workspace_members.accept_invitation(
+            body.token, user_id=context.user_id
+        )
+    except ValueError as exc:
+        if str(exc) == "INVITATION_EXPIRED":
+            return api_error_response(
+                request=request,
+                status_code=400,
+                error="Invitation has expired.",
+                code="INVITATION_EXPIRED",
+            )
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error=str(exc),
+            code="INVITATION_INVALID",
+        )
+    if not invitation:
+        return api_error_response(
+            request=request,
+            status_code=404,
+            error="Invitation not found.",
+            code="INVITATION_NOT_FOUND",
+        )
+    return WorkspaceInvitationResponse(**invitation)
+
 @router.delete(
     "/workspaces/{workspace_id}/invitations/{invitation_id}",
     status_code=204,
@@ -562,9 +612,11 @@ async def list_source_sync_runs(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    workspace = await workspace_service.get_workspace(workspace_id, context.owner_id)
-    if not workspace:
-        return _not_found(request, workspace_id)
+    _, err = await check_workspace_role(
+        workspace_id=workspace_id, request=request, context=context, minimum="viewer"
+    )
+    if err:
+        return err
     source = await workspace_service.get_source(source_id, workspace_id)
     if not source:
         return api_error_response(

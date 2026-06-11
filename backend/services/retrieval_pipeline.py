@@ -145,6 +145,7 @@ async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = 
                 document_ids=req.document_ids,
                 question=req.query,
                 top_k=dense_k,
+                workspace_id=req.workspace_id,
             )
             graph_hits = graph_result.chunks
             graph_span.update(hits=len(graph_hits), seeds=len(graph_result.stats.get("seeds", []) or []))
@@ -160,7 +161,7 @@ async def retrieve(req: RetrievalRequest, *, trace_span: tracing._Span | None = 
         if hybrid_on:
             with tracing.span(trace_span, "fts_retrieval", k=dense_k) as fts_span:
                 fts_hits = await hybrid.fts_search(
-                    req.document_ids, req.owner_id, req.query, dense_k
+                    req.document_ids, req.owner_id, req.query, dense_k, req.workspace_id
                 )
                 fts_span.update(hits=len(fts_hits))
             stages["fts_hits"] = len(fts_hits)

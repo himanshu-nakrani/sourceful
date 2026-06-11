@@ -23,22 +23,25 @@ async def fts_search(
     owner_id: str,
     query: str,
     top_k: int,
+    workspace_id: str | None = None,
 ) -> list[RetrievedChunk]:
     """Lexical lane using Postgres `tsvector`. Returns [] on SQLite."""
     if not settings.using_postgres or not document_ids or not query.strip():
         return []
     placeholders = ",".join(["?"] * len(document_ids))
+    ws_id = workspace_id or ""
     sql = f"""
-        SELECT id, document_id, content, page_number,
-               ts_rank_cd(content_tsv, plainto_tsquery('english', ?)) AS score
-        FROM document_chunks
-        WHERE owner_id = ?
-          AND document_id IN ({placeholders})
-          AND content_tsv @@ plainto_tsquery('english', ?)
+        SELECT c.id, c.document_id, c.content, c.page_number,
+               ts_rank_cd(c.content_tsv, plainto_tsquery('english', ?)) AS score
+        FROM document_chunks c
+        JOIN documents d ON c.document_id = d.id
+        WHERE (c.owner_id = ? OR d.workspace_id = ?)
+          AND c.document_id IN ({placeholders})
+          AND c.content_tsv @@ plainto_tsquery('english', ?)
         ORDER BY score DESC
         LIMIT ?
     """
-    params: tuple = (query, owner_id, *document_ids, query, top_k)
+    params: tuple = (query, owner_id, ws_id, *document_ids, query, top_k)
     rows = await fetch_all(sql, params)
     return [
         RetrievedChunk(

@@ -481,6 +481,7 @@ async def entity_neighborhood(
     entity_names: Iterable[str],
     hops: int = 1,
     limit: int = 30,
+    workspace_id: str | None = None,
 ) -> list[dict]:
     """Return entities reachable within ``hops`` of any matching seed.
 
@@ -494,14 +495,17 @@ async def entity_neighborhood(
     if not needles:
         return []
     placeholders = ",".join(["?"] * len(needles))
+    ws_id = workspace_id or ""
     seeds = await fetch_all(
         f"""
-        SELECT id, name, entity_type, document_id
-        FROM graph_entities
-        WHERE owner_id = ? AND LOWER(name) IN ({placeholders})
+        SELECT ge.id, ge.name, ge.entity_type, ge.document_id
+        FROM graph_entities ge
+        JOIN documents d ON ge.document_id = d.id
+        WHERE (ge.owner_id = ? OR d.workspace_id = ?)
+          AND LOWER(ge.name) IN ({placeholders})
         LIMIT ?
         """,
-        (owner_id, *needles, limit),
+        (owner_id, ws_id, *needles, limit),
     )
     frontier = {row["id"]: row for row in seeds}
     visited = dict(frontier)
@@ -516,12 +520,13 @@ async def entity_neighborhood(
             FROM graph_relations gr
             JOIN graph_entities ge
               ON ge.id = gr.target_entity_id
-            WHERE gr.owner_id = ?
+            JOIN documents d ON ge.document_id = d.id
+            WHERE (gr.owner_id = ? OR d.workspace_id = ?)
               AND gr.source_entity_id IN ({ids_placeholders})
               AND ge.id NOT IN ({ids_placeholders})
             LIMIT ?
             """,
-            (owner_id, *frontier_ids, *frontier_ids, limit),
+            (owner_id, ws_id, *frontier_ids, *frontier_ids, limit),
         )
         new_frontier = {}
         for row in rows:

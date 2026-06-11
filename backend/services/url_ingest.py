@@ -181,8 +181,8 @@ async def refetch_url_source(
         )
 
     document = await fetch_one(
-        "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
-        (document_id, owner_scope),
+        "SELECT * FROM documents WHERE id = ? AND workspace_id = ?",
+        (document_id, workspace_id),
     )
     if not document:
         raise UrlIngestError(
@@ -241,14 +241,15 @@ async def refetch_url_source(
     from backend.services.jobs import enqueue_reprocess_job
 
     await _execute(
-        "UPDATE documents SET file_bytes = ?, mime_type = ?, checksum = ?, status = 'queued', last_error = NULL WHERE id = ? AND owner_id = ?",
-        (payload, mime_type, checksum, document_id, owner_scope),
+        "UPDATE documents SET file_bytes = ?, mime_type = ?, checksum = ?, status = 'queued', last_error = NULL WHERE id = ? AND workspace_id = ?",
+        (payload, mime_type, checksum, document_id, workspace_id),
     )
     document, job = await enqueue_reprocess_job(
         owner_id=owner_scope,
         document_id=document_id,
         provider_api_key=provider_api_key or "",
         embedding_model=embedding_model,
+        workspace_id=workspace_id,
     )
     # Mirror status onto the source and stamp last_fetched_at.
     await _execute(

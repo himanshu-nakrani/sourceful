@@ -93,7 +93,7 @@ _QUESTION_STOP_WORDS = {
 
 
 async def _candidate_entities(
-    owner_id: str, document_ids: list[str], question: str
+    owner_id: str, document_ids: list[str], question: str, workspace_id: str | None = None
 ) -> list[dict]:
     """Return entities from the allowed doc set whose name appears in the question.
 
@@ -109,16 +109,18 @@ async def _candidate_entities(
 
     like_clauses = " OR ".join(["LOWER(name) LIKE ?"] * len(token_list))
     doc_placeholders = ",".join(["?"] * len(document_ids))
+    ws_id = workspace_id or ""
     sql = f"""
-        SELECT id, name, entity_type, document_id
-        FROM graph_entities
-        WHERE owner_id = ?
-          AND document_id IN ({doc_placeholders})
+        SELECT ge.id, ge.name, ge.entity_type, ge.document_id
+        FROM graph_entities ge
+        JOIN documents d ON ge.document_id = d.id
+        WHERE (ge.owner_id = ? OR d.workspace_id = ?)
+          AND ge.document_id IN ({doc_placeholders})
           AND ({like_clauses})
         LIMIT ?
     """
     like_params = [f"%{tok}%" for tok in token_list]
-    params: tuple = (owner_id, *document_ids, *like_params, settings.retrieval_graph_seed_limit)
+    params: tuple = (owner_id, ws_id, *document_ids, *like_params, settings.retrieval_graph_seed_limit)
     try:
         rows = await fetch_all(sql, params)
     except Exception as exc:  # noqa: BLE001
@@ -141,20 +143,23 @@ async def _fetch_chunks_for_doc(
     doc_id: str,
     owner_id: str,
     names: list[str],
-    limit: int
+    limit: int,
+    workspace_id: str | None = None,
 ) -> list[tuple[RetrievedChunk, int]]:
     if not names:
         return []
     like_clauses = " OR ".join(["LOWER(content) LIKE ?"] * len(names))
+    ws_id = workspace_id or ""
     sql = f"""
-        SELECT id, document_id, content, page_number, parent_content
-        FROM document_chunks
-        WHERE document_id = ? AND owner_id = ?
+        SELECT c.id, c.document_id, c.content, c.page_number, c.parent_content
+        FROM document_chunks c
+        JOIN documents d ON c.document_id = d.id
+        WHERE c.document_id = ? AND (c.owner_id = ? OR d.workspace_id = ?)
           AND ({like_clauses})
         LIMIT ?
     """
     like_params = [f"%{name.lower()}%" for name in names]
-    params: tuple = (doc_id, owner_id, *like_params, limit)
+    params: tuple = (doc_id, owner_id, ws_id, *like_params, limit)
     try:
         rows = await fetch_all(sql, params)
     except Exception as exc:  # noqa: BLE001
@@ -182,7 +187,7 @@ async def _fetch_chunks_for_doc(
 
 
 async def _fetch_chunks_for_entities(
-    owner_id: str, entity_rows: list[dict], limit: int
+    owner_id: str, entity_rows: list[dict], limit: int, workspace_id: str | None = None
 ) -> list[tuple[RetrievedChunk, int]]:
     """For each entity's document, fetch a handful of chunks that mention it.
 
@@ -202,7 +207,7 @@ async def _fetch_chunks_for_entities(
         names = [e["name"] for e in ents if e.get("name")]
         if not names:
             continue
-        tasks.append(_fetch_chunks_for_doc(doc_id, owner_id, names, limit))
+        tasks.append(_fetch_chunks_for_doc(doc_id, owner_id, names, limit, workspace_id))
 
     doc_results_list = await asyncio.gather(*tasks)
 
@@ -219,6 +224,7 @@ async def graph_lane_search(
     document_ids: list[str],
     question: str,
     top_k: int,
+    workspace_id: str | None = None,
 ) -> GraphLaneResult:
     """Run the traversal lane end-to-end.
 
@@ -236,7 +242,7 @@ async def graph_lane_search(
 
     stats: dict[str, int | str | list[str]] = {"enabled": True}
 
-    seeds = await _candidate_entities(owner_id, document_ids, question)
+    seeds = await _candidate_entities(owner_id, document_ids, question, workspace_id)
     stats["seeds"] = [s["name"] for s in seeds]
     if not seeds:
         stats["hits"] = 0
@@ -248,6 +254,7 @@ async def graph_lane_search(
         entity_names=[s["name"] for s in seeds],
         hops=max(0, settings.retrieval_graph_hops),
         limit=max(settings.retrieval_graph_chunk_limit, len(seeds) * 3),
+        workspace_id=workspace_id,
     )
     # Keep only entities whose document is in scope.
     scoped = [row for row in expanded if row.get("document_id") in document_ids]
@@ -260,6 +267,7 @@ async def graph_lane_search(
         owner_id,
         scoped,
         settings.retrieval_graph_chunk_limit,
+        workspace_id,
     )
     # Merge duplicates, summing mention counts.
     merged: dict[str, tuple[RetrievedChunk, int]] = {}

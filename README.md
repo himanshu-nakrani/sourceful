@@ -976,7 +976,7 @@ CI runs on push/PR to `main` ([`.github/workflows/ci.yml`](./.github/workflows/c
 
 ## Contributing
 
-Contributions are welcome — bug reports, fixes, features, and docs improvements. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. To report a security issue privately, see [SECURITY.md](SECURITY.md).
+Contributions are welcome — bug reports, fixes, features, and docs improvements. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. Project governance, maintainer list, and release process are documented in [GOVERNANCE.md](GOVERNANCE.md), [MAINTAINERS.md](MAINTAINERS.md), and [RELEASING.md](RELEASING.md). To report a security issue privately, see [SECURITY.md](SECURITY.md).
 
 Quick checklist:
 

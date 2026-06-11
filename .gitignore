@@ -56,3 +56,9 @@ pnpm_output.log
 
 # local-only drafts
 docs/launch-posts.md
+
+# runtime logs
+*.log
+
+# editor/agent local state
+.commandcode/

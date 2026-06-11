@@ -144,8 +144,10 @@ async def test_pipeline_applies_reranker_with_overfetch(monkeypatch):
 
     dense_hits = [_chunk(f"c{i}") for i in range(6)]
 
-    async def fake_query_similar(doc_id, owner, emb, k, min_score):
+    async def fake_query_similar(*args, **kwargs):
         # Must request 2 * 3 = 6 candidates when reranker is on.
+        # args: (doc_id, owner, emb, k, min_score, workspace_id)
+        k = args[3] if len(args) > 3 else kwargs.get("k", 0)
         assert k == 6
         return dense_hits
 

@@ -118,6 +118,7 @@ async def enqueue_reprocess_job(
     document_id: str,
     provider_api_key: str | None,
     embedding_model: str | None = None,
+    workspace_id: str | None = None,
 ) -> tuple[dict, dict]:
     """Enqueue a reprocessing job for an existing document.
 
@@ -135,16 +136,23 @@ async def enqueue_reprocess_job(
     Raises:
         ValueError: If the document is not found.
     """
-    document = await fetch_one(
-        "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
-        (document_id, owner_id),
-    )
+    if workspace_id:
+        document = await fetch_one(
+            "SELECT * FROM documents WHERE id = ? AND workspace_id = ?",
+            (document_id, workspace_id),
+        )
+    else:
+        document = await fetch_one(
+            "SELECT * FROM documents WHERE id = ? AND owner_id = ?",
+            (document_id, owner_id),
+        )
     if not document:
         raise ValueError("Document not found.")
 
+    job_owner_id = document["owner_id"] if workspace_id else owner_id
     latest_job = await fetch_one(
         "SELECT * FROM document_jobs WHERE document_id = ? AND owner_id = ? ORDER BY created_at DESC LIMIT 1",
-        (document_id, owner_id),
+        (document_id, job_owner_id),
     )
     payload_filename = document["filename"]
     payload_mime_type = document["mime_type"]
@@ -163,7 +171,7 @@ async def enqueue_reprocess_job(
         (
             job_id,
             document_id,
-            owner_id,
+            job_owner_id,
             document["provider"],
             model_name,
             payload_filename,
@@ -172,11 +180,17 @@ async def enqueue_reprocess_job(
             provider_key,
         ),
     )
-    await execute(
-        "UPDATE documents SET current_job_id = ?, status = 'queued', embedding_model = ?, last_error = NULL WHERE id = ? AND owner_id = ?",
-        (job_id, model_name, document_id, owner_id),
-    )
-    job = await fetch_one("SELECT * FROM document_jobs WHERE id = ? AND owner_id = ?", (job_id, owner_id))
+    if workspace_id:
+        await execute(
+            "UPDATE documents SET current_job_id = ?, status = 'queued', embedding_model = ?, last_error = NULL WHERE id = ? AND workspace_id = ?",
+            (job_id, model_name, document_id, workspace_id),
+        )
+    else:
+        await execute(
+            "UPDATE documents SET current_job_id = ?, status = 'queued', embedding_model = ?, last_error = NULL WHERE id = ? AND owner_id = ?",
+            (job_id, model_name, document_id, owner_id),
+        )
+    job = await fetch_one("SELECT * FROM document_jobs WHERE id = ? AND owner_id = ?", (job_id, job_owner_id))
     metrics.inc("ingest_jobs_total", status="queued")
     return document, job or {}
 

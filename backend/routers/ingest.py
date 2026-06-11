@@ -10,6 +10,7 @@ from backend.errors import api_error_response
 from backend.models import IngestResponse
 from backend.routers.deps import RequestContext, get_request_context
 from backend.services import workspace_service
+from backend.services.workspace_rbac import check_workspace_role
 from backend.services.extract import FileValidationError, validate_upload
 from backend.services.jobs import enqueue_ingest_job
 from backend.services.provider_auth import normalize_provider_api_key, provider_requires_api_key
@@ -93,15 +94,14 @@ async def ingest(
     # after Phase 0.
     target_workspace_id = workspace_id.strip() or None
     if target_workspace_id:
-        ws = await workspace_service.get_workspace(target_workspace_id, context.owner_id)
-        if not ws:
-            return api_error_response(
-                request=request,
-                status_code=404,
-                error="Workspace not found.",
-                code="WORKSPACE_NOT_FOUND",
-                details={"workspace_id": target_workspace_id},
-            )
+        _, err = await check_workspace_role(
+            workspace_id=target_workspace_id,
+            request=request,
+            context=context,
+            minimum="editor",
+        )
+        if err:
+            return err
     else:
         default_ws = await workspace_service.ensure_default_workspace(context.owner_id)
         target_workspace_id = default_ws["id"]

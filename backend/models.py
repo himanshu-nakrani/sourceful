@@ -380,11 +380,11 @@ class WorkspaceMemberListResponse(BaseModel):
 
 class CreateWorkspaceMemberRequest(BaseModel):
     user_id: str = Field(min_length=1)
-    role: Literal["owner", "admin", "editor", "viewer"] = "viewer"
+    role: Literal["admin", "editor", "viewer"] = "viewer"
 
 
 class UpdateWorkspaceMemberRequest(BaseModel):
-    role: Literal["owner", "admin", "editor", "viewer"]
+    role: Literal["admin", "editor", "viewer"]
 
 
 class WorkspaceInvitationResponse(BaseModel):
@@ -405,8 +405,12 @@ class WorkspaceInvitationListResponse(BaseModel):
 
 class CreateWorkspaceInvitationRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
-    role: Literal["owner", "admin", "editor", "viewer"] = "viewer"
+    role: Literal["admin", "editor", "viewer"] = "viewer"
     expires_in_days: int | None = Field(default=14, ge=1, le=365)
+
+
+class AcceptWorkspaceInvitationRequest(BaseModel):
+    token: str = Field(min_length=1)
 
 
 class SyncRunResponse(BaseModel):

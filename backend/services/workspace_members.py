@@ -69,7 +69,7 @@ def _serialize_member(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _serialize_invitation(row: dict[str, Any]) -> dict[str, Any]:
+def _serialize_invitation(row: dict[str, Any], *, include_token: bool = True) -> dict[str, Any]:
     """Serialize a database row to an invitation dict.
 
     Args:
@@ -78,12 +78,13 @@ def _serialize_invitation(row: dict[str, Any]) -> dict[str, Any]:
     Returns:
         A serialized invitation dict.
     """
+    token = row["token"]
     return {
         "id": row["id"],
         "workspace_id": row["workspace_id"],
         "email": row["email"],
         "role": row.get("role") or "viewer",
-        "token": row["token"],
+        "token": token if include_token else f"{token[:8]}…",
         "invited_by": row.get("invited_by"),
         "accepted_at": row.get("accepted_at"),
         "expires_at": row.get("expires_at"),
@@ -310,7 +311,7 @@ async def list_invitations(workspace_id: str) -> list[dict[str, Any]]:
         "SELECT * FROM workspace_invitations WHERE workspace_id = ? ORDER BY created_at DESC",
         (workspace_id,),
     )
-    return [_serialize_invitation(r) for r in rows]
+    return [_serialize_invitation(r, include_token=False) for r in rows]
 
 
 async def revoke_invitation(workspace_id: str, invitation_id: str) -> bool:
@@ -333,6 +334,18 @@ async def revoke_invitation(workspace_id: str, invitation_id: str) -> bool:
     return True
 
 
+def _parse_utc_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T"))
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 async def accept_invitation(token: str, *, user_id: str) -> dict[str, Any] | None:
     """Consume an invitation token: mark accepted + add member row."""
     row = await fetch_one(
@@ -342,6 +355,9 @@ async def accept_invitation(token: str, *, user_id: str) -> dict[str, Any] | Non
         return None
     if row.get("accepted_at"):
         return _serialize_invitation(row)
+    expires_at = _parse_utc_datetime(row.get("expires_at"))
+    if expires_at is not None and expires_at <= datetime.now(timezone.utc):
+        raise ValueError("INVITATION_EXPIRED")
     member = await add_member(
         row["workspace_id"], user_id=user_id, role=row.get("role") or "viewer"
     )

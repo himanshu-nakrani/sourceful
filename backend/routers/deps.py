@@ -67,7 +67,24 @@ async def get_request_context(
     Raises:
         HTTPException: Raised with status 401 and detail code "AUTH_REQUIRED" when neither an authenticated session nor an X-Client-Session header is provided.
     """
-    session_token = request.cookies.get(settings.auth_cookie_name) or _read_bearer_token(request)
+    bearer_token = _read_bearer_token(request)
+    if bearer_token:
+        user = await get_user_from_session(bearer_token)
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "Authentication required.", "code": "AUTH_REQUIRED"},
+            )
+        return RequestContext(
+            owner_id=f"user:{user['id']}",
+            request_id=getattr(request.state, "request_id", "unknown"),
+            client_ip=request.client.host if request.client else "unknown",
+            user_id=user["id"],
+            role=user.get("role", "user"),
+            is_authenticated=True,
+        )
+
+    session_token = request.cookies.get(settings.auth_cookie_name)
     if session_token:
         user = await get_user_from_session(session_token)
         if user:
@@ -116,7 +133,8 @@ def require_provider_api_key(x_provider_api_key: str | None = Header(default=Non
 async def require_authenticated_context(
     request: Request,
 ) -> RequestContext:
-    session_token = request.cookies.get(settings.auth_cookie_name) or _read_bearer_token(request)
+    bearer_token = _read_bearer_token(request)
+    session_token = bearer_token or request.cookies.get(settings.auth_cookie_name)
     if not session_token:
         raise HTTPException(
             status_code=401,

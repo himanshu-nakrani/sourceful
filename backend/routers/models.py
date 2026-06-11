@@ -42,7 +42,7 @@ async def _fetch_openai_models(api_key: str) -> tuple[list[str], list[str]]:
                 timeout=30.0,
             )
             if response.status_code != 200:
-                logger.warning("openai_models_fetch_failed", status_code=response.status_code)
+                logger.warning("openai_models_fetch_failed status_code=%s", response.status_code)
                 return DEFAULT_CHAT_MODELS["openai"], DEFAULT_EMBEDDING_MODELS["openai"]
 
             data = response.json()
@@ -57,7 +57,7 @@ async def _fetch_openai_models(api_key: str) -> tuple[list[str], list[str]]:
                 embedding_models if embedding_models else DEFAULT_EMBEDDING_MODELS["openai"],
             )
     except Exception as exc:
-        logger.warning("openai_models_fetch_error", error=str(exc))
+        logger.warning("openai_models_fetch_error error=%s", exc)
         return DEFAULT_CHAT_MODELS["openai"], DEFAULT_EMBEDDING_MODELS["openai"]
 
 
@@ -81,7 +81,7 @@ async def _fetch_gemini_models(api_key: str) -> tuple[list[str], list[str]]:
                 timeout=30.0,
             )
             if response.status_code != 200:
-                logger.warning("gemini_models_fetch_failed", status_code=response.status_code)
+                logger.warning("gemini_models_fetch_failed status_code=%s", response.status_code)
                 return DEFAULT_CHAT_MODELS["gemini"], DEFAULT_EMBEDDING_MODELS["gemini"]
 
             data = response.json()
@@ -110,7 +110,7 @@ async def _fetch_gemini_models(api_key: str) -> tuple[list[str], list[str]]:
                 embedding_models if embedding_models else DEFAULT_EMBEDDING_MODELS["gemini"]
             )
     except Exception as exc:
-        logger.warning("gemini_models_fetch_error", error=str(exc))
+        logger.warning("gemini_models_fetch_error error=%s", exc)
         return DEFAULT_CHAT_MODELS["gemini"], DEFAULT_EMBEDDING_MODELS["gemini"]
 
 

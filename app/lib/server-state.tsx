@@ -41,12 +41,11 @@ interface ServerStateValue {
   selectConversation: (conversationId: string | null) => Promise<void>;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   addMessage: (message: Message) => void;
-  appendToLastAssistant: (token: string) => void;
-  updateLastAssistantSources: (sources: Citation[]) => void;
-  /** Swap the temp client-side id on the last assistant message for the
-   *  durable id returned by the backend, so downstream actions like
-   *  feedback writes (Phase 3.8) reference the persisted message. */
-  updateLastAssistantId: (messageId: string) => void;
+  appendToMessage: (messageId: string, token: string) => void;
+  updateMessageSources: (messageId: string, sources: Citation[]) => void;
+  /** Swap a temp client-side id for the durable id returned by the backend,
+   *  so downstream actions like feedback writes reference the persisted message. */
+  updateMessageId: (clientId: string, durableId: string) => void;
 }
 
 const ServerStateContext = createContext<ServerStateValue | null>(null);
@@ -209,38 +208,37 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
     setMessages((current) => [...current, message]);
   }, []);
 
-  const appendToLastAssistant = useCallback((token: string) => {
-    setMessages((current) => {
-      const next = [...current];
-      const last = next[next.length - 1];
-      if (last && last.role === "assistant") {
-        next[next.length - 1] = { ...last, content: last.content + token };
-      }
-      return next;
-    });
+  const appendToMessage = useCallback((messageId: string, token: string) => {
+    if (!messageId || !token) return;
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId && message.role === "assistant"
+          ? { ...message, content: message.content + token }
+          : message
+      )
+    );
   }, []);
 
-  const updateLastAssistantSources = useCallback((sources: Citation[]) => {
-    setMessages((current) => {
-      const next = [...current];
-      const last = next[next.length - 1];
-      if (last && last.role === "assistant") {
-        next[next.length - 1] = { ...last, sources };
-      }
-      return next;
-    });
-  }, []);
-
-  const updateLastAssistantId = useCallback((messageId: string) => {
+  const updateMessageSources = useCallback((messageId: string, sources: Citation[]) => {
     if (!messageId) return;
-    setMessages((current) => {
-      const next = [...current];
-      const last = next[next.length - 1];
-      if (last && last.role === "assistant" && last.id !== messageId) {
-        next[next.length - 1] = { ...last, id: messageId };
-      }
-      return next;
-    });
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId && message.role === "assistant"
+          ? { ...message, sources }
+          : message
+      )
+    );
+  }, []);
+
+  const updateMessageId = useCallback((clientId: string, durableId: string) => {
+    if (!clientId || !durableId) return;
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === clientId && message.role === "assistant"
+          ? { ...message, id: durableId }
+          : message
+      )
+    );
   }, []);
 
   useEffect(() => {
@@ -284,13 +282,13 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
       selectConversation,
       setMessages,
       addMessage,
-      appendToLastAssistant,
-      updateLastAssistantSources,
-      updateLastAssistantId,
+      appendToMessage,
+      updateMessageSources,
+      updateMessageId,
     }),
     [
       addMessage,
-      appendToLastAssistant,
+      appendToMessage,
       chunkPreview,
       chunkPreviewLoading,
       conversations,
@@ -307,8 +305,8 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
       refreshDocuments,
       selectConversation,
       selectDocument,
-      updateLastAssistantSources,
-      updateLastAssistantId,
+      updateMessageSources,
+      updateMessageId,
     ]
   );
 

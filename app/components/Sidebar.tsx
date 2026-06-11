@@ -91,10 +91,13 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
-  const auth = {
-    clientSessionId: settings.clientSessionId,
-    providerApiKey: settings.providerApiKey,
-  };
+  const auth = useMemo(
+    () => ({
+      clientSessionId: settings.clientSessionId,
+      providerApiKey: settings.providerApiKey,
+    }),
+    [settings.clientSessionId, settings.providerApiKey]
+  );
 
   const visibleDocuments = useMemo(() => {
     const term = search.trim().toLowerCase();

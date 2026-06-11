@@ -68,11 +68,11 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     messages,
     messagesLoading,
     addMessage,
-    appendToLastAssistant,
+    appendToMessage,
     refreshConversations,
     selectConversation,
-    updateLastAssistantSources,
-    updateLastAssistantId,
+    updateMessageSources,
+    updateMessageId,
     setMessages,
   } = useServerState();
   const { settings, activeConversationId, activeDocumentId, activeDocumentIds, activeWorkspaceId, sidebarOpen } = state;
@@ -112,13 +112,16 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const streamGenRef = useRef(0);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
 
   const auth = useMemo(
     () => ({
       clientSessionId: settings.clientSessionId,
       providerApiKey: settings.providerApiKey,
     }),
-    [settings.clientSessionId, settings.providerApiKey, state.currentUser?.session_token]
+    [settings.clientSessionId, settings.providerApiKey]
   );
 
   const { canEdit } = useWorkspaceRole(auth, activeWorkspaceId ?? "");
@@ -153,15 +156,19 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           prev ? prev.filter((id) => sources.find((s) => s.id === id)) : prev
         );
       })
-      .catch(() => {
+      .catch((loadError) => {
         if (cancelled) return;
         setWorkspaceSources([]);
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load workspace sources."
+        );
       });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, auth]);
 
   const handleSaveToWorkspace = useCallback(
     async (message: Message) => {
@@ -213,7 +220,27 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   );
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    return () => {
+      streamGenRef.current += 1;
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const element = messagesContainerRef.current;
+    if (!element) return;
+    const updateStickiness = () => {
+      const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+      stickToBottomRef.current = distanceFromBottom < 80;
+    };
+    updateStickiness();
+    element.addEventListener("scroll", updateStickiness, { passive: true });
+    return () => element.removeEventListener("scroll", updateStickiness);
+  }, []);
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    endRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages, currentSources]);
 
   useEffect(() => {
@@ -235,14 +262,18 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       setLastHint(null);
       setStreaming(true);
 
+      stickToBottomRef.current = true;
+      endRef.current?.scrollIntoView({ behavior: "auto" });
+
       const userMessage: Message = {
-        id: `temp-user-${Date.now()}`,
+        id: `temp-user-${crypto.randomUUID()}`,
         role: "user",
         content: prompt,
         created_at: new Date().toISOString(),
       };
+      const assistantClientId = `temp-assistant-${crypto.randomUUID()}`;
       const assistantMessage: Message = {
-        id: `temp-assistant-${Date.now()}`,
+        id: assistantClientId,
         role: "assistant",
         content: "",
         created_at: new Date().toISOString(),
@@ -252,12 +283,18 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       addMessage(assistantMessage);
 
       const controller = new AbortController();
+      abortRef.current?.abort();
       abortRef.current = controller;
+      const streamGen = ++streamGenRef.current;
+      let assistantMessageId = assistantClientId;
+      let receivedTokens = false;
+      const isCurrentStream = () => streamGenRef.current === streamGen;
       const startedAt = performance.now();
       setLastGrounding(null);
       setStreamEvents([{ at: 0, label: "request_sent" }]);
 
       const appendEvent = (label: string, detail?: string) => {
+        if (!isCurrentStream()) return;
         setStreamEvents((current) => [
           ...current,
           { at: performance.now() - startedAt, label, detail },
@@ -266,7 +303,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
 
       let activeConversation = activeConversationId;
       let streamError: Error | null = null;
-      let sawServerError = false;
+      let requestAborted = false;
 
       try {
         await sendChatStream(
@@ -278,18 +315,22 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           activeConversationId,
           {
             onSources: (payload) => {
+              if (!isCurrentStream()) return;
               appendEvent("sources", `${payload.sources?.length ?? 0} chunks`);
               setCurrentSources(payload.sources);
               setLastStages(payload.stages ?? null);
               setLastHint((payload.stages?.active_learning_hint as ActiveLearningHint | undefined) ?? null);
-              updateLastAssistantSources(payload.sources);
+              updateMessageSources(assistantMessageId, payload.sources);
               activeConversation = payload.conversation_id;
               dispatch({ type: "SET_ACTIVE_CONVERSATION", payload: payload.conversation_id });
             },
             onToken: (delta) => {
-              appendToLastAssistant(delta);
+              if (!isCurrentStream()) return;
+              receivedTokens = receivedTokens || Boolean(delta);
+              appendToMessage(assistantMessageId, delta);
             },
             onGrounding: (grounding) => {
+              if (!isCurrentStream()) return;
               appendEvent(
                 "grounding",
                 grounding.score !== null ? `score=${grounding.score.toFixed(2)}` : "unverified",
@@ -297,17 +338,20 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
               setLastGrounding(grounding);
             },
             onMessageSaved: (payload) => {
+              if (!isCurrentStream()) return;
               appendEvent("message_saved");
               if (payload?.message_id) {
-                updateLastAssistantId(payload.message_id);
+                updateMessageId(assistantMessageId, payload.message_id);
+                assistantMessageId = payload.message_id;
               }
             },
             onDone: () => {
+              if (!isCurrentStream()) return;
               appendEvent("done");
               setLastLatencyMs(performance.now() - startedAt);
             },
             onError: (payload) => {
-              sawServerError = true;
+              if (!isCurrentStream()) return;
               appendEvent("server_error", payload.code);
               streamError = new Error(payload.error || "Chat failed");
             },
@@ -326,22 +370,31 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           },
         );
         if (streamError) throw streamError;
-        if (activeConversation) {
-          await refreshConversations(activeDocumentId);
-        }
       } catch (err) {
-        if (!sawServerError) {
-          setMessages((current) => current.slice(0, -1));
+        const aborted = err instanceof DOMException && err.name === "AbortError";
+        requestAborted = aborted;
+        if (!aborted && !receivedTokens) {
+          setMessages((current) => current.filter((message) => message.id !== assistantMessageId));
         }
-        if (
-          !(err instanceof DOMException) ||
-          err.name !== "AbortError"
-        ) {
+        if (!aborted) {
           setError(err instanceof Error ? err.message : "Request failed.");
         }
       } finally {
-        setStreaming(false);
-        abortRef.current = null;
+        const currentStream = isCurrentStream();
+        if (currentStream) {
+          setStreaming(false);
+          abortRef.current = null;
+        }
+        if (currentStream && activeConversation && !requestAborted) {
+          void refreshConversations(activeDocumentId).catch((refreshError) => {
+            console.error("refresh_conversations_failed", refreshError);
+            setError(
+              refreshError instanceof Error
+                ? refreshError.message
+                : "Unable to refresh conversations."
+            );
+          });
+        }
       }
     },
     [
@@ -350,7 +403,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       activeDocumentIds,
       activeWorkspaceId,
       addMessage,
-      appendToLastAssistant,
+      appendToMessage,
       auth,
       canAsk,
       chatMode,
@@ -363,8 +416,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       settings.provider,
       settings.topK,
       settings.similarityThreshold,
-      updateLastAssistantSources,
-      updateLastAssistantId,
+      updateMessageSources,
+      updateMessageId,
     ]
   );
 
@@ -431,7 +484,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   };
 
   const stopStreaming = () => {
+    streamGenRef.current += 1;
     abortRef.current?.abort();
+    abortRef.current = null;
     setStreaming(false);
   };
 
@@ -709,6 +764,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
 
       {/* Messages area */}
       <div
+        ref={messagesContainerRef}
         className={`flex-1 overflow-y-auto py-6 ${chatLayout === "focus" ? "px-6" : "px-4"}`}
         style={{ background: "var(--bg-primary)" }}
       >
@@ -756,10 +812,16 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: idx * 0.02, ease: EASE_OUT }}
                   >
+                    {/* TODO: expose persisted user-message ids in the streaming SSE payload,
+                        then reconcile temp user ids and re-enable Rerun for same-session sends. */}
                     <MessageBubble
                       message={message}
                       onRerun={
-                        message.role === "user" && activeConversationId ? handleRerun : undefined
+                        message.role === "user" &&
+                        activeConversationId &&
+                        !message.id.startsWith("temp-")
+                          ? handleRerun
+                          : undefined
                       }
                       rerunDisabled={streaming || rerunningMessageId === message.id}
                       isStreaming={

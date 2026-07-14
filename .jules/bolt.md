@@ -56,3 +56,7 @@
 ## 2026-05-15 - Batch multi-document retrieval via a single query
 **Learning:** Calling `retrieve()` in a loop inside `_tool_compare_documents` via `asyncio.gather(*tasks)` forces the full retrieval pipeline (including DB searches, RRF fusion, graph traversal, and reranking) to execute N times. This creates a significant N+1 pipeline bottleneck for multi-document operations. The underlying `retrieve` natively supports multiple `document_ids`, allowing DB-level batching.
 **Action:** When querying multiple documents to gather a limited number of chunks per document, use a single `retrieve` call with all `document_ids` and an inflated `top_k`, then group and limit the results in Python. This leverages DB aggregation and executes the heavy pipeline components (like the reranker) only once.
+
+## 2026-07-14 - Batch Database Analytics Queries
+**Learning:** In the `/analytics/overview` endpoint, fetching entire tables (users, documents, messages) using `fetch_all` just to perform simple date-based counting in Python creates a massive memory bottleneck as the tables grow.
+**Action:** Offload bulk aggregations to the database using `COUNT()` in SQL with appropriate date filters. When dealing with database dialect differences (like SQLite vs Postgres) for dates, you can use `settings.using_postgres` to format strings correctly, or rely on native parameter binding if the driver supports it uniformly.

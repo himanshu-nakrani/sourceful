@@ -273,7 +273,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
                   placeholder={
                     provider === "openai" ? "sk-..." : "Google AI API key"
                   }
-                  className="w-full rounded-xl px-3 py-3 pl-10 text-sm outline-none transition-all duration-200"
+                  className="w-full rounded-xl px-3 py-3 pl-10 text-sm outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   style={{
                     background: "var(--bg-surface)",
                     border: `1px solid ${focused ? "var(--accent-primary)" : "var(--border)"}`,

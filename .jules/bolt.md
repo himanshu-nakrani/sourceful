@@ -60,3 +60,7 @@
 ## 2026-05-18 - Optimize MMR similarity tracking loops
 **Learning:** In the Maximal Marginal Relevance (MMR) implementation, recomputing the maximum similarity of a candidate chunk against the entire list of `selected` chunks using a nested loop (`max((similarity(cand, s) for s in selected))`) creates an O(n^2) bottleneck in the inner loop (overall O(n^3)). Because chunks are only appended to `selected`, the maximum similarity for a candidate chunk only ever increases.
 **Action:** When tracking the maximum value of a monotonic accumulation in a loop (like MMR similarity), cache the previous maximums and only compute the delta against the newly added item (e.g. `sim = similarity(cand, last_selected) ; max_sim = max(max_sim, sim)`). This removes the nested loop, reducing time complexity and vastly improving performance for large `top_k`.
+
+## 2024-05-18 - Optimize list history DB loading
+**Learning:** For long conversations, loading the entire message history from the database just to slice it down to a recent subset in Python using list slicing (e.g. `[-50:]`) causes unnecessary network transfer and high memory usage, scaling linearly with conversation length rather than the subset limit.
+**Action:** Replace `ORDER BY created_at ASC` and Python slicing with an SQL-level `ORDER BY created_at DESC LIMIT <limit>`, then reverse the output list in Python. This guarantees O(1) data transfer and memory overhead regardless of total conversation size.

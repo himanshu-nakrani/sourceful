@@ -1069,13 +1069,16 @@ async def _resolve_or_create_conversation(
 
 
 async def _load_history(conversation_id: str, owner_id: str) -> list[dict[str, str]]:
+    # ⚡ BOLT OPTIMIZATION:
+    # Fetch only the required recent messages from the database by ordering DESC and using LIMIT,
+    # rather than loading the entire conversation history into memory and slicing it in Python.
+    # This significantly reduces memory usage and DB latency for long conversations.
     rows = await fetch_all(
-        "SELECT role, content FROM messages WHERE conversation_id = ? AND owner_id = ? ORDER BY created_at ASC",
-        (conversation_id, owner_id),
+        "SELECT role, content FROM messages WHERE conversation_id = ? AND owner_id = ? ORDER BY created_at DESC LIMIT ?",
+        (conversation_id, owner_id, settings.max_conversation_history),
     )
-    return [{"role": row["role"], "content": row["content"]} for row in rows][
-        -settings.max_conversation_history :
-    ]
+    # Reverse to return to chronological order
+    return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
 
 
 @router.post("/chat", response_model=None)

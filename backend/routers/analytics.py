@@ -55,50 +55,30 @@ async def analytics_overview(_: RequestContext = Depends(require_admin_context))
         ORDER BY provider ASC
         """
     )
-    user_rows = await fetch_all("SELECT created_at FROM users")
-    document_rows = await fetch_all("SELECT created_at FROM documents")
-    message_rows = await fetch_all("SELECT role, created_at FROM messages")
-    session_rows = await fetch_all(
-        "SELECT user_id, created_at FROM auth_sessions WHERE revoked = ?",
-        (False,),
-    )
 
     now = datetime.now(timezone.utc)
     cutoff_24h = now - timedelta(hours=24)
     cutoff_7d = now - timedelta(days=7)
 
-    active_users_7d = {
-        row["user_id"]
-        for row in session_rows
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_7d
-    }
-    signups_7d = sum(
-        1
-        for row in user_rows
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_7d
-    )
-    uploads_7d = sum(
-        1
-        for row in document_rows
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_7d
-    )
-    questions_24h = sum(
-        1
-        for row in message_rows
-        if row.get("role") == "user"
-        and _parse_dt(row.get("created_at"))
-        and _parse_dt(row.get("created_at")) >= cutoff_24h
-    )
-    sessions_24h = sum(
-        1
-        for row in session_rows
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_24h
-    )
+    cutoff_24h_str = cutoff_24h.strftime("%Y-%m-%d %H:%M:%S") if not settings.using_postgres else cutoff_24h.isoformat()
+    cutoff_7d_str = cutoff_7d.strftime("%Y-%m-%d %H:%M:%S") if not settings.using_postgres else cutoff_7d.isoformat()
+
+    recent_stats = await fetch_one(
+        """
+        SELECT
+            (SELECT COUNT(DISTINCT user_id) FROM auth_sessions WHERE revoked = ? AND created_at >= ?) AS active_users_7d,
+            (SELECT COUNT(*) FROM users WHERE created_at >= ?) AS signups_7d,
+            (SELECT COUNT(*) FROM documents WHERE created_at >= ?) AS uploads_7d,
+            (SELECT COUNT(*) FROM messages WHERE role = 'user' AND created_at >= ?) AS questions_24h,
+            (SELECT COUNT(*) FROM auth_sessions WHERE revoked = ? AND created_at >= ?) AS sessions_24h
+        """,
+        (False, cutoff_7d_str, cutoff_7d_str, cutoff_7d_str, cutoff_24h_str, False, cutoff_24h_str),
+    ) or {}
 
     return AnalyticsOverviewResponse(
         totals=AnalyticsTotals(
             users=int(counts.get("users", 0) or 0),
-            active_users_7d=len(active_users_7d),
+            active_users_7d=int(recent_stats.get("active_users_7d", 0) or 0),
             documents=int(counts.get("documents", 0) or 0),
             ready_documents=int(counts.get("ready_documents", 0) or 0),
             conversations=int(counts.get("conversations", 0) or 0),
@@ -106,10 +86,10 @@ async def analytics_overview(_: RequestContext = Depends(require_admin_context))
             chunks=int(counts.get("chunks", 0) or 0),
         ),
         recent=AnalyticsRecent(
-            signups_7d=signups_7d,
-            uploads_7d=uploads_7d,
-            questions_24h=questions_24h,
-            sessions_24h=sessions_24h,
+            signups_7d=int(recent_stats.get("signups_7d", 0) or 0),
+            uploads_7d=int(recent_stats.get("uploads_7d", 0) or 0),
+            questions_24h=int(recent_stats.get("questions_24h", 0) or 0),
+            sessions_24h=int(recent_stats.get("sessions_24h", 0) or 0),
         ),
         provider_breakdown=[
             AnalyticsProviderBreakdown(

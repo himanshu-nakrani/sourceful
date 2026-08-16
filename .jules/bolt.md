@@ -64,3 +64,7 @@
 ## 2024-08-06 - Limit Database Records Read vs List Slicing
 **Learning:** For retrieving a recent subset of database records (e.g., chat history limits), fetching all rows using `ORDER BY created_at ASC` and then slicing them in memory using `history[-settings.max_conversation_history:]` creates unnecessary memory and network overhead by reading the entire dataset from DB into application memory, before immediately throwing away most of the elements.
 **Action:** Always push limits to the database query itself. Retrieve the records by using `ORDER BY ... DESC LIMIT ?` directly in the database to fetch only the needed number of elements and subsequently reverse the array in Python (`history.reverse()`) to restore chronological `ASC` order for LLM usage.
+
+## 2024-05-18 - Optimize Python Memory Aggregations
+**Learning:** For performance optimization in large datasets, retrieving all rows into Python memory using `fetch_all` just to perform time-based filtering (e.g. `[row for row in rows if dt >= cutoff]`) and counting (`len()` or `sum()`) is highly inefficient and creates massive memory and network bandwidth bottlenecks.
+**Action:** Push aggregate operations (e.g., `COUNT(*)`) and time-based filtering (`WHERE created_at >= ?`) down to the database layer rather than retrieving all rows and counting/filtering in Python memory.

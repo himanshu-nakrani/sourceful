@@ -55,50 +55,46 @@ async def analytics_overview(_: RequestContext = Depends(require_admin_context))
         ORDER BY provider ASC
         """
     )
-    user_rows = await fetch_all("SELECT created_at FROM users")
-    document_rows = await fetch_all("SELECT created_at FROM documents")
-    message_rows = await fetch_all("SELECT role, created_at FROM messages")
-    session_rows = await fetch_all(
-        "SELECT user_id, created_at FROM auth_sessions WHERE revoked = ?",
-        (False,),
-    )
-
     now = datetime.now(timezone.utc)
     cutoff_24h = now - timedelta(hours=24)
     cutoff_7d = now - timedelta(days=7)
 
-    active_users_7d = {
-        row["user_id"]
-        for row in session_rows
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_7d
-    }
-    signups_7d = sum(
-        1
-        for row in user_rows
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_7d
+    cutoff_24h_str = cutoff_24h.strftime("%Y-%m-%d %H:%M:%S") if not settings.using_postgres else cutoff_24h.isoformat()
+    cutoff_7d_str = cutoff_7d.strftime("%Y-%m-%d %H:%M:%S") if not settings.using_postgres else cutoff_7d.isoformat()
+
+    # ⚡ BOLT OPTIMIZATION:
+    # Push time-based filtering and aggregations to the DB instead of fetching all rows into memory
+    active_users_row = await fetch_one(
+        "SELECT COUNT(DISTINCT user_id) as cnt FROM auth_sessions WHERE revoked = ? AND created_at >= ?",
+        (False, cutoff_7d_str)
     )
-    uploads_7d = sum(
-        1
-        for row in document_rows
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_7d
+    signups_row = await fetch_one(
+        "SELECT COUNT(*) as cnt FROM users WHERE created_at >= ?",
+        (cutoff_7d_str,)
     )
-    questions_24h = sum(
-        1
-        for row in message_rows
-        if row.get("role") == "user"
-        and _parse_dt(row.get("created_at"))
-        and _parse_dt(row.get("created_at")) >= cutoff_24h
+    uploads_row = await fetch_one(
+        "SELECT COUNT(*) as cnt FROM documents WHERE created_at >= ?",
+        (cutoff_7d_str,)
     )
-    sessions_24h = sum(
-        1
-        for row in session_rows
-        if _parse_dt(row.get("created_at")) and _parse_dt(row.get("created_at")) >= cutoff_24h
+    questions_row = await fetch_one(
+        "SELECT COUNT(*) as cnt FROM messages WHERE role = ? AND created_at >= ?",
+        ("user", cutoff_24h_str)
     )
+    sessions_row = await fetch_one(
+        "SELECT COUNT(*) as cnt FROM auth_sessions WHERE revoked = ? AND created_at >= ?",
+        (False, cutoff_24h_str)
+    )
+
+    active_users_7d_count = int((active_users_row or {}).get("cnt", 0) or 0)
+    signups_7d = int((signups_row or {}).get("cnt", 0) or 0)
+    uploads_7d = int((uploads_row or {}).get("cnt", 0) or 0)
+    questions_24h = int((questions_row or {}).get("cnt", 0) or 0)
+    sessions_24h = int((sessions_row or {}).get("cnt", 0) or 0)
 
     return AnalyticsOverviewResponse(
         totals=AnalyticsTotals(
             users=int(counts.get("users", 0) or 0),
-            active_users_7d=len(active_users_7d),
+            active_users_7d=active_users_7d_count,
             documents=int(counts.get("documents", 0) or 0),
             ready_documents=int(counts.get("ready_documents", 0) or 0),
             conversations=int(counts.get("conversations", 0) or 0),

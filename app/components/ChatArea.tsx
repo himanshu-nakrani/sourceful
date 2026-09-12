@@ -1170,6 +1170,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                     onClick={() => setSourceFilterOpen((v) => !v)}
                     aria-haspopup="listbox"
                     aria-expanded={sourceFilterOpen}
+                    aria-label="Filter sources"
                     className="text-[10px] font-medium px-2 py-1 rounded-md transition-colors flex items-center gap-1"
                     style={{
                       background: selectedSourceIds ? "var(--accent-primary-soft)" : "transparent",
@@ -1209,6 +1210,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                             setSelectedSourceIds(null);
                             setSourceFilterOpen(false);
                           }}
+                          aria-label="Reset source filters to all sources"
                           className="text-[10px] font-medium focus-ring rounded px-1"
                           style={{ color: "var(--accent-primary)" }}
                         >
@@ -1449,6 +1451,7 @@ function RetrievalDebugPanel({
                   type="button"
                   onClick={() => setEventsExpanded((v) => !v)}
                   aria-expanded={eventsExpanded}
+                  aria-label="Toggle stream timeline"
                   className="flex items-center gap-1 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-sm"
                   style={{ color: "var(--text-tertiary)" }}
                 >
@@ -1491,6 +1494,7 @@ function RetrievalDebugPanel({
                   type="button"
                   onClick={() => setSourcesExpanded((v) => !v)}
                   aria-expanded={sourcesExpanded}
+                  aria-label="Toggle top chunks"
                   className="flex items-center gap-1 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-sm"
                   style={{ color: "var(--text-tertiary)" }}
                 >

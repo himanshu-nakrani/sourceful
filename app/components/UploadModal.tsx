@@ -402,6 +402,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
             ) : null}
             <TextField
               label="URL"
+              type="url"
               value={urlValue}
               onChange={(event) => setUrlValue(event.target.value)}
               placeholder="https://example.com/article"

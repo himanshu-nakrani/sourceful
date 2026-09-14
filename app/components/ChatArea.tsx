@@ -1209,6 +1209,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                             setSelectedSourceIds(null);
                             setSourceFilterOpen(false);
                           }}
+                          aria-label="Reset to all sources"
                           className="text-[10px] font-medium focus-ring rounded px-1"
                           style={{ color: "var(--accent-primary)" }}
                         >

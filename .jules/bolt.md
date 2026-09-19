@@ -64,3 +64,7 @@
 ## 2024-08-06 - Limit Database Records Read vs List Slicing
 **Learning:** For retrieving a recent subset of database records (e.g., chat history limits), fetching all rows using `ORDER BY created_at ASC` and then slicing them in memory using `history[-settings.max_conversation_history:]` creates unnecessary memory and network overhead by reading the entire dataset from DB into application memory, before immediately throwing away most of the elements.
 **Action:** Always push limits to the database query itself. Retrieve the records by using `ORDER BY ... DESC LIMIT ?` directly in the database to fetch only the needed number of elements and subsequently reverse the array in Python (`history.reverse()`) to restore chronological `ASC` order for LLM usage.
+
+## 2026-05-20 - Batch Independent Database Queries
+**Learning:** Sequential independent `fetch_one` and `fetch_all` queries inside endpoints like `analytics.py` accumulate latency because they wait on database round-trips one by one.
+**Action:** Always bundle independent `fetch_one` and `fetch_all` queries using `asyncio.gather(*tasks)` to parallelize database reads, drastically reducing latency.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -12,7 +13,11 @@ from backend.models import (
     AnalyticsRecent,
     AnalyticsTotals,
 )
-from backend.routers.deps import RequestContext, get_request_context, require_admin_context
+from backend.routers.deps import (
+    RequestContext,
+    get_request_context,
+    require_admin_context,
+)
 from backend.services.workspace_rbac import check_workspace_role
 from backend.settings import settings
 
@@ -33,7 +38,8 @@ def _parse_dt(value: Any) -> datetime | None:
 
 @router.get("/analytics/overview", response_model=AnalyticsOverviewResponse)
 async def analytics_overview(_: RequestContext = Depends(require_admin_context)):
-    counts = await fetch_one(
+
+    counts_task = fetch_one(
         """
         SELECT
             (SELECT COUNT(*) FROM users) AS users,
@@ -43,8 +49,8 @@ async def analytics_overview(_: RequestContext = Depends(require_admin_context))
             (SELECT COUNT(*) FROM messages) AS messages,
             (SELECT COALESCE(SUM(chunk_count), 0) FROM documents) AS chunks
         """
-    ) or {}
-    provider_rows = await fetch_all(
+    )
+    provider_rows_task = fetch_all(
         """
         SELECT
             provider,
@@ -70,7 +76,7 @@ async def analytics_overview(_: RequestContext = Depends(require_admin_context))
         else cutoff_7d.isoformat()
     )
 
-    recent_stats = await fetch_one(
+    recent_stats_task = fetch_one(
         """
         SELECT
             (SELECT COUNT(DISTINCT user_id) FROM auth_sessions WHERE revoked = ? AND created_at >= ?) AS active_users_7d,
@@ -79,8 +85,23 @@ async def analytics_overview(_: RequestContext = Depends(require_admin_context))
             (SELECT COUNT(*) FROM messages WHERE role = 'user' AND created_at >= ?) AS questions_24h,
             (SELECT COUNT(*) FROM auth_sessions WHERE revoked = ? AND created_at >= ?) AS sessions_24h
         """,
-        (False, cutoff_7d_str, cutoff_7d_str, cutoff_7d_str, cutoff_24h_str, False, cutoff_24h_str),
-    ) or {}
+        (
+            False,
+            cutoff_7d_str,
+            cutoff_7d_str,
+            cutoff_7d_str,
+            cutoff_24h_str,
+            False,
+            cutoff_24h_str,
+        ),
+    )
+
+    # ⚡ BOLT OPTIMIZATION: Parallelize independent DB queries
+    counts, provider_rows, recent_stats = await asyncio.gather(
+        counts_task, provider_rows_task, recent_stats_task
+    )
+    counts = counts or {}
+    recent_stats = recent_stats or {}
 
     return AnalyticsOverviewResponse(
         totals=AnalyticsTotals(
@@ -124,8 +145,16 @@ async def workspace_analytics(
     if err:
         return err
 
-    # Get workspace stats
-    stats = await fetch_one(
+    # Get recent activity (last 7 days)
+    now = datetime.now(timezone.utc)
+    cutoff_7d = now - timedelta(days=7)
+    cutoff_7d_str = (
+        cutoff_7d.strftime("%Y-%m-%d %H:%M:%S")
+        if not settings.using_postgres
+        else cutoff_7d.isoformat()
+    )
+
+    stats_task = fetch_one(
         """
         SELECT
             (SELECT COUNT(*) FROM workspace_sources WHERE workspace_id = ?) AS total_sources,
@@ -135,10 +164,9 @@ async def workspace_analytics(
             (SELECT COUNT(*) FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE workspace_id = ?)) AS messages
         """,
         (workspace_id, workspace_id, workspace_id, workspace_id, workspace_id),
-    ) or {}
+    )
 
-    # Get source type breakdown
-    source_type_rows = await fetch_all(
+    source_type_rows_task = fetch_all(
         """
         SELECT source_type, COUNT(*) AS count
         FROM workspace_sources
@@ -148,8 +176,7 @@ async def workspace_analytics(
         (workspace_id,),
     )
 
-    # Get artifact type breakdown
-    artifact_type_rows = await fetch_all(
+    artifact_type_rows_task = fetch_all(
         """
         SELECT artifact_type, COUNT(*) AS count
         FROM workspace_artifacts
@@ -159,13 +186,7 @@ async def workspace_analytics(
         (workspace_id,),
     )
 
-    # Get recent activity (last 7 days)
-    now = datetime.now(timezone.utc)
-    cutoff_7d = now - timedelta(days=7)
-
-    cutoff_7d_str = cutoff_7d.strftime("%Y-%m-%d %H:%M:%S") if not settings.using_postgres else cutoff_7d.isoformat()
-
-    messages_7d_row = await fetch_one(
+    messages_7d_row_task = fetch_one(
         """
         SELECT COUNT(*) AS cnt
         FROM messages
@@ -174,9 +195,8 @@ async def workspace_analytics(
         """,
         (workspace_id, cutoff_7d_str),
     )
-    messages_7d = int((messages_7d_row or {}).get("cnt", 0) or 0)
 
-    artifacts_7d_row = await fetch_one(
+    artifacts_7d_row_task = fetch_one(
         """
         SELECT COUNT(*) AS cnt
         FROM workspace_artifacts
@@ -185,6 +205,24 @@ async def workspace_analytics(
         """,
         (workspace_id, cutoff_7d_str),
     )
+
+    # ⚡ BOLT OPTIMIZATION: Parallelize independent DB queries
+    (
+        stats,
+        source_type_rows,
+        artifact_type_rows,
+        messages_7d_row,
+        artifacts_7d_row,
+    ) = await asyncio.gather(
+        stats_task,
+        source_type_rows_task,
+        artifact_type_rows_task,
+        messages_7d_row_task,
+        artifacts_7d_row_task,
+    )
+
+    stats = stats or {}
+    messages_7d = int((messages_7d_row or {}).get("cnt", 0) or 0)
     artifacts_7d = int((artifacts_7d_row or {}).get("cnt", 0) or 0)
 
     return {
@@ -201,7 +239,10 @@ async def workspace_analytics(
                 for row in source_type_rows
             ],
             "artifacts_by_type": [
-                {"type": row.get("artifact_type"), "count": int(row.get("count", 0) or 0)}
+                {
+                    "type": row.get("artifact_type"),
+                    "count": int(row.get("count", 0) or 0),
+                }
                 for row in artifact_type_rows
             ],
         },
@@ -316,8 +357,9 @@ async def workspace_activity(
         )
 
     # Sort all activities by created_at descending
-    activities.sort(key=lambda x: _parse_dt(x.get("created_at")) or datetime.min, reverse=True)
+    activities.sort(
+        key=lambda x: _parse_dt(x.get("created_at")) or datetime.min, reverse=True
+    )
 
     # Return limited results
     return {"activities": activities[:limit]}
-

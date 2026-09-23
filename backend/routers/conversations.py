@@ -32,14 +32,24 @@ async def list_conversations(
     if document_id:
         where += " AND c.document_id = ?"
         params = (context.owner_id, document_id)
+    # ⚡ BOLT OPTIMIZATION:
+    # Use a CTE to apply the LIMIT *before* evaluating the correlated subquery for message counts.
+    # By pushing the limit down into `top_conversations`, the database only runs the subquery
+    # 200 times instead of once for every conversation matching the WHERE clause, drastically
+    # improving performance for users with large chat histories.
     rows = await fetch_all(
         f"""
-        SELECT c.id, c.document_id, c.title, c.created_at, c.updated_at, c.workspace_id,
-               (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
-        FROM conversations c
-        {where}
-        ORDER BY c.updated_at DESC
-        LIMIT 200
+        WITH top_conversations AS (
+            SELECT id, document_id, title, created_at, updated_at, workspace_id
+            FROM conversations c
+            {where}
+            ORDER BY updated_at DESC
+            LIMIT 200
+        )
+        SELECT tc.id, tc.document_id, tc.title, tc.created_at, tc.updated_at, tc.workspace_id,
+               (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = tc.id) AS message_count
+        FROM top_conversations tc
+        ORDER BY tc.updated_at DESC
         """,
         params,
     )

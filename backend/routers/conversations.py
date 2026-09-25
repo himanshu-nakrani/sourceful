@@ -9,7 +9,14 @@ from pydantic import TypeAdapter
 
 from backend.database import execute, fetch_all, fetch_one
 from backend.errors import api_error_response
-from backend.models import Citation, ConversationListItem, ConversationListResponse, ConversationResponse, MessageResponse, UpdateConversationRequest
+from backend.models import (
+    Citation,
+    ConversationListItem,
+    ConversationListResponse,
+    ConversationResponse,
+    MessageResponse,
+    UpdateConversationRequest,
+)
 from backend.routers.deps import RequestContext, get_request_context
 
 router = APIRouter()
@@ -32,18 +39,26 @@ async def list_conversations(
     if document_id:
         where += " AND c.document_id = ?"
         params = (context.owner_id, document_id)
+    # ⚡ BOLT OPTIMIZATION: Push LIMIT into a CTE before evaluating the correlated subquery
     rows = await fetch_all(
         f"""
-        SELECT c.id, c.document_id, c.title, c.created_at, c.updated_at, c.workspace_id,
-               (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
-        FROM conversations c
-        {where}
-        ORDER BY c.updated_at DESC
-        LIMIT 200
+        WITH limited_conversations AS (
+            SELECT id, document_id, title, created_at, updated_at, workspace_id
+            FROM conversations c
+            {where}
+            ORDER BY updated_at DESC
+            LIMIT 200
+        )
+        SELECT lc.id, lc.document_id, lc.title, lc.created_at, lc.updated_at, lc.workspace_id,
+               (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = lc.id) AS message_count
+        FROM limited_conversations lc
+        ORDER BY lc.updated_at DESC
         """,
         params,
     )
-    return ConversationListResponse(conversations=[ConversationListItem(**row) for row in rows])
+    return ConversationListResponse(
+        conversations=[ConversationListItem(**row) for row in rows]
+    )
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
@@ -94,7 +109,10 @@ async def rename_conversation(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    row = await fetch_one("SELECT id FROM conversations WHERE id = ? AND owner_id = ?", (conversation_id, context.owner_id))
+    row = await fetch_one(
+        "SELECT id FROM conversations WHERE id = ? AND owner_id = ?",
+        (conversation_id, context.owner_id),
+    )
     if not row:
         return api_error_response(
             request=request,
@@ -107,7 +125,11 @@ async def rename_conversation(
         "UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
         (body.title.strip(), conversation_id, context.owner_id),
     )
-    return {"status": "updated", "conversation_id": conversation_id, "title": body.title.strip()}
+    return {
+        "status": "updated",
+        "conversation_id": conversation_id,
+        "title": body.title.strip(),
+    }
 
 
 @router.get("/conversations/{conversation_id}/export")
@@ -155,7 +177,10 @@ async def delete_conversation(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    row = await fetch_one("SELECT id FROM conversations WHERE id = ? AND owner_id = ?", (conversation_id, context.owner_id))
+    row = await fetch_one(
+        "SELECT id FROM conversations WHERE id = ? AND owner_id = ?",
+        (conversation_id, context.owner_id),
+    )
     if not row:
         return api_error_response(
             request=request,
@@ -164,5 +189,8 @@ async def delete_conversation(
             code="CONVERSATION_NOT_FOUND",
             details={"conversation_id": conversation_id},
         )
-    await execute("DELETE FROM conversations WHERE id = ? AND owner_id = ?", (conversation_id, context.owner_id))
+    await execute(
+        "DELETE FROM conversations WHERE id = ? AND owner_id = ?",
+        (conversation_id, context.owner_id),
+    )
     return {"status": "deleted", "conversation_id": conversation_id}

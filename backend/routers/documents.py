@@ -30,15 +30,20 @@ router = APIRouter()
 async def list_documents(context: RequestContext = Depends(get_request_context)):
     rows = await fetch_all(
         """
-        SELECT id, filename, provider, embedding_model, mime_type, checksum, chunk_count,
-               file_size, page_count, status, current_job_id, created_at, processed_at, last_error,
-               workspace_id,
-               (SELECT stage FROM document_jobs WHERE id = documents.current_job_id) AS current_stage,
-               (SELECT id FROM document_jobs WHERE document_id = documents.id AND owner_id = documents.owner_id ORDER BY created_at DESC LIMIT 1) AS last_job_id
-        FROM documents
-        WHERE owner_id = ?
+        WITH limited_docs AS (
+            SELECT id, filename, provider, embedding_model, mime_type, checksum, chunk_count,
+                   file_size, page_count, status, current_job_id, created_at, processed_at, last_error,
+                   workspace_id, owner_id
+            FROM documents
+            WHERE owner_id = ?
+            ORDER BY created_at DESC
+            LIMIT 200
+        )
+        SELECT limited_docs.*,
+               (SELECT stage FROM document_jobs WHERE id = limited_docs.current_job_id) AS current_stage,
+               (SELECT id FROM document_jobs WHERE document_id = limited_docs.id AND owner_id = limited_docs.owner_id ORDER BY created_at DESC LIMIT 1) AS last_job_id
+        FROM limited_docs
         ORDER BY created_at DESC
-        LIMIT 200
         """,
         (context.owner_id,),
     )
@@ -100,8 +105,12 @@ async def get_document_status(
     return DocumentStatusResponse(**row)
 
 
-@router.get("/documents/{document_id}/chunks", response_model=list[ChunkPreviewResponse])
-async def get_document_chunks(document_id: str, context: RequestContext = Depends(get_request_context)):
+@router.get(
+    "/documents/{document_id}/chunks", response_model=list[ChunkPreviewResponse]
+)
+async def get_document_chunks(
+    document_id: str, context: RequestContext = Depends(get_request_context)
+):
     rows = await preview_chunks(document_id, context.owner_id)
     return [ChunkPreviewResponse(**row) for row in rows]
 
@@ -160,7 +169,9 @@ async def get_document_content(
     )
 
 
-@router.post("/documents/{document_id}/reprocess", response_model=IngestResponse, status_code=202)
+@router.post(
+    "/documents/{document_id}/reprocess", response_model=IngestResponse, status_code=202
+)
 async def reprocess_document(
     document_id: str,
     request: Request,
@@ -200,7 +211,9 @@ async def reprocess_document(
     )
 
 
-@router.post("/documents/{document_id}/extract", response_model=StructuredExtractResponse)
+@router.post(
+    "/documents/{document_id}/extract", response_model=StructuredExtractResponse
+)
 async def extract_document_fields(
     document_id: str,
     body: StructuredExtractRequest,
@@ -291,7 +304,10 @@ async def delete_document(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    row = await fetch_one("SELECT id FROM documents WHERE id = ? AND owner_id = ?", (document_id, context.owner_id))
+    row = await fetch_one(
+        "SELECT id FROM documents WHERE id = ? AND owner_id = ?",
+        (document_id, context.owner_id),
+    )
     if not row:
         return api_error_response(
             request=request,
@@ -300,5 +316,8 @@ async def delete_document(
             code="DOCUMENT_NOT_FOUND",
             details={"document_id": document_id},
         )
-    await execute("DELETE FROM documents WHERE id = ? AND owner_id = ?", (document_id, context.owner_id))
+    await execute(
+        "DELETE FROM documents WHERE id = ? AND owner_id = ?",
+        (document_id, context.owner_id),
+    )
     return {"status": "deleted", "document_id": document_id}

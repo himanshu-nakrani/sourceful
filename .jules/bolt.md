@@ -68,3 +68,7 @@
 ## 2026-05-20 - Batch Independent Database Queries
 **Learning:** Sequential independent `fetch_one` and `fetch_all` queries inside endpoints like `analytics.py` accumulate latency because they wait on database round-trips one by one.
 **Action:** Always bundle independent `fetch_one` and `fetch_all` queries using `asyncio.gather(*tasks)` to parallelize database reads, drastically reducing latency.
+
+## 2026-06-01 - Correlated Subqueries on Paginated API Queries
+**Learning:** When retrieving paginated resources (like `documents` or `conversations`), running a correlated subquery alongside the base select statement forces the database engine to evaluate the subquery for *every row* in the base table before applying the `LIMIT`. This creates massive O(n) CPU and disk I/O performance bottlenecks as the table grows.
+**Action:** When a paginated route's base query requires correlated subqueries (like fetching the latest job or message count), always wrap the base query with its `ORDER BY` and `LIMIT` in a Common Table Expression (CTE). Then, select from the limited CTE result and run the correlated subqueries. This restricts the subquery evaluation strictly to the paginated page size (e.g., 200 rows) instead of the entire table.

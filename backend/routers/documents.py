@@ -31,7 +31,7 @@ async def list_documents(context: RequestContext = Depends(get_request_context))
     # ⚡ BOLT OPTIMIZATION: Push LIMIT into a CTE before evaluating the correlated subqueries
     rows = await fetch_all(
         """
-        WITH limited_docs AS (
+        WITH limited_docs AS MATERIALIZED (
             SELECT id, filename, provider, embedding_model, mime_type, checksum, chunk_count,
                    file_size, page_count, status, current_job_id, created_at, processed_at, last_error,
                    workspace_id, owner_id

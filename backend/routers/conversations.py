@@ -42,7 +42,7 @@ async def list_conversations(
     # ⚡ BOLT OPTIMIZATION: Push LIMIT into a CTE before evaluating the correlated subquery
     rows = await fetch_all(
         f"""
-        WITH limited_conversations AS (
+        WITH limited_conversations AS MATERIALIZED (
             SELECT id, document_id, title, created_at, updated_at, workspace_id
             FROM conversations c
             {where}

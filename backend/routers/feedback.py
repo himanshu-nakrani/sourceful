@@ -21,6 +21,7 @@ the answer is generated. Feedback is the *offline* loop.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Literal
 
@@ -76,7 +77,10 @@ async def submit_feedback(
             status_code=404,
             error="Message not found for this conversation.",
             code="MESSAGE_NOT_FOUND",
-            details={"message_id": body.message_id, "conversation_id": body.conversation_id},
+            details={
+                "message_id": body.message_id,
+                "conversation_id": body.conversation_id,
+            },
         )
     if (message.get("role") or "").lower() != "assistant":
         return api_error_response(
@@ -130,7 +134,7 @@ async def feedback_summary(
     context: RequestContext = Depends(get_request_context),
 ):
     """Return aggregate feedback counts + the most recent rows for the owner."""
-    rows = await fetch_all(
+    rows_task = fetch_all(
         """
         SELECT id, conversation_id, message_id, rating, comment, created_at
         FROM feedback
@@ -140,6 +144,14 @@ async def feedback_summary(
         """,
         (context.owner_id, limit),
     )
+    total_row_task = fetch_one(
+        "SELECT COUNT(*) AS total FROM feedback WHERE owner_id = ?",
+        (context.owner_id,),
+    )
+
+    # ⚡ BOLT OPTIMIZATION: Parallelize independent database queries to reduce overall latency
+    rows, total_row = await asyncio.gather(rows_task, total_row_task)
+
     up = 0
     down = 0
     recent: list[FeedbackResponse] = []
@@ -159,9 +171,6 @@ async def feedback_summary(
                 created_at=row["created_at"],
             )
         )
-    total_row = await fetch_one(
-        "SELECT COUNT(*) AS total FROM feedback WHERE owner_id = ?",
-        (context.owner_id,),
-    )
+
     total = int((total_row or {}).get("total") or 0)
     return FeedbackSummaryResponse(total=total, up=up, down=down, recent=recent)

@@ -72,3 +72,6 @@
 ## 2026-05-22 - Optimize Paginated Queries with Correlated Subqueries via CTEs
 **Learning:** When writing paginated database queries (e.g., using `LIMIT`) that include correlated subqueries (like fetching aggregate counts or latest statuses), executing the subquery directly in the main `SELECT` clause forces the database to evaluate it for rows that will ultimately be discarded by the `LIMIT`. Additionally, replacing these subqueries with `LEFT JOIN` and `GROUP BY` forces a full table join before the limit is applied, destroying index utilization and causing severe performance regressions.
 **Action:** When a paginated query requires correlated subqueries, wrap the base query in a Common Table Expression (CTE) to apply the `ORDER BY` and `LIMIT` first. Then, run the correlated subqueries in the outer query against the limited CTE result. This ensures the subqueries are only executed for the small subset of rows actually returned, drastically reducing unnecessary database work.
+## $(date +%Y-%m-%d) - [Optimize /workspace/activity DB concurrent queries]
+**Learning:** Found sequential fetch_all statements inside a route causing latency due to cumulative database I/O blocking.
+**Action:** Used `asyncio.gather()` to fetch data from different tables concurrently, improving latency without altering the existing loop handling structure.

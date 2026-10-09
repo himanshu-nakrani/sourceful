@@ -62,6 +62,9 @@ jobs:
         env:
           SKIP_EVAL: "0"
           DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/test"
+          # Required whenever DATABASE_URL is set (backend/services/anon_scope.py);
+          # throwaway value for the ephemeral CI database only.
+          ANON_SESSION_SECRET: "nightly-eval-ci-only-not-a-real-secret"
         run: |
           set -o pipefail  # don't let `tee` mask pytest failures
           cd backend

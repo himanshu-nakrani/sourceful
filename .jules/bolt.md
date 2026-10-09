@@ -80,3 +80,7 @@
 ## 2026-05-24 - Parallelize independent DB queries
 **Learning:** Sequential independent `fetch_one` and `fetch_all` queries accumulate latency because they wait on database round-trips one by one.
 **Action:** Bundle independent `fetch_one` and `fetch_all` queries using `asyncio.gather(*tasks)` to parallelize database reads, reducing overall request latency.
+
+## 2026-05-25 - Batch Independent Database Queries
+**Learning:** Sequential independent `fetch_all` queries accumulate latency because they wait on database round-trips one by one. This was observed in the `workspace_activity` endpoint fetching messages, artifacts, and source updates sequentially.
+**Action:** Always bundle independent database reads using `asyncio.gather(*tasks)` to parallelize network I/O, drastically reducing latency.

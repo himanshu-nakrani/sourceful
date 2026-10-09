@@ -271,7 +271,7 @@ async def workspace_activity(
     activities = []
 
     # Get recent messages
-    message_rows = await fetch_all(
+    message_rows_task = fetch_all(
         """
         SELECT
             m.id,
@@ -288,20 +288,8 @@ async def workspace_activity(
         (workspace_id, limit),
     )
 
-    for row in message_rows:
-        activities.append(
-            {
-                "type": "message",
-                "id": row.get("id"),
-                "role": row.get("role"),
-                "content_preview": (row.get("content") or "")[:100],
-                "conversation_title": row.get("conversation_title"),
-                "created_at": row.get("created_at"),
-            }
-        )
-
     # Get recent artifacts
-    artifact_rows = await fetch_all(
+    artifact_rows_task = fetch_all(
         """
         SELECT
             id,
@@ -316,19 +304,8 @@ async def workspace_activity(
         (workspace_id, limit),
     )
 
-    for row in artifact_rows:
-        activities.append(
-            {
-                "type": "artifact",
-                "id": row.get("id"),
-                "artifact_type": row.get("artifact_type"),
-                "title": row.get("title"),
-                "created_at": row.get("created_at"),
-            }
-        )
-
     # Get recent source status changes
-    source_rows = await fetch_all(
+    source_rows_task = fetch_all(
         """
         SELECT
             id,
@@ -343,6 +320,34 @@ async def workspace_activity(
         """,
         (workspace_id, limit),
     )
+
+    # ⚡ BOLT OPTIMIZATION: Parallelize independent DB queries
+    message_rows, artifact_rows, source_rows = await asyncio.gather(
+        message_rows_task, artifact_rows_task, source_rows_task
+    )
+
+    for row in message_rows:
+        activities.append(
+            {
+                "type": "message",
+                "id": row.get("id"),
+                "role": row.get("role"),
+                "content_preview": (row.get("content") or "")[:100],
+                "conversation_title": row.get("conversation_title"),
+                "created_at": row.get("created_at"),
+            }
+        )
+
+    for row in artifact_rows:
+        activities.append(
+            {
+                "type": "artifact",
+                "id": row.get("id"),
+                "artifact_type": row.get("artifact_type"),
+                "title": row.get("title"),
+                "created_at": row.get("created_at"),
+            }
+        )
 
     for row in source_rows:
         activities.append(

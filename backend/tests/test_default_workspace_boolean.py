@@ -8,12 +8,13 @@ Postgres ``is_default`` is BOOLEAN and ``boolean = integer`` raises
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import re
 import uuid
 from pathlib import Path
 
-from backend.database import close_db, fetch_one
+from backend.database import close_db, execute, fetch_one
 from backend.services import workspace_service
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -42,6 +43,9 @@ def test_default_workspace_lookup_is_idempotent():
             )
             assert int(row["n"]) == 1
         finally:
+            # The conftest cleanup only removes SQLite files; don't leave rows
+            # behind when running against Postgres.
+            await execute("DELETE FROM workspaces WHERE owner_scope = ?", (owner_scope,))
             await close_db()
 
     asyncio.run(scenario())
@@ -61,8 +65,18 @@ _SQLITE_ONLY_ALLOWLIST = {
 }
 
 
+def _string_literals(source: str):
+    """Yield (lineno, text) for every string literal, including f-string parts."""
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            yield node.lineno, node.value
+
+
 def test_no_integer_literal_comparisons_on_postgres_boolean_columns():
     """Fail on ``<boolean column> = 0/1`` in backend SQL (breaks on Postgres).
+
+    Only string literals are scanned (that is where SQL lives), so ordinary
+    Python such as ``enabled = 1`` is not flagged.
 
     Use ``= TRUE`` / ``= FALSE`` (valid on SQLite >= 3.23 and Postgres) or pass a
     Python ``bool`` parameter instead.
@@ -78,7 +92,8 @@ def test_no_integer_literal_comparisons_on_postgres_boolean_columns():
         if rel.startswith("tests/") or rel == "migrations.py":
             continue
         allowed = _SQLITE_ONLY_ALLOWLIST.get(rel, [])
-        for lineno, line in enumerate(path.read_text().splitlines(), start=1):
-            if pattern.search(line) and not any(a in line for a in allowed):
-                offenders.append(f"{rel}:{lineno}: {line.strip()}")
+        for lineno, text in _string_literals(path.read_text()):
+            for sql_line in text.splitlines():
+                if pattern.search(sql_line) and not any(a in sql_line for a in allowed):
+                    offenders.append(f"{rel}:{lineno}: {sql_line.strip()}")
     assert not offenders, "Integer comparison on BOOLEAN column:\n" + "\n".join(offenders)

@@ -84,6 +84,7 @@ jobs:
       # Written to the job summary rather than a commit comment: the repo's default
       # GITHUB_TOKEN is read-only, so createCommitComment would fail with 403.
       - name: Write eval summary
+        if: always()  # keep the summary when an eval step fails
         uses: actions/github-script@v7
         with:
           script: |

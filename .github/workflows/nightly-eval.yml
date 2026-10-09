@@ -1,4 +1,4 @@
-name: Nightly Eval
+name: Nightly Eval (SQLite + Postgres)
 
 on:
   schedule:
@@ -54,6 +54,7 @@ jobs:
           # Use SQLite to avoid needing Postgres for basic eval
           DATABASE_URL: ""
         run: |
+          set -o pipefail  # don't let `tee` mask pytest failures
           cd backend
           python -m pytest tests/eval/test_retrieval_eval.py -m eval -v --tb=short 2>&1 | tee eval_output.txt
 
@@ -61,7 +62,11 @@ jobs:
         env:
           SKIP_EVAL: "0"
           DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/test"
+          # Required whenever DATABASE_URL is set (backend/services/anon_scope.py);
+          # throwaway value for the ephemeral CI database only.
+          ANON_SESSION_SECRET: "nightly-eval-ci-only-not-a-real-secret"
         run: |
+          set -o pipefail  # don't let `tee` mask pytest failures
           cd backend
           python -m pytest tests/eval/test_retrieval_eval.py::test_retrieval_recall_v2 -m eval -v --tb=short 2>&1 | tee eval_output_pg.txt
 
@@ -76,8 +81,10 @@ jobs:
             backend/eval_output.txt
             backend/eval_output_pg.txt
 
-      - name: Comment on PR or commit
-        if: github.event_name == 'workflow_dispatch'
+      # Written to the job summary rather than a commit comment: the repo's default
+      # GITHUB_TOKEN is read-only, so createCommitComment would fail with 403.
+      - name: Write eval summary
+        if: always()  # keep the summary when an eval step fails
         uses: actions/github-script@v7
         with:
           script: |
@@ -104,12 +111,7 @@ jobs:
             } catch (e) {
               summary = `Could not read eval report: ${e.message}`;
             }
-            github.rest.repos.createCommitComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: context.sha,
-              body: summary,
-            });
+            await core.summary.addRaw(summary, true).write();
 
       - name: Check for regression
         run: |
@@ -117,7 +119,8 @@ jobs:
           python3 << 'PYEOF'
           import json, sys
           from pathlib import Path
-          path = Path('../../docs/eval/last_run_v2.json')
+          # Relative to backend/ (cwd); the report lives at <repo>/docs/eval/.
+          path = Path('../docs/eval/last_run_v2.json')
           if not path.exists():
               print('No v2 report found; skipping regression check.')
               sys.exit(0)

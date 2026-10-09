@@ -1,4 +1,4 @@
-name: Nightly Eval
+name: Eval Baseline Delta (PR + nightly)
 
 on:
   schedule:

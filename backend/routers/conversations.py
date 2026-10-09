@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -67,10 +68,18 @@ async def get_conversation(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    conversation = await fetch_one(
+    conversation_task = fetch_one(
         "SELECT id, document_id, title, created_at, updated_at, workspace_id FROM conversations WHERE id = ? AND owner_id = ?",
         (conversation_id, context.owner_id),
     )
+    rows_task = fetch_all(
+        "SELECT id, role, content, sources_json, mode, created_at FROM messages WHERE conversation_id = ? AND owner_id = ? ORDER BY created_at ASC",
+        (conversation_id, context.owner_id),
+    )
+
+    # ⚡ BOLT OPTIMIZATION: Parallelize independent DB queries
+    conversation, rows = await asyncio.gather(conversation_task, rows_task)
+
     if not conversation:
         return api_error_response(
             request=request,
@@ -79,10 +88,6 @@ async def get_conversation(
             code="CONVERSATION_NOT_FOUND",
             details={"conversation_id": conversation_id},
         )
-    rows = await fetch_all(
-        "SELECT id, role, content, sources_json, mode, created_at FROM messages WHERE conversation_id = ? AND owner_id = ? ORDER BY created_at ASC",
-        (conversation_id, context.owner_id),
-    )
     messages = []
     for row in rows:
         sources = None
@@ -139,18 +144,7 @@ async def export_conversation(
     format: str = Query(default="markdown"),
     context: RequestContext = Depends(get_request_context),
 ):
-    conversation = await fetch_one(
-        "SELECT id, title, document_id, created_at, updated_at FROM conversations WHERE id = ? AND owner_id = ?",
-        (conversation_id, context.owner_id),
-    )
-    if not conversation:
-        return api_error_response(
-            request=request,
-            status_code=404,
-            error="Conversation not found.",
-            code="CONVERSATION_NOT_FOUND",
-            details={"conversation_id": conversation_id},
-        )
+    # ⚡ BOLT OPTIMIZATION: Removed redundant fetch_one query here as get_conversation already validates existence
     detail = await get_conversation(conversation_id, request, context)
     if isinstance(detail, JSONResponse):
         return detail

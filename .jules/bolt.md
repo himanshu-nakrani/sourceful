@@ -76,3 +76,7 @@
 ## 2026-05-23 - Remove Redundant Database Checks
 **Learning:** Checking for entity existence sequentially via `fetch_one` before fetching child resources via `fetch_all` adds unnecessary database roundtrips. When the child resource fetch is wrapped inside an existing function that already performs this exact metadata validation and error handling (such as `export_conversation` calling `get_conversation`), the initial parent query is totally redundant.
 **Action:** When a route delegates logic to a helper function or another route handler that performs state/metadata validation, remove any pre-validation checks in the caller to save database queries.
+
+## 2026-05-24 - Parallelize independent DB queries
+**Learning:** Sequential independent `fetch_one` and `fetch_all` queries accumulate latency because they wait on database round-trips one by one.
+**Action:** Bundle independent `fetch_one` and `fetch_all` queries using `asyncio.gather(*tasks)` to parallelize database reads, reducing overall request latency.

@@ -10,6 +10,7 @@ from backend.errors import api_error_response
 from backend.models import IngestResponse
 from backend.routers.deps import RequestContext, get_request_context
 from backend.services import workspace_service
+from backend.services.embedding_spec import EMBEDDING_DIMENSIONS, is_supported_embedding_model
 from backend.services.extract import FileValidationError, validate_upload
 from backend.services.jobs import enqueue_ingest_job
 from backend.services.provider_auth import normalize_provider_api_key, provider_requires_api_key
@@ -58,6 +59,18 @@ async def ingest(
             status_code=400,
             error="Embedding model id is too long.",
             code="INVALID_EMBEDDING_MODEL",
+        )
+    if provider in {"openai", "gemini"} and not is_supported_embedding_model(provider, model_name):
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error=(
+                f"Embedding model {model_name!r} cannot produce {EMBEDDING_DIMENSIONS}-dimensional "
+                "embeddings. Use text-embedding-3-small, text-embedding-3-large, "
+                "text-embedding-ada-002 (OpenAI) or models/gemini-embedding-001 (Gemini)."
+            ),
+            code="UNSUPPORTED_EMBEDDING_MODEL",
+            details={"embedding_model": model_name, "required_dimensions": EMBEDDING_DIMENSIONS},
         )
     provider_api_key = normalize_provider_api_key(x_provider_api_key)
     if provider_requires_api_key(provider) and not provider_api_key:

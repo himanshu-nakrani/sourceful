@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pydantic import TypeAdapter
 from backend.database import execute, execute_many, fetch_all
 from backend.services.chunking import ChunkPayload
+from backend.services.embedding_spec import ensure_dimensions
 from backend.settings import settings
 
 try:
@@ -43,6 +44,8 @@ async def replace_chunks(
     chunks: list[ChunkPayload],
     embeddings: list[list[float]],
 ) -> None:
+    # Validate before deleting so a bad provider response never wipes good chunks.
+    ensure_dimensions(embeddings, model="(stored chunks)")
     await execute("DELETE FROM document_chunks WHERE document_id = ? AND owner_id = ?", (document_id, owner_id))
 
     if not chunks:
@@ -171,7 +174,18 @@ def _compute_similarities_sqlite(rows: list[dict], query_embedding: list[float],
         raise ValueError("numpy is required for SQLite vector similarity search.") from exc
 
 
-    matrix = np.asarray([_load_embedding_json(row["embedding_json"]) for row in rows], dtype=np.float32)
+    # Legacy rows embedded at another dimensionality (pre-1536 standardization)
+    # cannot be compared with the query; skip them until the document is
+    # re-embedded (see `python -m backend.scripts.reembed`).
+    loaded = [_load_embedding_json(row["embedding_json"]) for row in rows]
+    expected_dims = len(query_embedding)
+    keep = [i for i, vec in enumerate(loaded) if len(vec) == expected_dims]
+    if not keep:
+        return []
+    if len(keep) != len(rows):
+        rows = [rows[i] for i in keep]
+        loaded = [loaded[i] for i in keep]
+    matrix = np.asarray(loaded, dtype=np.float32)
     query = np.asarray(query_embedding, dtype=np.float32)
     query = query / (np.linalg.norm(query) + 1e-9)
     matrix = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9)
@@ -226,6 +240,7 @@ async def query_similar(
             FROM document_chunks c
             JOIN documents d ON c.document_id = d.id
             WHERE c.document_id = ? AND (c.owner_id = ? OR d.workspace_id = ?)
+              AND c.embedding IS NOT NULL
             ORDER BY c.embedding <=> ?::vector
             LIMIT ?
             """,
@@ -298,6 +313,7 @@ async def query_similar_multi(
             FROM document_chunks c
             JOIN documents d ON c.document_id = d.id
             WHERE (c.owner_id = ? OR d.workspace_id = ?) AND c.document_id IN ({placeholders})
+              AND c.embedding IS NOT NULL
             ORDER BY c.embedding <=> ?::vector
             LIMIT ?
             """,

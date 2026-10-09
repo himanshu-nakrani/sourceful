@@ -152,6 +152,19 @@ async def _fetch_url(url: str) -> tuple[bytes, str, str]:
     return raw, (response.headers.get("content-type") or "").lower(), str(response.url)
 
 
+def _require_supported_model(provider: str, model: str) -> None:
+    """Raise a 400 UrlIngestError when ``model`` cannot emit 1536-dim vectors."""
+    from backend.services.embedding_spec import EMBEDDING_DIMENSIONS, is_supported_embedding_model
+
+    if provider in {"openai", "gemini"} and not is_supported_embedding_model(provider, model):
+        raise UrlIngestError(
+            f"Embedding model {model!r} cannot produce {EMBEDDING_DIMENSIONS}-dimensional embeddings. "
+            "Re-embed the source with a supported model (see docs/production.md).",
+            code="UNSUPPORTED_EMBEDDING_MODEL",
+            details={"embedding_model": model, "required_dimensions": EMBEDDING_DIMENSIONS},
+        )
+
+
 async def refetch_url_source(
     *,
     workspace_id: str,
@@ -193,6 +206,9 @@ async def refetch_url_source(
 
     provider = document["provider"]
     embedding_model = document["embedding_model"]
+    # Before any state change: a legacy model would otherwise strand the
+    # document as 'queued' with an unfinished sync run.
+    _require_supported_model(provider, embedding_model)
     if provider_requires_api_key(provider) and not provider_api_key:
         raise UrlIngestError(
             "Missing X-Provider-Api-Key header.",
@@ -310,6 +326,8 @@ async def enqueue_url_source(
             if selected_provider == "openai"
             else settings.default_embedding_model_gemini
         )
+
+    _require_supported_model(selected_provider, model_name)
 
     raw, content_type, final_url = await _fetch_url(clean_url)
 

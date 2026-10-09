@@ -3,8 +3,8 @@ from collections.abc import Iterable
 from backend.settings import settings
 
 
-SQLITE_MIGRATION_VERSION = 15
-POSTGRES_MIGRATION_VERSION = 15
+SQLITE_MIGRATION_VERSION = 16
+POSTGRES_MIGRATION_VERSION = 16
 
 
 def _split_statements(script: str) -> list[str]:
@@ -401,7 +401,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     chunk_index INTEGER NOT NULL,
     content TEXT NOT NULL,
     page_number INTEGER,
-    embedding VECTOR,
+    embedding VECTOR(1536),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_document_chunks_document

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -10,6 +11,7 @@ import uuid
 from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.metrics import metrics
 from backend.services.chunking import chunk_sections, chunk_sections_parent_child, chunk_sections_semantic
+from backend.services.embedding_spec import embedding_request_options
 from backend.services.embeddings import embed_texts
 from backend.services.extract import extract_document
 from backend.services.provider_auth import require_provider_api_key
@@ -52,6 +54,8 @@ async def enqueue_ingest_job(
     Returns:
         A tuple of (document_dict, job_dict_or_None, was_deduplicated_bool).
     """
+    if provider in {"openai", "gemini"}:
+        embedding_request_options(provider, embedding_model)  # raises UnsupportedEmbeddingModelError
     existing = await fetch_one(
         """
         SELECT * FROM documents
@@ -150,6 +154,10 @@ async def enqueue_reprocess_job(
     payload_mime_type = document["mime_type"]
     payload_bytes = latest_job.get("payload_bytes") if latest_job else None
     model_name = embedding_model or document["embedding_model"]
+    if document["provider"] in {"openai", "gemini"}:
+        # Raises UnsupportedEmbeddingModelError (a ValueError) for models that
+        # cannot emit 1536-dim vectors, e.g. legacy text-embedding-004 docs.
+        embedding_request_options(document["provider"], model_name)
     provider_key = require_provider_api_key(document["provider"], provider_api_key)
 
     job_id = str(uuid.uuid4())
@@ -339,7 +347,8 @@ async def process_job(job: dict) -> None:
                 chunk_count = ?,
                 page_count = ?,
                 processed_at = {TIMESTAMP_SQL},
-                last_error = NULL
+                last_error = NULL,
+                reembed_required = FALSE
             WHERE id = ? AND owner_id = ?
             """,
             (job["embedding_model"], len(chunks), page_count, document_id, owner_id),
@@ -476,7 +485,8 @@ async def _process_vertex_search_job(
             chunk_count = 0,
             page_count = ?,
             processed_at = {TIMESTAMP_SQL},
-            last_error = NULL
+            last_error = NULL,
+            reembed_required = FALSE
         WHERE id = ? AND owner_id = ?
         """,
         (job["embedding_model"], page_count, document_id, owner_id),
@@ -545,18 +555,35 @@ async def _build_chunks(job: dict):
             chunks = chunk_sections(extracted.sections, settings.chunk_size, settings.chunk_overlap)
     else:
         existing_rows = await fetch_all(
-            "SELECT chunk_index, content, page_number FROM document_chunks WHERE document_id = ? AND owner_id = ? ORDER BY chunk_index ASC",
+            "SELECT chunk_index, content, page_number, parent_content, chunk_type, metadata_json "
+            "FROM document_chunks WHERE document_id = ? AND owner_id = ? ORDER BY chunk_index ASC",
             (job["document_id"], job["owner_id"]),
         )
         if not existing_rows:
             raise ValueError("No source payload or existing chunks are available for reprocessing.")
         from backend.services.chunking import ChunkPayload
 
+        def _stored_metadata(raw: str | None) -> dict | None:
+            if not raw:
+                return None
+            try:
+                value = json.loads(raw)
+            except (TypeError, ValueError):
+                return None
+            return value if isinstance(value, dict) else None
+
+        # Re-embedding reuses the stored chunks verbatim: keep parent windows,
+        # chunk types and metadata, because replace_chunks rewrites the rows.
+        # (Contextual-retrieval prefixes are not persisted, so those chunks are
+        # re-embedded from their raw text.)
         chunks = [
             ChunkPayload(
                 chunk_index=int(row["chunk_index"]),
                 content=row["content"],
                 page_number=row.get("page_number"),
+                parent_content=row.get("parent_content"),
+                chunk_type=row.get("chunk_type") or "text",
+                metadata=_stored_metadata(row.get("metadata_json")),
             )
             for row in existing_rows
         ]

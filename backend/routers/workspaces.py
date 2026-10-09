@@ -248,6 +248,7 @@ async def reprocess_workspace_source(
             error="Source has no underlying document to reprocess.",
             code="SOURCE_INVALID",
         )
+    from backend.services.embedding_spec import UnsupportedEmbeddingModelError
     from backend.services.jobs import enqueue_reprocess_job
 
     try:
@@ -255,6 +256,13 @@ async def reprocess_workspace_source(
             owner_id=context.owner_id,
             document_id=source["document_id"],
             provider_api_key=provider_api_key or "",
+        )
+    except UnsupportedEmbeddingModelError as exc:
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error=str(exc),
+            code="UNSUPPORTED_EMBEDDING_MODEL",
         )
     except ValueError as exc:
         return api_error_response(

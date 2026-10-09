@@ -27,6 +27,7 @@ from backend.services import memory as memory_service
 from backend.services import tracing
 from backend.services.agent import run_agent
 from backend.services.compression import compress_chunks
+from backend.services.embedding_spec import EMBEDDING_DIMENSIONS, UnsupportedEmbeddingModelError
 from backend.services.embeddings import embed_query
 from backend.services.grounding import verify_groundedness
 from backend.services.llm import (
@@ -147,6 +148,21 @@ async def _apply_workspace_to_chat_body(
             code="WORKSPACE_NO_READY_SOURCES",
             details={"workspace_id": body.workspace_id},
         )
+    # Documents awaiting re-embedding (schema v16) have no usable vectors; never
+    # make one the primary document or let it trigger a model mismatch.
+    usable = [d for d in docs if not d.get("reembed_required")]
+    if not usable:
+        return False, api_error_response(
+            request=request,
+            status_code=409,
+            error=(
+                f"Every ready source in this workspace must be re-embedded at {EMBEDDING_DIMENSIONS} "
+                "dimensions. Reprocess them or run `python -m backend.scripts.reembed`."
+            ),
+            code="DOCUMENT_REEMBED_REQUIRED",
+            details={"workspace_id": body.workspace_id, "document_ids": [d["id"] for d in docs]},
+        )
+    docs = usable
     body.document_id = docs[0]["id"]
     extras = [d["id"] for d in docs[1:]]
     existing = list(body.document_ids or [])
@@ -200,6 +216,18 @@ async def _load_ready_document(
             status_code=400,
             error="Provider does not match the indexed document.",
             code="PROVIDER_MISMATCH",
+        )
+    if document.get("reembed_required"):
+        return None, api_error_response(
+            request=request,
+            status_code=409,
+            error=(
+                f"Document embeddings must be regenerated at {EMBEDDING_DIMENSIONS} dimensions. "
+                "Reprocess the document (POST /api/documents/{id}/reprocess) or run "
+                "`python -m backend.scripts.reembed`."
+            ),
+            code="DOCUMENT_REEMBED_REQUIRED",
+            details={"document_id": document["id"]},
         )
     return document, None
 
@@ -401,6 +429,14 @@ async def _embed_and_retrieve(
                 provider_api_key,
                 document["embedding_model"],
                 question,
+            )
+        except UnsupportedEmbeddingModelError as exc:
+            metrics.inc("chat_stream_failures_total", reason="embedding_model_unsupported")
+            return None, None, api_error_response(
+                request=request,
+                status_code=409,
+                error=f"{exc} Re-embed this document with a supported model.",
+                code="UNSUPPORTED_EMBEDDING_MODEL",
             )
         except Exception as exc:
             metrics.inc("chat_stream_failures_total", reason="embedding_failed")

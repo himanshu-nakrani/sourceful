@@ -152,6 +152,14 @@ async def _fetch_url(url: str) -> tuple[bytes, str, str]:
     return raw, (response.headers.get("content-type") or "").lower(), str(response.url)
 
 
+def _filename_for_mime(filename: str, mime_type: str) -> str:
+    """Match the extension to the fetched type; extraction dispatches on it."""
+    stem, dot, ext = (filename or "page").rpartition(".")
+    stem = stem if dot else ext
+    wanted = "pdf" if mime_type == "application/pdf" else "txt"
+    return filename if dot and ext.lower() == wanted else f"{stem}.{wanted}"
+
+
 def _require_supported_model(provider: str, model: str) -> None:
     """Raise a 400 UrlIngestError when ``model`` cannot emit 1536-dim vectors."""
     from backend.services.embedding_spec import EMBEDDING_DIMENSIONS, is_supported_embedding_model
@@ -265,6 +273,12 @@ async def refetch_url_source(
         document_id=document_id,
         provider_api_key=provider_api_key or "",
         embedding_model=embedding_model,
+        # Index the content we just fetched. Without this the job fell back to
+        # the previous (completed) job's payload, which is NULL, and re-embedded
+        # the old stored chunks, so refreshed content was never indexed.
+        payload_bytes=payload,
+        payload_mime_type=mime_type,
+        payload_filename=_filename_for_mime(document["filename"], mime_type),
     )
     # Mirror status onto the source and stamp last_fetched_at.
     await _execute(

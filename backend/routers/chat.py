@@ -27,6 +27,7 @@ from backend.services import memory as memory_service
 from backend.services import tracing
 from backend.services.agent import run_agent
 from backend.services.compression import compress_chunks
+from backend.services.embedding_spec import EMBEDDING_DIMENSIONS, UnsupportedEmbeddingModelError
 from backend.services.embeddings import embed_query
 from backend.services.grounding import verify_groundedness
 from backend.services.llm import (
@@ -200,6 +201,18 @@ async def _load_ready_document(
             status_code=400,
             error="Provider does not match the indexed document.",
             code="PROVIDER_MISMATCH",
+        )
+    if document.get("reembed_required"):
+        return None, api_error_response(
+            request=request,
+            status_code=409,
+            error=(
+                f"Document embeddings must be regenerated at {EMBEDDING_DIMENSIONS} dimensions. "
+                "Reprocess the document (POST /api/documents/{id}/reprocess) or run "
+                "`python -m backend.scripts.reembed`."
+            ),
+            code="DOCUMENT_REEMBED_REQUIRED",
+            details={"document_id": document["id"]},
         )
     return document, None
 
@@ -401,6 +414,14 @@ async def _embed_and_retrieve(
                 provider_api_key,
                 document["embedding_model"],
                 question,
+            )
+        except UnsupportedEmbeddingModelError as exc:
+            metrics.inc("chat_stream_failures_total", reason="embedding_model_unsupported")
+            return None, None, api_error_response(
+                request=request,
+                status_code=409,
+                error=f"{exc} Re-embed this document with a supported model.",
+                code="UNSUPPORTED_EMBEDDING_MODEL",
             )
         except Exception as exc:
             metrics.inc("chat_stream_failures_total", reason="embedding_failed")

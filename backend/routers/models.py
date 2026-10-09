@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from backend.services.embedding_spec import is_supported_embedding_model
 from backend.routers.deps import RequestContext, get_request_context, require_provider_api_key
 
 logger = logging.getLogger("ragapp.models")
@@ -50,7 +51,10 @@ async def _fetch_openai_models(api_key: str) -> tuple[list[str], list[str]]:
 
             # Filter for chat models (gpt models)
             chat_models = [m for m in models if "gpt" in m.lower()]
-            embedding_models = [m for m in models if "embedding" in m.lower()]
+            # Only offer models that can emit the 1536 dims the vector store requires.
+            embedding_models = [
+                m for m in models if "embedding" in m.lower() and is_supported_embedding_model("openai", m)
+            ]
 
             return (
                 chat_models if chat_models else DEFAULT_CHAT_MODELS["openai"],
@@ -103,7 +107,8 @@ async def _fetch_gemini_models(api_key: str) -> tuple[list[str], list[str]]:
 
                 # Check if it's an embedding model
                 if "embedContent" in supported_actions and "embedding" in name.lower():
-                    embedding_models.append(name)
+                    if is_supported_embedding_model("gemini", name):
+                        embedding_models.append(name)
 
             return (
                 chat_models if chat_models else DEFAULT_CHAT_MODELS["gemini"],

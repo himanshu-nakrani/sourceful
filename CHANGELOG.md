@@ -4,6 +4,14 @@ All notable changes to **Sourceful** will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Embeddings are standardized on 1536 dimensions.** OpenAI `text-embedding-3-*` are requested with `dimensions=1536`, `text-embedding-ada-002` is native 1536, and Gemini `gemini-embedding-001` uses `output_dimensionality=1536` with L2 normalization. Models that cannot produce 1536 dims (e.g. `text-embedding-004`) are rejected with `UNSUPPORTED_EMBEDDING_MODEL`.
+- **Schema v16 (Postgres):** `document_chunks.embedding` becomes `vector(1536)` and the HNSW cosine index is actually built (it previously failed with `column does not have dimensions`, so dense retrieval was a sequential scan). Non-1536 vectors are archived to `document_chunk_embeddings_legacy`, cleared, and their documents flagged `reembed_required`; re-embed with `python -m backend.scripts.reembed`. See `docs/production.md`.
+- Pooled Postgres connections enable `hnsw.iterative_scan = strict_order` so filtered HNSW searches return the full `top_k`.
+
 ## [0.1.0] - 2026-06-01
 
 First public release of **Sourceful** — a self-hostable, production-oriented RAG platform for grounded, cited document Q&A. Bring your own OpenAI or Google Gemini key; Sourceful handles ingestion, retrieval, and streaming answers with citations.

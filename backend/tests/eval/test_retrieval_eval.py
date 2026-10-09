@@ -45,6 +45,8 @@ REPORT_RAGAS_PATH = REPORT_DIR / "last_run_ragas.json"
 HEADERS = {"X-Client-Session": "eval-session"}
 PROVIDER_HEADERS = {**HEADERS, "X-Provider-Api-Key": "eval-provider-key"}
 
+from backend.services.embedding_spec import EMBEDDING_DIMENSIONS  # noqa: E402
+
 EMBED_DIM = 64
 
 
@@ -56,7 +58,10 @@ def _token_vector(text: str) -> list[float]:
         bucket = int(hashlib.sha1(token.encode("utf-8")).hexdigest(), 16) % EMBED_DIM
         vec[bucket] += 1.0
     norm = sum(v * v for v in vec) ** 0.5 or 1.0
-    return [v / norm for v in vec]
+    # Zero-pad the 64 hash buckets to the stored dimensionality. Padding does
+    # not change cosine similarity, so recall stays comparable with the
+    # committed baselines in docs/eval/.
+    return [v / norm for v in vec] + [0.0] * (EMBEDDING_DIMENSIONS - EMBED_DIM)
 
 
 def _login(client):

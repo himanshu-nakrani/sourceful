@@ -50,6 +50,22 @@ def sql_format(query: str) -> str:
 _sql = sql_format
 
 
+async def _configure_pg_connection(conn) -> None:
+    """Per-connection session settings for pooled Postgres connections.
+
+    With a filtered ``ORDER BY embedding <=> q LIMIT k`` the HNSW scan only
+    sees ``hnsw.ef_search`` (default 40) candidates before the WHERE clause is
+    applied, so moderately selective document filters could silently return
+    fewer than ``k`` chunks. pgvector >= 0.8 iterative scans keep scanning until
+    enough rows pass the filter; ``strict_order`` keeps exact distance order.
+    Older pgvector rejects the setting, which we tolerate (previous behavior).
+    """
+    try:
+        await conn.execute("SET hnsw.iterative_scan = strict_order")
+    except Exception as exc:  # noqa: BLE001 - pgvector < 0.8 / extension absent
+        logger.debug("hnsw_iterative_scan_unavailable err=%s", exc)
+
+
 async def init_db() -> None:
     """
     Initialize the module's database connection(s) and apply schema migrations.
@@ -76,6 +92,7 @@ async def init_db() -> None:
                         "prepare_threshold": None,  # Compatibility with transaction poolers
                     },
                     open=False,
+                    configure=_configure_pg_connection,
                 )
                 await _pg_pool.open()
                 await _pg_pool.wait()
@@ -100,6 +117,7 @@ async def init_db() -> None:
                         await _apply_postgres_v9_migration(cur)
                         await _apply_postgres_v11_migration(cur)
                         await _apply_postgres_v12_migration(cur)
+                        await _apply_postgres_v16_migration(cur)
                 logger.info("Postgres initialized.")
                 return
             except Exception:
@@ -138,6 +156,7 @@ async def init_db() -> None:
             await _apply_sqlite_v9_migration(_sqlite)
             await _apply_sqlite_v11_migration(_sqlite)
             await _apply_sqlite_v12_migration(_sqlite)
+            await _apply_sqlite_v16_migration(_sqlite)
             await _sqlite.commit()
             logger.info("SQLite initialized.")
         except Exception:
@@ -415,7 +434,7 @@ async def _apply_sqlite_v4_migration(conn: aiosqlite.Connection) -> None:
 
 
 async def _apply_postgres_v5_migration(cur) -> None:
-    """v5: hybrid search FTS column + GIN + HNSW vector index."""
+    """v5: hybrid search FTS column + GIN index (vector index moved to v16)."""
     await cur.execute(
         """
         ALTER TABLE document_chunks
@@ -429,32 +448,9 @@ async def _apply_postgres_v5_migration(cur) -> None:
         ON document_chunks USING GIN (content_tsv)
         """
     )
-    # HNSW index for dense retrieval. Use vector_cosine_ops since retrieval
-    # uses cosine distance (<=>). IF NOT EXISTS so repeat migrations are safe.
-    from backend.settings import settings as _settings
-    m = max(2, int(_settings.pgvector_hnsw_m))
-    ef = max(4, int(_settings.pgvector_hnsw_ef_construction))
-    try:
-        await cur.execute(
-            f"""
-            CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_hnsw
-            ON document_chunks USING hnsw (embedding vector_cosine_ops)
-            WITH (m = {m}, ef_construction = {ef})
-            """
-        )
-    except Exception as exc:
-        # Older pgvector without HNSW support — fall back to IVFFlat.
-        logger.warning("hnsw_index_failed err=%s falling_back_to_ivfflat", exc)
-        try:
-            await cur.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_ivfflat
-                ON document_chunks USING ivfflat (embedding vector_cosine_ops)
-                WITH (lists = 100)
-                """
-            )
-        except Exception:
-            logger.exception("ivfflat_index_also_failed")
+    # The dense-vector index used to be created here, but pgvector cannot build
+    # HNSW/IVFFlat on an undimensioned `vector` column, so it always failed.
+    # It now lives in v16, after the column is pinned to vector(1536).
     await cur.execute(
         """
         INSERT INTO schema_migrations (version)
@@ -1319,6 +1315,159 @@ async def execute_script(statements: list[str]) -> None:
         for statement in statements:
             await _sqlite.execute(statement)
         await _sqlite.commit()
+
+
+REEMBED_REQUIRED_MESSAGE = (
+    "Embeddings were created at a different dimensionality and must be regenerated "
+    "at 1536 dims. Reprocess the document or run `python -m backend.scripts.reembed`."
+)
+
+
+async def _postgres_embedding_typmod(cur) -> int:
+    """Declared dimension of document_chunks.embedding (-1 when undimensioned)."""
+    await cur.execute(
+        """
+        SELECT a.atttypmod AS typmod
+        FROM pg_attribute a
+        WHERE a.attrelid = 'document_chunks'::regclass
+          AND a.attname = 'embedding'
+          AND NOT a.attisdropped
+        """
+    )
+    row = await cur.fetchone()
+    return int(row["typmod"]) if row else -1
+
+
+async def _apply_postgres_v16_migration(cur) -> None:
+    """v16: pin embeddings to vector(1536) and build the HNSW cosine index.
+
+    Idempotent and non-destructive:
+    * Rows that are not 1536-dim (e.g. legacy 3072-dim Gemini vectors) are first
+      copied verbatim into ``document_chunk_embeddings_legacy``, then their
+      ``embedding`` is set to NULL and the owning document is flagged with
+      ``reembed_required = TRUE``. Chunk text is kept, so a reprocess job
+      re-embeds without re-uploading.
+    * The column type change and index build only happen when needed; re-runs
+      are no-ops.
+    The data steps run in one transaction so a failure leaves nothing half-done.
+    """
+    from backend.services.embedding_spec import EMBEDDING_DIMENSIONS as dims
+    from backend.settings import settings as _settings
+
+    async with cur.connection.transaction():
+        await cur.execute(
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS reembed_required BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        await cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS document_chunk_embeddings_legacy (
+                chunk_id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                owner_id TEXT,
+                dims INTEGER NOT NULL,
+                embedding VECTOR NOT NULL,
+                archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        if await _postgres_embedding_typmod(cur) != dims:
+            await cur.execute(
+                """
+                INSERT INTO document_chunk_embeddings_legacy (chunk_id, document_id, owner_id, dims, embedding)
+                SELECT id, document_id, owner_id, vector_dims(embedding), embedding
+                FROM document_chunks
+                WHERE embedding IS NOT NULL AND vector_dims(embedding) <> %s
+                ON CONFLICT (chunk_id) DO NOTHING
+                """,
+                (dims,),
+            )
+            archived = cur.rowcount
+            await cur.execute(
+                """
+                UPDATE documents
+                SET reembed_required = TRUE, last_error = %s
+                WHERE id IN (
+                    SELECT DISTINCT document_id FROM document_chunks
+                    WHERE embedding IS NOT NULL AND vector_dims(embedding) <> %s
+                )
+                """,
+                (REEMBED_REQUIRED_MESSAGE, dims),
+            )
+            flagged = cur.rowcount
+            await cur.execute(
+                "UPDATE document_chunks SET embedding = NULL "
+                "WHERE embedding IS NOT NULL AND vector_dims(embedding) <> %s",
+                (dims,),
+            )
+            await cur.execute(
+                f"ALTER TABLE document_chunks ALTER COLUMN embedding TYPE vector({dims}) "
+                f"USING embedding::vector({dims})"
+            )
+            if flagged:
+                logger.warning(
+                    "embedding_dims_migration archived_chunks=%s documents_flagged_for_reembed=%s "
+                    "(run `python -m backend.scripts.reembed`)",
+                    archived,
+                    flagged,
+                )
+            else:
+                logger.info("embedding_dims_migration column pinned to vector(%s); no legacy rows", dims)
+
+    # Index build is outside the data transaction so an index failure on an
+    # old pgvector cannot roll back the (already safe) column change.
+    m = max(2, int(_settings.pgvector_hnsw_m))
+    ef = max(4, int(_settings.pgvector_hnsw_ef_construction))
+    try:
+        await cur.execute(
+            f"""
+            CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_hnsw
+            ON document_chunks USING hnsw (embedding vector_cosine_ops)
+            WITH (m = {m}, ef_construction = {ef})
+            """
+        )
+    except Exception as exc:
+        # pgvector < 0.5 has no HNSW; fall back to IVFFlat (same operator class).
+        logger.warning("hnsw_index_failed err=%s falling_back_to_ivfflat", exc)
+        await cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_ivfflat
+            ON document_chunks USING ivfflat (embedding vector_cosine_ops)
+            WITH (lists = 100)
+            """
+        )
+    await cur.execute("INSERT INTO schema_migrations (version) VALUES (16) ON CONFLICT (version) DO NOTHING")
+
+
+async def _apply_sqlite_v16_migration(conn: aiosqlite.Connection) -> None:
+    """v16 (SQLite): add documents.reembed_required and flag non-1536-dim docs.
+
+    SQLite stores embeddings as JSON text and keeps them untouched; retrieval
+    skips rows whose length differs from the query vector.
+    """
+    from backend.services.embedding_spec import EMBEDDING_DIMENSIONS as dims
+
+    cursor = await conn.execute("SELECT name FROM pragma_table_info('documents')")
+    columns = {row[0] for row in await cursor.fetchall()}
+    await cursor.close()
+    if "reembed_required" not in columns:
+        await conn.execute("ALTER TABLE documents ADD COLUMN reembed_required INTEGER NOT NULL DEFAULT 0")
+    cursor = await conn.execute("SELECT 1 FROM schema_migrations WHERE version = 16")
+    already = await cursor.fetchone()
+    await cursor.close()
+    if not already:
+        # Element count of a JSON float array = commas + 1 (cheap, no JSON parse).
+        await conn.execute(
+            """
+            UPDATE documents
+            SET reembed_required = TRUE, last_error = ?
+            WHERE id IN (
+                SELECT DISTINCT document_id FROM document_chunks
+                WHERE length(embedding_json) - length(replace(embedding_json, ',', '')) + 1 <> ?
+            )
+            """,
+            (REEMBED_REQUIRED_MESSAGE, dims),
+        )
+    await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (16)")
 
 
 async def current_schema_version() -> int:

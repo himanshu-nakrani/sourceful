@@ -10,6 +10,7 @@ import uuid
 from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.metrics import metrics
 from backend.services.chunking import chunk_sections, chunk_sections_parent_child, chunk_sections_semantic
+from backend.services.embedding_spec import embedding_request_options
 from backend.services.embeddings import embed_texts
 from backend.services.extract import extract_document
 from backend.services.provider_auth import require_provider_api_key
@@ -150,6 +151,10 @@ async def enqueue_reprocess_job(
     payload_mime_type = document["mime_type"]
     payload_bytes = latest_job.get("payload_bytes") if latest_job else None
     model_name = embedding_model or document["embedding_model"]
+    if document["provider"] in {"openai", "gemini"}:
+        # Raises UnsupportedEmbeddingModelError (a ValueError) for models that
+        # cannot emit 1536-dim vectors, e.g. legacy text-embedding-004 docs.
+        embedding_request_options(document["provider"], model_name)
     provider_key = require_provider_api_key(document["provider"], provider_api_key)
 
     job_id = str(uuid.uuid4())
@@ -339,7 +344,8 @@ async def process_job(job: dict) -> None:
                 chunk_count = ?,
                 page_count = ?,
                 processed_at = {TIMESTAMP_SQL},
-                last_error = NULL
+                last_error = NULL,
+                reembed_required = FALSE
             WHERE id = ? AND owner_id = ?
             """,
             (job["embedding_model"], len(chunks), page_count, document_id, owner_id),
@@ -476,7 +482,8 @@ async def _process_vertex_search_job(
             chunk_count = 0,
             page_count = ?,
             processed_at = {TIMESTAMP_SQL},
-            last_error = NULL
+            last_error = NULL,
+            reembed_required = FALSE
         WHERE id = ? AND owner_id = ?
         """,
         (job["embedding_model"], page_count, document_id, owner_id),

@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 from backend.database import fetch_one
+from backend.services.embedding_spec import EMBEDDING_DIMENSIONS
 from backend.services.jobs import claim_next_job, process_job
 
 HEADERS = {"X-Client-Session": "test-session-1234"}
@@ -101,7 +102,7 @@ def test_full_ingest_chat_and_conversation_flow(client):
     ingest_payload = response.json()
 
     with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
-        mock_embed_texts.return_value = [[0.1] * 3]
+        mock_embed_texts.return_value = [[0.1] * EMBEDDING_DIMENSIONS]
         job = asyncio.run(claim_next_job())
         assert job is not None
         asyncio.run(process_job(job))
@@ -120,7 +121,7 @@ def test_full_ingest_chat_and_conversation_flow(client):
     with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
         "backend.routers.chat.create_openai_text", new_callable=AsyncMock
     ) as mock_openai_stream:
-        mock_embed_query.return_value = [0.1] * 3
+        mock_embed_query.return_value = [0.1] * EMBEDDING_DIMENSIONS
 
         mock_openai_stream.return_value = "Paris is the capital."
 
@@ -197,7 +198,7 @@ def test_chat_stream_sse_emits_token_and_done_events(client):
     ingest_payload = response.json()
 
     with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
-        mock_embed_texts.return_value = [[0.1] * 3]
+        mock_embed_texts.return_value = [[0.1] * EMBEDDING_DIMENSIONS]
         job = asyncio.run(claim_next_job())
         assert job is not None
         asyncio.run(process_job(job))
@@ -210,7 +211,7 @@ def test_chat_stream_sse_emits_token_and_done_events(client):
     with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
         "backend.routers.chat.stream_openai_text", fake_openai_stream
     ):
-        mock_embed_query.return_value = [0.1] * 3
+        mock_embed_query.return_value = [0.1] * EMBEDDING_DIMENSIONS
 
         stream_resp = client.post(
             "/api/chat/stream",
@@ -285,7 +286,7 @@ def test_rerun_message_creates_branched_conversation(client):
     ingest_payload = response.json()
 
     with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
-        mock_embed_texts.return_value = [[0.1] * 3]
+        mock_embed_texts.return_value = [[0.1] * EMBEDDING_DIMENSIONS]
         job = asyncio.run(claim_next_job())
         assert job is not None
         asyncio.run(process_job(job))
@@ -293,7 +294,7 @@ def test_rerun_message_creates_branched_conversation(client):
     with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
         "backend.routers.chat.create_openai_text", new_callable=AsyncMock
     ) as mock_openai_text:
-        mock_embed_query.return_value = [0.1] * 3
+        mock_embed_query.return_value = [0.1] * EMBEDDING_DIMENSIONS
         mock_openai_text.side_effect = ["Paris is the capital.", "Paris remains the capital."]
 
         first_chat = client.post(
@@ -397,7 +398,7 @@ def test_chat_stream_gemini_backpressure_no_token_loss(client):
     ingest_payload = response.json()
 
     with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
-        mock_embed_texts.return_value = [[0.1] * 3]
+        mock_embed_texts.return_value = [[0.1] * EMBEDDING_DIMENSIONS]
         job = asyncio.run(claim_next_job())
         assert job is not None
         asyncio.run(process_job(job))
@@ -411,7 +412,7 @@ def test_chat_stream_gemini_backpressure_no_token_loss(client):
     with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
         "backend.routers.chat.stream_gemini_text", fake_gemini_stream
     ):
-        mock_embed_query.return_value = [0.1] * 3
+        mock_embed_query.return_value = [0.1] * EMBEDDING_DIMENSIONS
 
         stream_resp = client.post(
             "/api/chat/stream",
@@ -446,7 +447,7 @@ def test_chat_stream_gemini_propagates_producer_error(client):
     ingest_payload = response.json()
 
     with patch("backend.services.jobs.embed_texts", new_callable=AsyncMock) as mock_embed_texts:
-        mock_embed_texts.return_value = [[0.1] * 3]
+        mock_embed_texts.return_value = [[0.1] * EMBEDDING_DIMENSIONS]
         job = asyncio.run(claim_next_job())
         assert job is not None
         asyncio.run(process_job(job))
@@ -458,7 +459,7 @@ def test_chat_stream_gemini_propagates_producer_error(client):
     with patch("backend.routers.chat.embed_query", new_callable=AsyncMock) as mock_embed_query, patch(
         "backend.routers.chat.stream_gemini_text", failing_gemini_stream
     ):
-        mock_embed_query.return_value = [0.1] * 3
+        mock_embed_query.return_value = [0.1] * EMBEDDING_DIMENSIONS
 
         stream_resp = client.post(
             "/api/chat/stream",

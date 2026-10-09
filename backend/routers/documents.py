@@ -20,6 +20,7 @@ from backend.models import (
 )
 from backend.routers.deps import RequestContext, get_request_context
 from backend.services.provider_auth import MissingProviderApiKeyError
+from backend.services.embedding_spec import UnsupportedEmbeddingModelError
 from backend.services.jobs import enqueue_reprocess_job
 from backend.services.vectorstore import preview_chunks
 
@@ -195,6 +196,14 @@ async def reprocess_document(
             status_code=401,
             error="Missing X-Provider-Api-Key header.",
             code="MISSING_PROVIDER_API_KEY",
+            details={"document_id": document_id},
+        )
+    except UnsupportedEmbeddingModelError as exc:
+        return api_error_response(
+            request=request,
+            status_code=400,
+            error=f"{exc} Pass ?embedding_model=<supported model> to re-embed with a different model.",
+            code="UNSUPPORTED_EMBEDDING_MODEL",
             details={"document_id": document_id},
         )
     except ValueError as exc:

@@ -70,6 +70,16 @@ jobs:
           cd backend
           python -m pytest tests/eval/test_retrieval_eval.py::test_retrieval_recall_v2 -m eval -v --tb=short 2>&1 | tee eval_output_pg.txt
 
+      - name: Embedding dims migration + HNSW (Postgres)
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/test"
+          ANON_SESSION_SECRET: "nightly-eval-ci-only-not-a-real-secret"
+        run: |
+          cd backend
+          # Rewinds the schema to pre-v16 (undimensioned vector), seeds a 3072-dim
+          # legacy row, re-runs migrations and checks vector(1536) + HNSW plan.
+          python -m pytest tests/test_embedding_dims_postgres.py -v --tb=short
+
       - name: Upload eval reports
         uses: actions/upload-artifact@v4
         if: always()

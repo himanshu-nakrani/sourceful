@@ -679,7 +679,7 @@ erDiagram
 |-------|---------|
 | `documents` | File metadata, status, checksum dedupe, optional `workspace_id` |
 | `document_jobs` | Durable queue; stores `provider_api_key` until job completes |
-| `document_chunks` | Text + embeddings (pgvector column or `embedding_json` in SQLite) |
+| `document_chunks` | Text + 1536-dim embeddings (`vector(1536)` + HNSW in Postgres, `embedding_json` in SQLite) |
 | `conversations` / `messages` | Chat history; `sources_json` on assistant messages |
 | `users` / `auth_sessions` | Credentials + session tokens (hashed) |
 | `workspaces` / `workspace_members` | Multi-tenant knowledge bases + RBAC |
@@ -913,7 +913,7 @@ CI runs on push/PR to `main` ([`.github/workflows/ci.yml`](./.github/workflows/c
 
 - **orjson** for citation parsing and SSE payloads in hot paths (`backend/routers/chat.py`)
 - **Pre-compiled Pydantic TypeAdapter** for `list[Citation]` deserialization
-- **HNSW pgvector index** (tunable via `PGVECTOR_HNSW_*`) with IVFFlat fallback on older pgvector
+- **HNSW pgvector index** on `vector(1536)` (tunable via `PGVECTOR_HNSW_*`) with IVFFlat fallback on older pgvector. All embeddings are standardized on 1536 dims; see [docs/production.md](docs/production.md#one-time-1536-dim-embeddings--hnsw-index-schema-v16) for supported models and the `python -m backend.scripts.reembed` upgrade procedure
 - **Checksum deduplication** skips re-embedding identical files per owner
 - **Over-fetch + rerank** only when `RETRIEVAL_RERANKER_ENABLED=true`
 - **Standalone Next.js output** — minimal production Node image (`Dockerfile`)

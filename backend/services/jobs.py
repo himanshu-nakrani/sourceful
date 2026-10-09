@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -53,6 +54,8 @@ async def enqueue_ingest_job(
     Returns:
         A tuple of (document_dict, job_dict_or_None, was_deduplicated_bool).
     """
+    if provider in {"openai", "gemini"}:
+        embedding_request_options(provider, embedding_model)  # raises UnsupportedEmbeddingModelError
     existing = await fetch_one(
         """
         SELECT * FROM documents
@@ -552,18 +555,35 @@ async def _build_chunks(job: dict):
             chunks = chunk_sections(extracted.sections, settings.chunk_size, settings.chunk_overlap)
     else:
         existing_rows = await fetch_all(
-            "SELECT chunk_index, content, page_number FROM document_chunks WHERE document_id = ? AND owner_id = ? ORDER BY chunk_index ASC",
+            "SELECT chunk_index, content, page_number, parent_content, chunk_type, metadata_json "
+            "FROM document_chunks WHERE document_id = ? AND owner_id = ? ORDER BY chunk_index ASC",
             (job["document_id"], job["owner_id"]),
         )
         if not existing_rows:
             raise ValueError("No source payload or existing chunks are available for reprocessing.")
         from backend.services.chunking import ChunkPayload
 
+        def _stored_metadata(raw: str | None) -> dict | None:
+            if not raw:
+                return None
+            try:
+                value = json.loads(raw)
+            except (TypeError, ValueError):
+                return None
+            return value if isinstance(value, dict) else None
+
+        # Re-embedding reuses the stored chunks verbatim: keep parent windows,
+        # chunk types and metadata, because replace_chunks rewrites the rows.
+        # (Contextual-retrieval prefixes are not persisted, so those chunks are
+        # re-embedded from their raw text.)
         chunks = [
             ChunkPayload(
                 chunk_index=int(row["chunk_index"]),
                 content=row["content"],
                 page_number=row.get("page_number"),
+                parent_content=row.get("parent_content"),
+                chunk_type=row.get("chunk_type") or "text",
+                metadata=_stored_metadata(row.get("metadata_json")),
             )
             for row in existing_rows
         ]

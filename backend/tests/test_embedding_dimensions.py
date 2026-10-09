@@ -226,3 +226,174 @@ def test_ingest_rejects_unsupported_embedding_model(client):
     body = response.json()
     assert body["code"] == "UNSUPPORTED_EMBEDDING_MODEL"
     assert "1536" in body["error"]
+
+
+# --- Review follow-ups (PR #144) ------------------------------------------------
+
+def _session_headers() -> dict[str, str]:
+    return {"X-Client-Session": f"dims-{uuid.uuid4().hex[:10]}", "X-Provider-Api-Key": "k"}
+
+
+async def _seed_workspace_doc(workspace_id: str, owner: str, *, flagged: bool, created_at: str) -> str:
+    from backend.database import execute
+
+    doc_id = str(uuid.uuid4())
+    await execute(
+        "INSERT INTO documents (id, owner_id, filename, provider, embedding_model, mime_type, checksum, "
+        "status, workspace_id, reembed_required, created_at) "
+        "VALUES (?, ?, 'f.txt', 'openai', 'text-embedding-3-small', 'text/plain', ?, 'ready', ?, ?, ?)",
+        (doc_id, owner, f"chk-{doc_id}", workspace_id, flagged, created_at),
+    )
+    return doc_id
+
+
+def test_workspace_chat_skips_flagged_documents(client):
+    """A flagged (older) document must not become the primary chat document."""
+    from backend.models import ChatRequest
+    from backend.routers import chat as chat_router
+    from backend.routers.deps import anon_owner_id
+
+    headers = _session_headers()
+    workspace_id = client.get("/api/workspaces", headers=headers).json()["workspaces"][0]["id"]
+    owner = anon_owner_id(headers["X-Client-Session"])
+
+    async def scenario():
+        flagged = await _seed_workspace_doc(workspace_id, owner, flagged=True, created_at="2020-01-01 00:00:00")
+        usable = await _seed_workspace_doc(workspace_id, owner, flagged=False, created_at="2021-01-01 00:00:00")
+        body = ChatRequest(provider="openai", model="gpt-4o-mini", question="q", workspace_id=workspace_id)
+        context = SimpleNamespace(owner_id=owner)
+        with patch(
+            "backend.services.workspace_rbac.check_workspace_role", new=AsyncMock(return_value=(None, None))
+        ):
+            ok, err = await chat_router._apply_workspace_to_chat_body(request=None, context=context, body=body)
+        return ok, err, body, flagged, usable
+
+    ok, err, body, flagged, usable = asyncio.run(scenario())
+    assert ok and err is None
+    assert body.document_id == usable
+    assert flagged not in (body.document_ids or [])
+
+
+def test_workspace_chat_all_flagged_returns_reembed_error(client):
+    from backend.routers.deps import anon_owner_id
+
+    headers = _session_headers()
+    workspace_id = client.get("/api/workspaces", headers=headers).json()["workspaces"][0]["id"]
+    owner = anon_owner_id(headers["X-Client-Session"])
+    asyncio.run(_seed_workspace_doc(workspace_id, owner, flagged=True, created_at="2020-01-01 00:00:00"))
+    res = client.post(
+        "/api/chat",
+        json={"provider": "openai", "model": "gpt-4o-mini", "question": "hi", "workspace_id": workspace_id},
+        headers=headers,
+    )
+    assert res.status_code == 409, res.text
+    assert res.json()["code"] == "DOCUMENT_REEMBED_REQUIRED"
+
+
+def test_url_intake_rejects_unsupported_model_before_fetching():
+    from backend.services import url_ingest
+
+    with patch.object(url_ingest, "_fetch_url", new=AsyncMock()) as fetch:
+        with pytest.raises(url_ingest.UrlIngestError) as excinfo:
+            asyncio.run(
+                url_ingest.enqueue_url_source(
+                    workspace_id="w",
+                    owner_scope="o",
+                    url="https://example.com/page",
+                    title=None,
+                    provider="gemini",
+                    embedding_model="models/text-embedding-004",
+                    provider_api_key="k",
+                )
+            )
+    assert excinfo.value.code == "UNSUPPORTED_EMBEDDING_MODEL"
+    fetch.assert_not_called()
+
+
+def test_url_refetch_with_legacy_model_leaves_document_untouched():
+    from backend.database import close_db, execute, fetch_one, init_db
+    from backend.services import url_ingest
+
+    async def scenario():
+        await init_db()
+        doc_id = str(uuid.uuid4())
+        try:
+            await execute(
+                "INSERT INTO documents (id, owner_id, filename, provider, embedding_model, mime_type, checksum, status) "
+                "VALUES (?, 'o', 'p.txt', 'gemini', 'models/text-embedding-004', 'text/plain', ?, 'ready')",
+                (doc_id, doc_id),
+            )
+            source = {"id": "s", "source_type": "url", "source_url": "https://example.com", "document_id": doc_id}
+            with patch.object(url_ingest, "_fetch_url", new=AsyncMock()) as fetch, patch(
+                "backend.services.sync_runs.start_run", new=AsyncMock()
+            ) as start_run:
+                with pytest.raises(url_ingest.UrlIngestError) as excinfo:
+                    await url_ingest.refetch_url_source(
+                        workspace_id="w", owner_scope="o", source=source, provider_api_key="k"
+                    )
+            assert excinfo.value.code == "UNSUPPORTED_EMBEDDING_MODEL"
+            fetch.assert_not_called()
+            start_run.assert_not_called()  # no dangling sync run
+            assert (await fetch_one("SELECT status FROM documents WHERE id = ?", (doc_id,)))["status"] == "ready"
+        finally:
+            await execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+            await close_db()
+
+    asyncio.run(scenario())
+
+
+def test_reembed_reprocess_preserves_stored_chunk_fields():
+    """Re-embedding a completed document must keep parent windows, types and metadata."""
+    from backend.database import close_db, execute, fetch_all, init_db
+    from backend.services.jobs import claim_next_job, enqueue_reprocess_job, process_job
+
+    async def scenario():
+        await init_db()
+        owner, doc_id = f"o-{uuid.uuid4().hex[:8]}", str(uuid.uuid4())
+        try:
+            await execute(
+                "INSERT INTO documents (id, owner_id, filename, provider, embedding_model, mime_type, checksum, "
+                "status, reembed_required) VALUES (?, ?, 'r.pdf', 'openai', 'text-embedding-3-small', "
+                "'application/pdf', ?, 'ready', TRUE)",
+                (doc_id, owner, doc_id),
+            )
+            rows = [
+                (0, "child zero", 1, "parent window zero", "text", None),
+                (1, "| a | b |", 2, None, "table", json.dumps({"headers": ["a", "b"]})),
+            ]
+            # Legacy state: SQLite keeps 3072-dim JSON; Postgres v16 has nulled the vector.
+            vector_col = "embedding" if settings.using_postgres else "embedding_json"
+            legacy_vector = None if settings.using_postgres else json.dumps([0.5] * 3072)
+            for idx, content, page, parent, ctype, meta in rows:
+                await execute(
+                    "INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, page_number, "
+                    f"parent_content, chunk_type, metadata_json, {vector_col}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (f"{doc_id}:{idx}", doc_id, owner, idx, content, page, parent, ctype, meta, legacy_vector),
+                )
+            await enqueue_reprocess_job(owner_id=owner, document_id=doc_id, provider_api_key="k")
+            with patch(
+                "backend.services.jobs.embed_texts",
+                new=AsyncMock(side_effect=lambda _p, _k, _m, texts: [[0.1] * EMBEDDING_DIMENSIONS for _ in texts]),
+            ):
+                while (job := await claim_next_job()) is not None:
+                    await process_job(job)
+            dims_expr = "vector_dims(embedding)" if settings.using_postgres else "json_array_length(embedding_json)"
+            stored = await fetch_all(
+                "SELECT chunk_index, content, page_number, parent_content, chunk_type, metadata_json, "
+                f"{dims_expr} AS dims FROM document_chunks WHERE document_id = ? ORDER BY chunk_index",
+                (doc_id,),
+            )
+            doc = await fetch_all("SELECT status, reembed_required FROM documents WHERE id = ?", (doc_id,))
+            return stored, doc[0]
+        finally:
+            await execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+            await close_db()
+
+    stored, doc = asyncio.run(scenario())
+    assert [(r["chunk_index"], r["content"], r["page_number"], r["parent_content"], r["chunk_type"]) for r in stored] == [
+        (0, "child zero", 1, "parent window zero", "text"),
+        (1, "| a | b |", 2, None, "table"),
+    ]
+    assert json.loads(stored[1]["metadata_json"]) == {"headers": ["a", "b"]}
+    assert all(r["dims"] == EMBEDDING_DIMENSIONS for r in stored)
+    assert doc["status"] == "ready" and not doc["reembed_required"]

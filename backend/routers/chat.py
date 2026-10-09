@@ -148,6 +148,21 @@ async def _apply_workspace_to_chat_body(
             code="WORKSPACE_NO_READY_SOURCES",
             details={"workspace_id": body.workspace_id},
         )
+    # Documents awaiting re-embedding (schema v16) have no usable vectors; never
+    # make one the primary document or let it trigger a model mismatch.
+    usable = [d for d in docs if not d.get("reembed_required")]
+    if not usable:
+        return False, api_error_response(
+            request=request,
+            status_code=409,
+            error=(
+                f"Every ready source in this workspace must be re-embedded at {EMBEDDING_DIMENSIONS} "
+                "dimensions. Reprocess them or run `python -m backend.scripts.reembed`."
+            ),
+            code="DOCUMENT_REEMBED_REQUIRED",
+            details={"workspace_id": body.workspace_id, "document_ids": [d["id"] for d in docs]},
+        )
+    docs = usable
     body.document_id = docs[0]["id"]
     extras = [d["id"] for d in docs[1:]]
     existing = list(body.document_ids or [])

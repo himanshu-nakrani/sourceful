@@ -87,7 +87,10 @@ OPENAI_API_KEY=... GEMINI_API_KEY=... python -m backend.scripts.reembed --apply
 ```
 
 This enqueues one normal reprocess job per document; it re-embeds the stored
-chunk text (no re-upload) and clears the flag on success. Documents whose model
+chunks (no re-upload, no re-chunking, so chunk ids and existing citations stay
+valid; parent windows, chunk types and metadata are preserved) and clears the
+flag on success. Contextual-retrieval prefixes are not persisted, so documents
+ingested with `RETRIEVAL_CONTEXTUAL_ENABLED` are re-embedded from raw chunk text. Documents whose model
 cannot do 1536 move to `DEFAULT_EMBEDDING_MODEL_OPENAI` / `_GEMINI` unless you
 pass `--openai-model` / `--gemini-model`. Users can also re-embed one document
 via `POST /api/documents/{id}/reprocess` (optionally `?embedding_model=...`).

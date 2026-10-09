@@ -155,3 +155,70 @@ def test_v16_migrates_legacy_rows_and_builds_hnsw():
             await close_db()
 
     asyncio.run(explain_and_cleanup())
+
+
+def test_filtered_hnsw_returns_top_k_with_iterative_scan():
+    """A document filter must not starve an HNSW scan of results.
+
+    400 distractor chunks sit right next to the query; the 10 target chunks are
+    far away. With HNSW forced and ``hnsw.iterative_scan = off`` the first
+    ``ef_search`` (40) candidates are all distractors, so the filter leaves too
+    few rows. Pooled connections use ``strict_order`` and must return ``top_k``.
+    """
+    import backend.database as database
+    from backend.database import close_db, execute, init_db
+
+    tag = uuid.uuid4().hex[:8]
+    target, distractor = f"target-{tag}", f"distractor-{tag}"
+    near = "(SELECT array_agg(CASE WHEN g = 1 THEN 1.0 ELSE random() * 0.01 END)::real[]::vector(1536) FROM generate_series(1, 1536) g WHERE i >= 0)"
+    far = "(SELECT array_agg(CASE WHEN g = 2 THEN 1.0 WHEN g = 1 THEN 0.05 ELSE random() * 0.01 END)::real[]::vector(1536) FROM generate_series(1, 1536) g WHERE i >= 0)"
+    query = "[" + ",".join(["1"] + ["0"] * 1535) + "]"
+    sql = (
+        "SELECT c.id FROM document_chunks c JOIN documents d ON c.document_id = d.id "
+        "WHERE (c.owner_id = %s OR d.workspace_id = %s) AND c.document_id IN (%s) AND c.embedding IS NOT NULL "
+        "ORDER BY c.embedding <=> %s::vector LIMIT 8"
+    )
+
+    async def scenario() -> dict[str, int]:
+        await init_db()
+        try:
+            for doc_id in (target, distractor):
+                await execute(
+                    "INSERT INTO documents (id, owner_id, filename, provider, embedding_model, mime_type, checksum, status) "
+                    "VALUES (?, 'o', 'f.txt', 'openai', 'text-embedding-3-small', 'text/plain', ?, 'ready')",
+                    (doc_id, doc_id),
+                )
+            await execute(
+                f"INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, embedding) "
+                f"SELECT ? || ':' || i, ?, 'o', i, 'd', {near} FROM generate_series(0, 399) i",
+                (distractor, distractor),
+            )
+            await execute(
+                f"INSERT INTO document_chunks (id, document_id, owner_id, chunk_index, content, embedding) "
+                f"SELECT ? || ':' || i, ?, 'o', i, 't', {far} FROM generate_series(0, 9) i",
+                (target, target),
+            )
+            counts: dict[str, int] = {}
+            async with database._pg_pool.connection() as conn:
+                # DDL is transactional: hide the document_id btree inside a
+                # rolled-back transaction so the planner must use HNSW for the
+                # app's exact query shape (as it does on large corpora).
+                async with conn.transaction(force_rollback=True), conn.cursor() as cur:
+                    await cur.execute("DROP INDEX idx_document_chunks_document")
+                    await cur.execute("SET LOCAL enable_seqscan = off")
+                    await cur.execute("SET LOCAL enable_bitmapscan = off")
+                    for mode in ("off", "strict_order"):
+                        await cur.execute(f"SET LOCAL hnsw.iterative_scan = {mode}")
+                        await cur.execute("EXPLAIN (COSTS OFF) " + sql, ("o", "", target, query))
+                        plan = "\n".join(r["QUERY PLAN"] for r in await cur.fetchall())
+                        assert "idx_document_chunks_embedding_hnsw" in plan, plan
+                        await cur.execute(sql, ("o", "", target, query))
+                        counts[mode] = len(await cur.fetchall())
+            return counts
+        finally:
+            await execute("DELETE FROM documents WHERE id IN (?, ?)", (target, distractor))
+            await close_db()
+
+    counts = asyncio.run(scenario())
+    assert counts["off"] < 8, counts  # proves the scenario reproduces the starvation
+    assert counts["strict_order"] == 8, counts

@@ -42,10 +42,25 @@ def _old_chunk_params(doc_id: str, idx: int, owner: str):
     return sql, (f"{doc_id}:{idx}", doc_id, owner, idx, f"{OLD_TEXT} (part {idx})", vector)
 
 
+async def _process_jobs_for(doc_id: str) -> None:
+    """Run only this document's queued jobs (the shared DB may hold others)."""
+    from backend.database import fetch_all
+    from backend.services.jobs import process_job
+
+    jobs = await fetch_all(
+        "SELECT * FROM document_jobs WHERE document_id = ? AND status = 'queued' ORDER BY created_at",
+        (doc_id,),
+    )
+    with patch(
+        "backend.services.jobs.embed_texts",
+        new=AsyncMock(side_effect=lambda _p, _k, _m, texts: [[0.2] * EMBEDDING_DIMENSIONS for _ in texts]),
+    ):
+        for job in jobs:
+            await process_job(dict(job))
+
+
 def test_refetch_indexes_new_content_not_old_chunks():
     from backend.database import close_db, execute, fetch_all, fetch_one, init_db
-    from backend.services.jobs import claim_next_job, process_job
-
     new_html = (
         b"<html><body><h1>Launch update</h1>"
         b"<p>The new page says the launch moved to September.</p></body></html>"
@@ -79,12 +94,7 @@ def test_refetch_indexes_new_content_not_old_chunks():
                 await url_ingest.refetch_url_source(
                     workspace_id="w", owner_scope=owner, source=source, provider_api_key="k"
                 )
-            with patch(
-                "backend.services.jobs.embed_texts",
-                new=AsyncMock(side_effect=lambda _p, _k, _m, texts: [[0.2] * EMBEDDING_DIMENSIONS for _ in texts]),
-            ):
-                while (job := await claim_next_job()) is not None:
-                    await process_job(job)
+            await _process_jobs_for(doc_id)
             chunks = await fetch_all(
                 "SELECT id, chunk_index, content FROM document_chunks WHERE document_id = ? ORDER BY chunk_index",
                 (doc_id,),
@@ -118,3 +128,40 @@ def test_refetch_indexes_new_content_not_old_chunks():
 )
 def test_refetch_filename_matches_fetched_type(filename, mime, expected):
     assert url_ingest._filename_for_mime(filename, mime) == expected
+
+
+def test_format_switch_keeps_filename_with_payload():
+    """Text URL now serving a PDF: the stored filename and any reprocess that
+    copies the queued refresh payload must use the .pdf name."""
+    from backend.database import close_db, execute, fetch_one, init_db
+    from backend.services.jobs import enqueue_reprocess_job
+
+    async def scenario():
+        await init_db()
+        owner, doc_id = f"o-{uuid.uuid4().hex[:8]}", str(uuid.uuid4())
+        try:
+            await execute(
+                "INSERT INTO documents (id, owner_id, filename, provider, embedding_model, mime_type, checksum, status) "
+                "VALUES (?, ?, 'Spec.txt', 'openai', 'text-embedding-3-small', 'text/plain', 'old', 'ready')",
+                (doc_id, owner),
+            )
+            source = {"id": "src", "source_type": "url", "source_url": "https://example.com/spec", "document_id": doc_id}
+            with patch.object(
+                url_ingest, "_fetch_url", new=AsyncMock(return_value=(b"%PDF-1.4 fake", "application/pdf", "https://example.com/spec"))
+            ), patch("backend.services.sync_runs.start_run", new=AsyncMock(return_value="run")), patch(
+                "backend.services.sync_runs.finish_run", new=AsyncMock()
+            ), patch("backend.services.workspace_service.get_source", new=AsyncMock(return_value={})):
+                await url_ingest.refetch_url_source(workspace_id="w", owner_scope=owner, source=source, provider_api_key="k")
+            doc = await fetch_one("SELECT filename, mime_type FROM documents WHERE id = ?", (doc_id,))
+            # A manual reprocess while the refresh is still queued copies its payload.
+            _, job = await enqueue_reprocess_job(owner_id=owner, document_id=doc_id, provider_api_key="k")
+            return doc, job
+        finally:
+            await execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+            await close_db()
+
+    doc, job = asyncio.run(scenario())
+    assert doc["filename"] == "Spec.pdf" and doc["mime_type"] == "application/pdf"
+    assert job["payload_filename"] == "Spec.pdf"
+    assert job["payload_mime_type"] == "application/pdf"
+    assert bytes(job["payload_bytes"]).startswith(b"%PDF")

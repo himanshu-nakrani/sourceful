@@ -139,6 +139,9 @@ async def enqueue_reprocess_job(
             the worker re-extracts and re-chunks it instead of re-embedding the
             stored chunks.
         payload_mime_type: MIME type of ``payload_bytes``.
+        payload_filename: Filename (with extension) of ``payload_bytes``;
+            only used together with ``payload_bytes`` because extraction
+            dispatches on the extension of the bytes it is paired with.
 
     Returns:
         A tuple of (document_dict, job_dict).
@@ -157,12 +160,19 @@ async def enqueue_reprocess_job(
         "SELECT * FROM document_jobs WHERE document_id = ? AND owner_id = ? ORDER BY created_at DESC LIMIT 1",
         (document_id, owner_id),
     )
-    payload_filename = (payload_filename if payload_bytes is not None else None) or document["filename"]
     if payload_bytes is not None:
+        payload_filename = payload_filename or document["filename"]
         payload_mime_type = payload_mime_type or document["mime_type"]
     else:
-        payload_mime_type = document["mime_type"]
         payload_bytes = latest_job.get("payload_bytes") if latest_job else None
+        # Keep a copied payload with the filename/type stored alongside it
+        # (e.g. a queued URL refresh that switched from HTML to PDF).
+        if payload_bytes is not None:
+            payload_filename = latest_job.get("payload_filename") or document["filename"]
+            payload_mime_type = latest_job.get("payload_mime_type") or document["mime_type"]
+        else:
+            payload_filename = document["filename"]
+            payload_mime_type = document["mime_type"]
     model_name = embedding_model or document["embedding_model"]
     if document["provider"] in {"openai", "gemini"}:
         # Raises UnsupportedEmbeddingModelError (a ValueError) for models that

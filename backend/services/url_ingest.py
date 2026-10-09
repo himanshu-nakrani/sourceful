@@ -264,9 +264,12 @@ async def refetch_url_source(
     from backend.database import execute as _execute
     from backend.services.jobs import enqueue_reprocess_job
 
+    # Derive from the pre-update row and persist it, so later reprocesses and
+    # downloads see a filename whose extension matches the stored bytes.
+    refreshed_filename = _filename_for_mime(document["filename"], mime_type)
     await _execute(
-        "UPDATE documents SET file_bytes = ?, mime_type = ?, checksum = ?, status = 'queued', last_error = NULL WHERE id = ? AND owner_id = ?",
-        (payload, mime_type, checksum, document_id, owner_scope),
+        "UPDATE documents SET file_bytes = ?, mime_type = ?, checksum = ?, filename = ?, status = 'queued', last_error = NULL WHERE id = ? AND owner_id = ?",
+        (payload, mime_type, checksum, refreshed_filename, document_id, owner_scope),
     )
     document, job = await enqueue_reprocess_job(
         owner_id=owner_scope,
@@ -278,7 +281,7 @@ async def refetch_url_source(
         # the old stored chunks, so refreshed content was never indexed.
         payload_bytes=payload,
         payload_mime_type=mime_type,
-        payload_filename=_filename_for_mime(document["filename"], mime_type),
+        payload_filename=refreshed_filename,
     )
     # Mirror status onto the source and stamp last_fetched_at.
     await _execute(

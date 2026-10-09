@@ -99,7 +99,7 @@ async def get_default_workspace(owner_scope: str) -> dict[str, Any] | None:
                owner_scope, created_at, updated_at
         FROM workspaces
         WHERE owner_scope = ?
-          AND (is_default = 1 OR is_default = TRUE)
+          AND is_default = TRUE
         ORDER BY created_at ASC
         LIMIT 1
         """,

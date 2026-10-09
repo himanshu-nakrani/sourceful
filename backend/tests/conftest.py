@@ -45,8 +45,18 @@ def db_setup():
     cleanup_test_data()
     import asyncio
 
-    asyncio.run(init_db())
-    asyncio.run(record_heartbeat("worker"))
+    async def _prepare() -> None:
+        # Initialize schema + heartbeat, then close again inside the same event
+        # loop. On Postgres, init_db() creates an AsyncConnectionPool whose
+        # background tasks are bound to the running loop; leaving it open after
+        # asyncio.run() returns made TestClient reuse a pool from a dead loop
+        # and fail with CancelledError on lifespan shutdown. Callers re-init
+        # lazily (fetch_*/execute call init_db()).
+        await init_db()
+        await record_heartbeat("worker")
+        await close_db()
+
+    asyncio.run(_prepare())
     yield
     asyncio.run(close_db())
     cleanup_test_data()

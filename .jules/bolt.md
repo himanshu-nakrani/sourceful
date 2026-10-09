@@ -73,6 +73,10 @@
 **Learning:** When writing paginated database queries (e.g., using `LIMIT`) that include correlated subqueries (like fetching aggregate counts or latest statuses), executing the subquery directly in the main `SELECT` clause forces the database to evaluate it for rows that will ultimately be discarded by the `LIMIT`. Additionally, replacing these subqueries with `LEFT JOIN` and `GROUP BY` forces a full table join before the limit is applied, destroying index utilization and causing severe performance regressions.
 **Action:** When a paginated query requires correlated subqueries, wrap the base query in a Common Table Expression (CTE) to apply the `ORDER BY` and `LIMIT` first. Then, run the correlated subqueries in the outer query against the limited CTE result. This ensures the subqueries are only executed for the small subset of rows actually returned, drastically reducing unnecessary database work.
 
+## 2026-05-23 - Remove Redundant Database Checks
+**Learning:** Checking for entity existence sequentially via `fetch_one` before fetching child resources via `fetch_all` adds unnecessary database roundtrips. When the child resource fetch is wrapped inside an existing function that already performs this exact metadata validation and error handling (such as `export_conversation` calling `get_conversation`), the initial parent query is totally redundant.
+**Action:** When a route delegates logic to a helper function or another route handler that performs state/metadata validation, remove any pre-validation checks in the caller to save database queries.
+
 ## 2026-05-24 - Parallelize independent DB queries
 **Learning:** Sequential independent `fetch_one` and `fetch_all` queries accumulate latency because they wait on database round-trips one by one.
 **Action:** Bundle independent `fetch_one` and `fetch_all` queries using `asyncio.gather(*tasks)` to parallelize database reads, reducing overall request latency.

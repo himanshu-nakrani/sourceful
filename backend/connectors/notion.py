@@ -15,6 +15,21 @@ from backend.connectors.base import (
 from backend.connectors.registry import register_connector
 
 
+def _page_title(properties: dict) -> str:
+    """Return a page's title text.
+
+    Every Notion page has exactly one property of ``type == "title"``, but only
+    workspace-level pages name it "title"; database rows use the database's
+    column name (e.g. "Name"), so look it up by type.
+    """
+    candidates = [p for p in properties.values() if isinstance(p, dict) and p.get("type") == "title"]
+    if not candidates and isinstance(properties.get("title"), dict):
+        candidates = [properties["title"]]
+    for prop in candidates:
+        return "".join(t.get("plain_text", "") for t in prop.get("title") or [])
+    return ""
+
+
 @register_connector("notion")
 class NotionConnector(BaseConnector):
     """Notion connector using official API. Exports pages as markdown."""
@@ -91,13 +106,7 @@ class NotionConnector(BaseConnector):
 
                 for page in data.get("results", []):
                     page_id = page["id"]
-                    props = page.get("properties", {})
-                    title_prop = props.get("title", {})
-                    title = ""
-                    if "title" in title_prop:
-                        title = "".join(
-                            t.get("plain_text", "") for t in title_prop["title"]
-                        )
+                    title = _page_title(page.get("properties") or {})
                     if not title:
                         title = f"Untitled ({page_id[:8]})"
 

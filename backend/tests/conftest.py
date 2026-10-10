@@ -40,6 +40,31 @@ def cleanup_test_data() -> None:
             pass
 
 
+def _assert_disposable_postgres() -> None:
+    """Refuse to wipe a database that is not explicitly a test database.
+
+    Settings may pick DATABASE_URL up from a local .env, so a plain test run
+    could otherwise TRUNCATE a real application database. Allowed when the
+    database name contains "test" or ALLOW_TEST_DB_TRUNCATE=1 is set.
+    """
+    from psycopg.conninfo import conninfo_to_dict
+
+    dbname = conninfo_to_dict(settings.database_url).get("dbname") or ""
+    if "test" in dbname.lower() or os.environ.get("ALLOW_TEST_DB_TRUNCATE") == "1":
+        return
+    pytest.exit(
+        f"Refusing to run the test suite against Postgres database {dbname!r}: every test "
+        "truncates all tables. Use a database whose name contains 'test', or set "
+        "ALLOW_TEST_DB_TRUNCATE=1 if this database is disposable.",
+        returncode=2,
+    )
+
+
+def pytest_sessionstart(session):
+    if settings.using_postgres:
+        _assert_disposable_postgres()
+
+
 async def _truncate_postgres_tables() -> None:
     """Postgres isolation: empty every app table (schema stays migrated).
 

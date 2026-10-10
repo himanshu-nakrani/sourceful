@@ -1302,7 +1302,9 @@ class _PgTxCursor:
         self._cur = cur
 
     async def execute(self, query: str, params: Any = None, **kwargs: Any) -> Any:
-        await self._cur.execute(_sql(query), params, **kwargs)
+        # Always pass a params sequence: sql_format() escapes bare % to %%, and
+        # psycopg only un-escapes %% when parameters are given.
+        await self._cur.execute(_sql(query), () if params is None else params, **kwargs)
         return self
 
     async def executemany(self, query: str, params_seq: Any, **kwargs: Any) -> Any:

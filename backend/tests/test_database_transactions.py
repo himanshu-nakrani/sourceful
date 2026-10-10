@@ -58,3 +58,15 @@ async def test_sqlite_transaction_is_isolated_from_plain_execute():
 
     rows = await fetch_all("SELECT id FROM transaction_regression ORDER BY id")
     assert [row["id"] for row in rows] == ["survives"]
+
+
+@pytest.mark.asyncio
+async def test_transaction_cursor_percent_and_literal_question_mark():
+    """Literal % and '?' survive the transaction cursor, with or without params."""
+    async with transaction() as cur:
+        # Portable on both backends: execute() returns something with fetchone().
+        row = await (await cur.execute("SELECT '100%' AS pct, 5 % 2 AS modulo, 'why?' AS q")).fetchone()
+        row2 = await (await cur.execute("SELECT ? AS v, 'a%' AS lit", ("x",))).fetchone()
+    row, row2 = dict(row), dict(row2)
+    assert (row["pct"], row["modulo"], row["q"]) == ("100%", 1, "why?")
+    assert (row2["v"], row2["lit"]) == ("x", "a%")

@@ -2,6 +2,10 @@ fastapi>=0.115.0,<1
 uvicorn[standard]>=0.32.0,<1
 python-multipart>=0.0.12,<1
 openai>=1.57.0,<2
+# Imported directly at runtime (connectors, url_ingest, reranker, utils/network,
+# routers/auth + models). Was only available transitively via openai 1.x; openai 3.x
+# stops installing it. See docs/plans/google-genai-migration.md step 1.
+httpx>=0.27.0,<1
 google-generativeai>=0.8.0,<1
 google-cloud-discoveryengine>=0.13.0,<1
 pydantic-settings>=2.6.0,<3

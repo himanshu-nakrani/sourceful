@@ -110,7 +110,10 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const [streaming, setStreaming] = useState(false);
   const [currentSources, setCurrentSources] = useState<Citation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [errorRetry, setErrorRetry] = useState<null | (() => void)>(null);
+  // A retry is bound to the document/conversation it failed in: the banner
+  // only runs it while `stillValid()` holds (see onRetry below), because the
+  // retry calls the latest callbacks (current settings) for that context.
+  const [errorRetry, setErrorRetry] = useState<null | { run: () => void; stillValid: () => boolean }>(null);
   const [rerunningMessageId, setRerunningMessageId] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -158,6 +161,12 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   useLayoutEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+  const activeDocumentIdRef = useRef<string | null>(activeDocumentId ?? null);
+  useLayoutEffect(() => {
+    activeDocumentIdRef.current = activeDocumentId ?? null;
+  }, [activeDocumentId]);
+  // Switching documents drops a pending Retry from the previous document.
+  useOnChange(activeDocumentId ?? null, () => setErrorRetry(null));
 
   // Reload the workspace's source list whenever the active workspace changes.
   // The per-source filter is opt-in: by default we keep ``selectedSourceIds``
@@ -309,6 +318,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   // definitions, so a retry after fixing e.g. the API key uses current settings.
   const sendPromptRef = useRef<((prompt: string, options?: { replaceFailedTurn?: boolean }) => Promise<void>) | null>(null);
   const handleRerunRef = useRef<((message: Message) => Promise<void>) | null>(null);
+  const handleRetryDocumentRef = useRef<(() => Promise<void>) | null>(null);
 
   const sendPrompt = useCallback(
     async (prompt: string, options?: { replaceFailedTurn?: boolean }) => {
@@ -451,8 +461,14 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         const aborted = err instanceof DOMException && err.name === "AbortError";
         if (!aborted && gen === streamGenRef.current) {
           setError(err instanceof Error ? err.message : "Request failed.");
-          setErrorRetry(() => () => {
-            void sendPromptRef.current?.(prompt, { replaceFailedTurn: true });
+          const failedDocumentId = activeDocumentId;
+          const failedConversationId = startConversationId;
+          setErrorRetry({
+            run: () => void sendPromptRef.current?.(prompt, { replaceFailedTurn: true }),
+            // A failed new chat has no conversation yet; otherwise it must match.
+            stillValid: () =>
+              activeDocumentIdRef.current === failedDocumentId &&
+              (failedConversationId === null || activeConversationIdRef.current === failedConversationId),
           });
         }
       } finally {
@@ -545,8 +561,13 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         await selectConversation(response.conversation_id);
       } catch (rerunError) {
         setError(rerunError instanceof Error ? rerunError.message : "Unable to rerun message.");
-        setErrorRetry(() => () => {
-          void handleRerunRef.current?.(message);
+        const failedDocumentId = activeDocumentId;
+        const failedConversationId = activeConversationId;
+        setErrorRetry({
+          run: () => void handleRerunRef.current?.(message),
+          stillValid: () =>
+            activeDocumentIdRef.current === failedDocumentId &&
+            activeConversationIdRef.current === failedConversationId,
         });
       } finally {
         streamingRef.current = false;
@@ -577,8 +598,10 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       await reprocessDocument(auth, activeDocumentId, settings.embeddingModel);
     } catch (retryError) {
       setError(retryError instanceof Error ? retryError.message : "Unable to retry indexing.");
-      setErrorRetry(() => () => {
-        void handleRetryDocument();
+      const failedDocumentId = activeDocumentId;
+      setErrorRetry({
+        run: () => void handleRetryDocumentRef.current?.(),
+        stillValid: () => activeDocumentIdRef.current === failedDocumentId,
       });
     }
   }, [activeDocumentId, auth, settings.providerApiKey, settings.embeddingModel]);
@@ -586,7 +609,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   useLayoutEffect(() => {
     sendPromptRef.current = sendPrompt;
     handleRerunRef.current = handleRerun;
-  }, [sendPrompt, handleRerun]);
+    handleRetryDocumentRef.current = handleRetryDocument;
+  }, [sendPrompt, handleRerun, handleRetryDocument]);
 
   const stopStreaming = useCallback(() => {
     streamGenRef.current += 1;
@@ -1123,7 +1147,17 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
           >
             <ErrorBanner
               message={error}
-              onRetry={errorRetry ?? undefined}
+              onRetry={
+                errorRetry
+                  ? () => {
+                      if (!errorRetry.stillValid()) {
+                        setErrorRetry(null);
+                        return;
+                      }
+                      errorRetry.run();
+                    }
+                  : undefined
+              }
               onDismiss={() => {
                 setError(null);
                 setErrorRetry(null);

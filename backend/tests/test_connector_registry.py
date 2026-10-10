@@ -12,7 +12,11 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import os
+import subprocess
+import sys
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -119,3 +123,45 @@ def test_load_for_workspace_from_database():
 
 def test_global_registry_is_singleton():
     assert registry.get_global_registry() is registry.get_global_registry()
+
+
+def test_builtins_register_without_importing_their_modules():
+    """In a fresh interpreter, lookups alone must populate the registry."""
+    code = (
+        "from backend.connectors.registry import available_connector_types, get_connector\n"
+        "from backend.connectors.base import ConnectorConfig\n"
+        "print(available_connector_types())\n"
+        "print(type(get_connector(ConnectorConfig(id='c', source_type='s3'))).__name__)\n"
+    )
+    root = Path(__file__).resolve().parents[2]
+    env = {**os.environ, "DEFAULT_SUPERUSER_PASSWORD": os.environ.get("DEFAULT_SUPERUSER_PASSWORD", "x")}
+    out = subprocess.run([sys.executable, "-c", code], cwd=root, env=env, capture_output=True, text=True, check=True)
+    lines = out.stdout.strip().splitlines()
+    assert lines[-2:] == ["['confluence', 'google_drive', 'notion', 's3']", "S3Connector"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("include_paths", json.dumps("/docs/*")),  # bare string, not a list
+        ("include_paths", "not json"),
+        ("exclude_paths", json.dumps({"a": 1})),
+        ("exclude_paths", json.dumps(["ok", 3])),
+        ("options", json.dumps(["not", "object"])),
+    ],
+)
+def test_row_to_config_rejects_malformed_filters(field, value):
+    from backend.connectors.store import row_to_config
+
+    row = {"id": "c", "source_type": "s3", "workspace_id": "w", "enabled": True, field: value}
+    with pytest.raises(ValueError, match=field):
+        row_to_config(row)
+
+
+def test_row_to_config_accepts_valid_and_empty_filters():
+    from backend.connectors.store import row_to_config
+
+    cfg = row_to_config(
+        {"id": "c", "source_type": "s3", "enabled": 1, "include_paths": '["a/*"]', "exclude_paths": "[]", "options": "{}"}
+    )
+    assert cfg.include_paths == ["a/*"] and cfg.exclude_paths is None and cfg.options is None

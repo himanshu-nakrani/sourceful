@@ -25,6 +25,30 @@ def _json_value(raw: Any, default: Any) -> Any:
         return default
 
 
+def _strict_json(raw: Any, field: str) -> Any:
+    """Decode a JSON column, raising on malformed JSON (no silent defaults)."""
+    if raw is None or isinstance(raw, (list, dict)):
+        return raw
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} is not valid JSON") from exc
+
+
+def _path_filter(raw: Any, field: str) -> list[str] | None:
+    """A filter must be a JSON list of strings; anything else rejects the row.
+
+    A bare string would otherwise be iterated per character by
+    ``BaseConnector.should_include`` (``"*"`` then matches every path).
+    """
+    value = _strict_json(raw, field)
+    if value is None:
+        return None
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{field} must be a JSON list of strings")
+    return value or None
+
+
 def _timestamp(raw: Any) -> datetime | None:
     if raw is None or isinstance(raw, datetime):
         return raw
@@ -53,7 +77,9 @@ def _credentials(row: dict) -> dict[str, Any] | None:
 
 def row_to_config(row: dict) -> ConnectorConfig:
     """Map a ``connectors`` row to a :class:`ConnectorConfig`."""
-    options = _json_value(row.get("options"), {})
+    options = _strict_json(row.get("options"), "options")
+    if options is not None and not isinstance(options, dict):
+        raise ValueError("options must be a JSON object")
     return ConnectorConfig(
         id=row["id"],
         source_type=row["source_type"],
@@ -64,9 +90,9 @@ def row_to_config(row: dict) -> ConnectorConfig:
         last_sync_at=_timestamp(row.get("last_sync_at")),
         last_sync_status=row.get("last_sync_status"),
         last_sync_error=row.get("last_sync_error"),
-        include_paths=_json_value(row.get("include_paths"), []) or None,
-        exclude_paths=_json_value(row.get("exclude_paths"), []) or None,
-        options=options if isinstance(options, dict) and options else None,
+        include_paths=_path_filter(row.get("include_paths"), "include_paths"),
+        exclude_paths=_path_filter(row.get("exclude_paths"), "exclude_paths"),
+        options=options or None,
     )
 
 

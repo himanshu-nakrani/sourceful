@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from backend.database import fetch_all, fetch_one
 from backend.models import (
@@ -257,7 +257,7 @@ async def workspace_analytics(
 async def workspace_activity(
     workspace_id: str,
     request: Request,
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100),
     context: RequestContext = Depends(get_request_context),
 ):
     """Phase 3: Recent activity feed for a workspace (messages, artifacts, source updates)."""

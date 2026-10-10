@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useOnChange } from "../lib/use-on-change";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -150,8 +151,13 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     "What should I pay attention to first?",
   ];
 
+  // Live conversation id for async stream callbacks and retry thunks. Synced in
+  // a layout effect (commit time, before any passive effect, event handler or
+  // async continuation can read it) instead of being written during render.
   const activeConversationIdRef = useRef<string | null>(activeConversationId);
-  activeConversationIdRef.current = activeConversationId;
+  useLayoutEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   // Reload the workspace's source list whenever the active workspace changes.
   // The per-source filter is opt-in: by default we keep ``selectedSourceIds``
@@ -161,14 +167,19 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   // [FIX 5.5] Deps now include the memoized `auth` object (so a key change
   // re-fetches instead of reading stale credentials) and failures surface in
   // the source filter instead of silently resolving to an empty list.
-  useEffect(() => {
-    let cancelled = false;
-    if (!activeWorkspaceId) {
+  // Leaving a workspace clears its sources and filter. Adjusted during render
+  // (no effect round-trip); fetching for a workspace stays in the effect.
+  useOnChange(activeWorkspaceId ?? null, (workspaceId) => {
+    if (!workspaceId) {
       setWorkspaceSources([]);
       setSelectedSourceIds(null);
       setWorkspaceSourcesError(null);
-      return;
     }
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeWorkspaceId) return;
     void listWorkspaceSources(auth, activeWorkspaceId)
       .then((sources) => {
         if (cancelled) return;
@@ -292,6 +303,12 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     element.style.height = "auto";
     element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
   }, [question]);
+
+  // Retry thunks call the latest sendPrompt/handleRerun through these refs
+  // (synced at commit) instead of referencing the callbacks inside their own
+  // definitions, so a retry after fixing e.g. the API key uses current settings.
+  const sendPromptRef = useRef<((prompt: string, options?: { replaceFailedTurn?: boolean }) => Promise<void>) | null>(null);
+  const handleRerunRef = useRef<((message: Message) => Promise<void>) | null>(null);
 
   const sendPrompt = useCallback(
     async (prompt: string, options?: { replaceFailedTurn?: boolean }) => {
@@ -435,7 +452,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         if (!aborted && gen === streamGenRef.current) {
           setError(err instanceof Error ? err.message : "Request failed.");
           setErrorRetry(() => () => {
-            void sendPrompt(prompt, { replaceFailedTurn: true });
+            void sendPromptRef.current?.(prompt, { replaceFailedTurn: true });
           });
         }
       } finally {
@@ -529,7 +546,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       } catch (rerunError) {
         setError(rerunError instanceof Error ? rerunError.message : "Unable to rerun message.");
         setErrorRetry(() => () => {
-          void handleRerun(message);
+          void handleRerunRef.current?.(message);
         });
       } finally {
         streamingRef.current = false;
@@ -566,6 +583,11 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     }
   }, [activeDocumentId, auth, settings.providerApiKey, settings.embeddingModel]);
 
+  useLayoutEffect(() => {
+    sendPromptRef.current = sendPrompt;
+    handleRerunRef.current = handleRerun;
+  }, [sendPrompt, handleRerun]);
+
   const stopStreaming = useCallback(() => {
     streamGenRef.current += 1;
     abortRef.current?.abort();
@@ -576,7 +598,14 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
 
   useEffect(() => {
     if (!streaming) return;
+    // stopStreaming() aborts the in-flight fetch (an external system) and must
+    // clear `streaming` in the same pass so the composer re-enables. The
+    // triggers (conversation switched, messages cleared) originate in the
+    // shared server-state provider, not in an event handler here, so this
+    // cannot move into a handler, and deriving `streaming` would leave the
+    // abort undone.
     if (messages.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- aborts an external request; see above
       stopStreaming();
       return;
     }

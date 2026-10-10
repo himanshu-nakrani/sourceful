@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useOnChange } from "../lib/use-on-change";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, RotateCcw } from "lucide-react";
 import { fetchModels, logout, type ModelsResponse, type Provider } from "../lib/api";
@@ -90,21 +91,34 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   // Fetch models when the panel opens or provider/key/session changes. On
   // failure the silent-default fallback stays, but a subtle inline notice
   // with a retry link surfaces it.
-  useEffect(() => {
-    if (!open || !auth.providerApiKey.trim()) {
+  // One key per load request (same inputs the effect used to depend on).
+  // Spinner/reset state is adjusted during render when it changes; the effect
+  // below only performs the request.
+  const canLoadModels = open && Boolean(auth.providerApiKey.trim());
+  const modelsRequest = useMemo(
+    () => ({ enabled: canLoadModels, provider: settings.provider, auth, attempt: modelsRetryCount }),
+    [canLoadModels, settings.provider, auth, modelsRetryCount],
+  );
+  useOnChange(modelsRequest, (request) => {
+    if (!request.enabled) {
       setModels(null);
       setModelsError(false);
       // Also drop the spinner: if a fetch was in flight, its `finally` is
       // skipped by the `cancelled` guard, so without this the "Loading models…"
       // hint stuck on forever.
       setModelsLoading(false);
-      return;
+    } else {
+      setModelsLoading(true);
     }
+  });
+
+  useEffect(() => {
+    if (!modelsRequest.enabled) return;
+    const { auth: requestAuth, provider } = modelsRequest;
     let cancelled = false;
     const loadModels = async () => {
-      setModelsLoading(true);
       try {
-        const response = await fetchModels(auth, settings.provider);
+        const response = await fetchModels(requestAuth, provider);
         if (cancelled) return;
         setModels(response);
         setModelsError(false);
@@ -121,7 +135,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [open, settings.provider, auth, modelsRetryCount]);
+  }, [modelsRequest]);
 
   const providers: { value: Provider; label: string; icon: string }[] = [
     { value: "openai", label: "OpenAI", icon: "O" },

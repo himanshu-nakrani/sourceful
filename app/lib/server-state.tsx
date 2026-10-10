@@ -86,8 +86,12 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
 
   const selectConversationSeqRef = React.useRef(0);
   const documentDataSeqRef = React.useRef(0);
+  // Live active document id for async callbacks; synced at commit (before
+  // any passive effect or async continuation reads it), not during render.
   const activeDocumentIdRef = React.useRef(state.activeDocumentId);
-  activeDocumentIdRef.current = state.activeDocumentId;
+  React.useLayoutEffect(() => {
+    activeDocumentIdRef.current = state.activeDocumentId;
+  }, [state.activeDocumentId]);
 
   const refreshDocuments = useCallback(async () => {
     if (!auth.clientSessionId) return;
@@ -259,8 +263,13 @@ export function ServerStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (state.authLoading) return;
+    // Identity changed: invalidate in-flight requests (seq refs) and wipe the
+    // previous identity's data together. Moving the wipe to render would run it
+    // before the seq bump, so a late response from the old identity could
+    // repopulate the new one's view; the bump must stay in an effect.
     selectConversationSeqRef.current += 1;
     documentDataSeqRef.current += 1;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- must be atomic with the seq bump above
     setConversations([]);
     setMessages([]);
     setChunkPreview([]);

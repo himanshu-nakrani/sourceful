@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -28,8 +28,8 @@ let modalSeq = 0;
  * @param onEscape - Invoked when Escape is pressed and this layer is topmost
  */
 export function useEscapeLayer(active: boolean, onEscape: () => void): void {
-  const onEscapeRef = useRef(onEscape);
-  onEscapeRef.current = onEscape;
+  // Always invokes the latest onEscape without re-registering the layer.
+  const handleEscape = useEffectEvent(onEscape);
 
   useEffect(() => {
     if (!active) return;
@@ -41,7 +41,7 @@ export function useEscapeLayer(active: boolean, onEscape: () => void): void {
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      onEscapeRef.current();
+      handleEscape();
     };
     document.addEventListener("keydown", onKeyDown, true);
     return () => {
@@ -98,8 +98,8 @@ export function Modal({
   const requestClose = useCallback(() => {
     if (!busy) onClose();
   }, [busy, onClose]);
-  const requestCloseRef = useRef(requestClose);
-  requestCloseRef.current = requestClose;
+  // Latest close request (reads current busy/onClose) for the key listener.
+  const requestCloseFromKey = useEffectEvent(() => requestClose());
 
   // Focus management: save the activator, focus the dialog on open,
   // restore focus on close.
@@ -141,7 +141,7 @@ export function Modal({
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        requestCloseRef.current();
+        requestCloseFromKey();
         return;
       }
       if (event.key === "Tab") {

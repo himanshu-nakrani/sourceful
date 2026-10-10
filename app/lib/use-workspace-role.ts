@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useOnChange } from "./use-on-change";
 import { getMyWorkspaceRole, type ClientAuthContext, type WorkspaceRoleLiteral } from "./api";
 
 // Simple in-memory cache to avoid duplicate calls for the same workspace
@@ -16,42 +17,61 @@ export function clearRoleCache() {
   roleCache.clear();
 }
 
+function freshCachedRole(cacheKey: string): { role: WorkspaceRoleLiteral } | null {
+  const cached = roleCache.get(cacheKey);
+  return cached && Date.now() - cached.timestamp < CACHE_TTL ? cached : null;
+}
+
 export function useWorkspaceRole(auth: ClientAuthContext, workspaceId: string | null) {
   const [role, setRole] = useState<WorkspaceRoleLiteral>(null);
   const [loading, setLoading] = useState(false);
+  // Bumped by refresh() to re-check (cache-aware) with the same inputs.
+  const [reloadToken, setReloadToken] = useState(0);
+  const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 
-  const refresh = useCallback(async () => {
-    if (!workspaceId) {
+  // One key per lookup; replaced when workspace/auth (or the token) changes.
+  const request = useMemo(() => {
+    if (!workspaceId) return null;
+    return {
+      auth,
+      workspaceId,
+      cacheKey: `${auth.clientSessionId}-${auth.providerApiKey ?? ""}-${workspaceId}`,
+      reloadToken,
+    };
+  }, [auth, workspaceId, reloadToken]);
+
+  // Synchronous outcomes (no workspace, fresh cache hit, start loading) are
+  // applied during render; only the network lookup runs in the effect.
+  useOnChange(request, (next) => {
+    if (!next) {
       setRole(null);
       return;
     }
-    
-    // Check cache first
-    const cacheKey = `${auth.clientSessionId}-${auth.providerApiKey ?? ""}-${workspaceId}`;
-    const cached = roleCache.get(cacheKey);
-    const now = Date.now();
-    
-    if (cached && now - cached.timestamp < CACHE_TTL) {
+    const cached = freshCachedRole(next.cacheKey);
+    if (cached) {
       setRole(cached.role);
       return;
     }
-    
     setLoading(true);
-    try {
-      const r = await getMyWorkspaceRole(auth, workspaceId);
-      setRole(r);
-      // Cache the result
-      roleCache.set(cacheKey, { role: r, timestamp: now });
-    } catch {
-      setRole(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [auth, workspaceId]);
+  });
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!request || freshCachedRole(request.cacheKey)) return;
+    const { auth: requestAuth, workspaceId: requestWorkspaceId, cacheKey } = request;
+    const run = async () => {
+      const now = Date.now();
+      try {
+        const r = await getMyWorkspaceRole(requestAuth, requestWorkspaceId);
+        setRole(r);
+        roleCache.set(cacheKey, { role: r, timestamp: now });
+      } catch {
+        setRole(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void run();
+  }, [request]);
 
   const canEdit = role === "owner" || role === "admin" || role === "editor";
   const canManage = role === "owner" || role === "admin";

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useOnChange } from "../lib/use-on-change";
 import { Loader2, Plus, StickyNote, Trash2, X } from "lucide-react";
 import {
   createArtifact,
@@ -64,42 +65,54 @@ export default function WorkspaceNotesPanel({
   const filterType: ArtifactType | undefined =
     activeTab === "all" ? undefined : activeTab;
 
-  const refresh = useCallback(async () => {
-    if (!open) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const list = await listArtifacts(auth, workspaceId, filterType);
-      setItems(list);
-      // If the previously selected artifact disappeared (deleted or filtered
-      // out), drop the selection so the right pane shows the empty state.
-      if (selectedId && !list.find((a) => a.id === selectedId)) {
-        setSelectedId(null);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load artifacts.");
-    } finally {
-      setLoading(false);
-    }
-  }, [auth, workspaceId, filterType, open, selectedId]);
 
+  // One key per load request: set while the panel is open, and replaced when
+  // its inputs change (same triggers as before). The spinner/error reset is
+  // applied during render; the request runs in the effect and only sets state
+  // after it resolves.
+  const loadRequest = useMemo(
+    () => (open ? { auth, workspaceId, filterType } : null),
+    [open, auth, workspaceId, filterType],
+  );
+  useOnChange(loadRequest, (request) => {
+    if (request) {
+      setLoading(true);
+      setError(null);
+    }
+  });
   useEffect(() => {
-    if (open) void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, workspaceId, activeTab]);
+    if (!loadRequest) return;
+    const { auth, workspaceId, filterType } = loadRequest;
+    const run = async () => {
+      try {
+        const list = await listArtifacts(auth, workspaceId, filterType);
+        setItems(list);
+        // If the previously selected artifact disappeared (deleted or filtered
+        // out), drop the selection so the right pane shows the empty state.
+        setSelectedId((current) => (current && !list.some((a) => a.id === current) ? null : current));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load artifacts.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    void run();
+  }, [loadRequest]);
 
   // Hydrate the editor when the user picks an item.
   const selected = useMemo(
     () => items.find((a) => a.id === selectedId) ?? null,
     [items, selectedId]
   );
-  useEffect(() => {
-    if (selected) {
-      setDraftTitle(selected.title);
-      setDraftContent(selected.content);
+  // Adjusted during render when the selected artifact (object identity)
+  // changes, as the previous effect did, minus the extra stale render.
+  useOnChange(selected, (next) => {
+    if (next) {
+      setDraftTitle(next.title);
+      setDraftContent(next.content);
       setCreating(false);
     }
-  }, [selected]);
+  });
 
   const startCreate = () => {
     setSelectedId(null);

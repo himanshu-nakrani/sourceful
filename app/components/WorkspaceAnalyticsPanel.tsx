@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
+import { useOnChange } from "../lib/use-on-change";
 import {
   BarChart3,
   FileText,
@@ -76,27 +77,43 @@ export default function WorkspaceAnalyticsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!open) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [aData, actData] = await Promise.all([
-        getWorkspaceAnalytics(auth, workspaceId),
-        getWorkspaceActivity(auth, workspaceId, 20),
-      ]);
-      setAnalytics(aData);
-      setActivity(actData.activities);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load analytics.");
-    } finally {
-      setLoading(false);
-    }
-  }, [auth, workspaceId, open]);
+  // Bumped by refresh() (retry button) to force a reload with the same inputs.
+  const [reloadToken, setReloadToken] = useState(0);
+  const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 
+  // One key per load request: set while the panel is open, and replaced when
+  // its inputs change (same triggers as before). The spinner/error reset is
+  // applied during render; the request runs in the effect and only sets state
+  // after it resolves.
+  const loadRequest = useMemo(
+    () => (open ? { auth, workspaceId, reloadToken } : null),
+    [open, auth, workspaceId, reloadToken],
+  );
+  useOnChange(loadRequest, (request) => {
+    if (request) {
+      setLoading(true);
+      setError(null);
+    }
+  });
   useEffect(() => {
-    if (open) void refresh();
-  }, [open, refresh]);
+    if (!loadRequest) return;
+    const { auth, workspaceId } = loadRequest;
+    const run = async () => {
+      try {
+        const [aData, actData] = await Promise.all([
+          getWorkspaceAnalytics(auth, workspaceId),
+          getWorkspaceActivity(auth, workspaceId, 20),
+        ]);
+        setAnalytics(aData);
+        setActivity(actData.activities);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load analytics.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    void run();
+  }, [loadRequest]);
 
   return (
     <Modal

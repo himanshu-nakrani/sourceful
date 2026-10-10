@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useOnChange } from "../lib/use-on-change";
 import { AnimatePresence, motion } from "framer-motion";
 import { FileUp, Link as LinkIcon, X } from "lucide-react";
 import { getJob, importWorkspaceUrl, ingestDocument, type JobInfo } from "../lib/api";
@@ -77,16 +78,24 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
   useEffect(() => {
     return () => {
       pollSessionRef.current = 0;
-      clearAutoCloseTimer();
+      // Inline (not clearAutoCloseTimer) so the cleanup does not depend on a
+      // helper declared later in the component.
+      if (autoCloseTimerRef.current !== null) {
+        window.clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = null;
+      }
     };
   }, []);
 
-  useEffect(() => {
-    if (open && initialFile) {
-      setFile(initialFile);
+  // Preload a dropped file when the modal opens with one (or it changes while
+  // open). Adjusted during render rather than in an effect: same trigger,
+  // without a render that briefly shows the previous file.
+  useOnChange(open ? initialFile ?? null : null, (preload) => {
+    if (preload) {
+      setFile(preload);
       setMode("file");
     }
-  }, [open, initialFile]);
+  });
 
   // [Fix 5.4] Stable auth identity built from its primitive parts so consumers
   // don't see a new object on every render.

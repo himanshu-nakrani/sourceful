@@ -349,11 +349,11 @@ def test_concurrent_job_claim():
 
     async def run_concurrent():
         await execute(
-            "INSERT OR IGNORE INTO documents (id, owner_id, filename, provider, embedding_model, mime_type, checksum, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')",
+            "INSERT INTO documents (id, owner_id, filename, provider, embedding_model, mime_type, checksum, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued') ON CONFLICT DO NOTHING",
             (doc_id, owner_id, "test.txt", "openai", "emb-model", "text/plain", "checksum")
         )
         await execute(
-            "INSERT OR IGNORE INTO document_jobs (id, document_id, owner_id, provider, embedding_model, status, stage, payload_filename, payload_mime_type) VALUES (?, ?, ?, ?, ?, 'queued', 'queued', 'test.txt', 'text/plain')",
+            "INSERT INTO document_jobs (id, document_id, owner_id, provider, embedding_model, status, stage, payload_filename, payload_mime_type) VALUES (?, ?, ?, ?, ?, 'queued', 'queued', 'test.txt', 'text/plain') ON CONFLICT DO NOTHING",
             (job_id, doc_id, owner_id, "openai", "emb-model")
         )
         
@@ -374,7 +374,8 @@ def test_concurrent_job_claim():
 def test_ready_worker_heartbeat(client):
     from backend.database import execute
     # Put a stale heartbeat
-    asyncio.run(execute("INSERT OR REPLACE INTO service_heartbeats (service_name, updated_at) VALUES ('worker', '2000-01-01 00:00:00')"))
+    asyncio.run(execute("INSERT INTO service_heartbeats (service_name, updated_at) VALUES ('worker', '2000-01-01 00:00:00') "
+        "ON CONFLICT (service_name) DO UPDATE SET updated_at = excluded.updated_at"))
     response = client.get("/ready")
     assert response.status_code == 503
     assert response.json()["checks"]["worker_heartbeat"] == "stale"

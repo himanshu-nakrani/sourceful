@@ -12,6 +12,7 @@ from backend.database import execute
 from backend.services import artifact_retrieval
 from backend.services.llm import build_rag_prompt
 from backend.services.vectorstore import RetrievedChunk
+from backend.tests.dbcompat import VECTOR_COLUMN, vector_value
 
 
 HEADERS = {"X-Client-Session": "ph2-retrieval"}
@@ -28,7 +29,7 @@ async def test_retrieve_artifacts_returns_relevance_ranked_chunks():
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_id, owner_scope, visibility, archived, is_default)
-        VALUES (?, 'art-ws', ?, 'anon:t', 'anon:t', 'private', 0, 0)
+        VALUES (?, 'art-ws', ?, 'anon:t', 'anon:t', 'private', FALSE, FALSE)
         """,
         (workspace_id, f"art-ws-{workspace_id[:8]}"),
     )
@@ -65,7 +66,7 @@ async def test_retrieve_artifacts_score_floor_filters_weak_matches():
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_id, owner_scope, visibility, archived, is_default)
-        VALUES (?, 'weak-ws', ?, 'anon:t', 'anon:t', 'private', 0, 0)
+        VALUES (?, 'weak-ws', ?, 'anon:t', 'anon:t', 'private', FALSE, FALSE)
         """,
         (workspace_id, f"weak-ws-{workspace_id[:8]}"),
     )
@@ -93,7 +94,7 @@ async def test_retrieve_artifacts_dampens_score_below_typical_vector_hits():
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_id, owner_scope, visibility, archived, is_default)
-        VALUES (?, 'damp-ws', ?, 'anon:t', 'anon:t', 'private', 0, 0)
+        VALUES (?, 'damp-ws', ?, 'anon:t', 'anon:t', 'private', FALSE, FALSE)
         """,
         (workspace_id, f"damp-ws-{workspace_id[:8]}"),
     )
@@ -188,7 +189,6 @@ def test_chat_workspace_message_includes_artifact_when_relevant(client):
     chunk_id = str(uuid.uuid4())
     artifact_id = str(uuid.uuid4())
     embedding = [0.1] * 1536
-    embedding_json = json.dumps(embedding)
 
     async def _seed():
         await execute(
@@ -204,10 +204,10 @@ def test_chat_workspace_message_includes_artifact_when_relevant(client):
         await execute(
             """
             INSERT INTO document_chunks
-                (id, document_id, owner_id, chunk_index, content, embedding_json)
+                (id, document_id, owner_id, chunk_index, content, {VECTOR_COLUMN})
             VALUES (?, ?, ?, 0, 'pgvector HNSW excerpt content', ?)
-            """,
-            (chunk_id, document_id, OWNER, embedding_json),
+            """.format(VECTOR_COLUMN=VECTOR_COLUMN),
+            (chunk_id, document_id, OWNER, vector_value(embedding)),
         )
         await execute(
             """

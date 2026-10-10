@@ -17,7 +17,7 @@ async def test_e2e_workspace_lifecycle(client: AsyncClient):
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 0)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, FALSE)
         """,
         (workspace_id, "E2E Test Workspace", f"e2e-{workspace_id[:8]}", owner_scope, "Test workspace")
     )
@@ -136,14 +136,14 @@ async def test_e2e_workspace_isolation(client: AsyncClient):
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 0)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, FALSE)
         """,
         (workspace1_id, "Workspace 1", f"ws1-{workspace1_id[:8]}", owner_scope, "Test workspace 1")
     )
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 0)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, FALSE)
         """,
         (workspace2_id, "Workspace 2", f"ws2-{workspace2_id[:8]}", owner_scope, "Test workspace 2")
     )
@@ -221,7 +221,7 @@ async def test_e2e_workspace_cascade_delete(client: AsyncClient):
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 0)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, FALSE)
         """,
         (workspace_id, "Cascade Test Workspace", f"cascade-{workspace_id[:8]}", owner_scope, "Test workspace")
     )

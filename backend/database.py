@@ -16,6 +16,10 @@ from backend.settings import settings
 
 logger = logging.getLogger("ragapp.database") # Added logger
 _pg_pool: AsyncConnectionPool | None = None
+# Event loop the pool was opened on. psycopg_pool's workers are tasks bound to
+# that loop, so a pool must never be used or closed from a different loop
+# (CLIs, tests and workers that call asyncio.run() more than once).
+_pg_pool_loop: asyncio.AbstractEventLoop | None = None
 _sqlite: aiosqlite.Connection | None = None
 _init_lock = asyncio.Lock() # Added lock
 _sqlite_tx_lock: asyncio.Lock | None = None
@@ -40,10 +44,46 @@ def _get_sqlite_tx_lock() -> asyncio.Lock:
     return _sqlite_tx_lock
 
 
+def _to_pyformat(query: str) -> str:
+    """Translate SQLite-style SQL to psycopg's ``%s`` paramstyle.
+
+    * ``?`` outside single-quoted literals becomes ``%s``; a ``?`` inside a
+      literal (``'question?'``) is data and is left alone. The previous
+      blanket ``str.replace`` turned it into a placeholder and the statement
+      failed with "N placeholders but M parameters".
+    * A bare ``%`` (for example a ``LIKE 'a%'`` literal) becomes ``%%``,
+      because psycopg parses ``%`` whenever parameters are passed, and
+      ``execute()`` always passes a tuple.
+    * Idempotent: an existing ``%s`` or ``%%`` is kept, so already-formatted
+      SQL can be formatted again safely.
+    """
+    out: list[str] = []
+    in_literal = False
+    i, n = 0, len(query)
+    while i < n:
+        ch = query[i]
+        if ch == "'":
+            in_literal = not in_literal  # '' escapes toggle twice: still correct
+            out.append(ch)
+        elif ch == "?" and not in_literal:
+            out.append("%s")
+        elif ch == "%":
+            nxt = query[i + 1] if i + 1 < n else ""
+            if nxt in ("s", "%"):
+                out.append(ch + nxt)
+                i += 1
+            else:
+                out.append("%%")
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def sql_format(query: str) -> str:
     """Format a query string with ? placeholders to %s for PostgreSQL."""
     if settings.using_postgres:
-        return query.replace("?", "%s")
+        return _to_pyformat(query)
     return query
 
 # Keep _sql as an alias for backward compatibility within this module
@@ -75,11 +115,15 @@ async def init_db() -> None:
     Raises:
         Exception: If database initialization or migration application fails.
     """
-    global _pg_pool, _sqlite
+    global _pg_pool, _pg_pool_loop, _sqlite
     async with _init_lock:
         if settings.using_postgres:
             if _pg_pool is not None:
-                return
+                if _pg_pool_loop is asyncio.get_running_loop() and not _pg_pool.closed:
+                    return
+                # Pool belongs to a finished/different loop (or was closed):
+                # its worker tasks are dead, so drop it and open a fresh one.
+                _discard_foreign_pg_pool()
             try:
                 logger.info("Initializing Postgres connection pool...")
                 _pg_pool = AsyncConnectionPool(
@@ -118,13 +162,15 @@ async def init_db() -> None:
                         await _apply_postgres_v11_migration(cur)
                         await _apply_postgres_v12_migration(cur)
                         await _apply_postgres_v16_migration(cur)
+                _pg_pool_loop = asyncio.get_running_loop()
                 logger.info("Postgres initialized.")
                 return
             except Exception:
                 logger.exception("Database initialization failed (Postgres)")
-                if _pg_pool:
-                    await _pg_pool.close()
-                    _pg_pool = None
+                pool, _pg_pool = _pg_pool, None
+                _pg_pool_loop = None
+                if pool:
+                    await pool.close()
                 raise
 
         if _sqlite is not None:
@@ -1167,16 +1213,38 @@ async def _apply_sqlite_v12_migration(conn: aiosqlite.Connection) -> None:
     await conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (12)")
 
 
+def _discard_foreign_pg_pool() -> None:
+    """Forget a pool opened on another event loop without awaiting it.
+
+    Awaiting ``close()`` from a different loop raises CancelledError because
+    the pool's worker tasks live on the old loop. When that loop is already
+    closed its sockets were torn down with it; otherwise close the pool on its
+    own loop if it is still running.
+    """
+    global _pg_pool, _pg_pool_loop
+    pool, loop = _pg_pool, _pg_pool_loop
+    _pg_pool, _pg_pool_loop = None, None
+    if pool is None or pool.closed:
+        return
+    if loop is not None and loop.is_running() and not loop.is_closed():
+        asyncio.run_coroutine_threadsafe(pool.close(), loop)
+
+
 async def close_db() -> None:
     """
     Close any active database connections and clear the module-level connection state.
     
     Closes the PostgreSQL connection pool and/or the SQLite connection if they exist, and resets the corresponding module globals so the database layer can be reinitialized.
     """
-    global _pg_pool, _sqlite, _sqlite_tx_lock, _sqlite_tx_lock_loop
+    global _pg_pool, _pg_pool_loop, _sqlite, _sqlite_tx_lock, _sqlite_tx_lock_loop
     if _pg_pool is not None:
-        await _pg_pool.close()
-        _pg_pool = None
+        if _pg_pool_loop is asyncio.get_running_loop():
+            # Clear the global first so a failing close never leaves a closed
+            # pool behind for later callers (they would all hit PoolClosed).
+            pool, _pg_pool, _pg_pool_loop = _pg_pool, None, None
+            await pool.close()
+        else:
+            _discard_foreign_pg_pool()
     if _sqlite is not None:
         await _sqlite.close()
         _sqlite = None
@@ -1220,6 +1288,33 @@ async def fetch_all(query: str, params: tuple[Any, ...] = ()) -> list[dict[str, 
 
 from contextlib import asynccontextmanager
 
+
+class _PgTxCursor:
+    """Postgres cursor for ``transaction()`` that accepts ``?`` placeholders.
+
+    ``execute()``/``fetch_*()`` translate SQLite-style ``?`` placeholders, but
+    the transaction cursor used to be the raw psycopg cursor, so the same SQL
+    raised ProgrammingError on Postgres only. Translation is idempotent, so
+    callers that already pass ``sql_format(...)`` keep working.
+    """
+
+    def __init__(self, cur: Any) -> None:
+        self._cur = cur
+
+    async def execute(self, query: str, params: Any = None, **kwargs: Any) -> Any:
+        # Always pass a params sequence: sql_format() escapes bare % to %%, and
+        # psycopg only un-escapes %% when parameters are given.
+        await self._cur.execute(_sql(query), () if params is None else params, **kwargs)
+        return self
+
+    async def executemany(self, query: str, params_seq: Any, **kwargs: Any) -> Any:
+        await self._cur.executemany(_sql(query), params_seq, **kwargs)
+        return self
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._cur, name)
+
+
 @asynccontextmanager
 async def transaction():
     """Context manager for atomic database operations.
@@ -1233,7 +1328,7 @@ async def transaction():
         async with _pg_pool.connection() as conn:
             async with conn.transaction():
                 async with conn.cursor() as cur:
-                    yield cur
+                    yield _PgTxCursor(cur)
         return
 
     assert _sqlite is not None

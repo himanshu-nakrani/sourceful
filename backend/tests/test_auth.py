@@ -121,7 +121,7 @@ def test_oauth_disabled_account_reports_disabled(client):
     asyncio.run(authenticate_or_create_oauth_user("disabled-oauth@example.com"))
     asyncio.run(
         execute(
-            "UPDATE users SET is_active = 0 WHERE email = ?",
+            "UPDATE users SET is_active = FALSE WHERE email = ?",
             ("disabled-oauth@example.com",),
         )
     )

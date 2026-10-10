@@ -30,14 +30,14 @@ async def _seed_overview_rows() -> None:
     await execute(
         """
         INSERT INTO users (id, email, password_hash, role, is_active, is_verified, created_at)
-        VALUES (?, 'old-user@example.com', 'x', 'user', 1, 0, ?)
+        VALUES (?, 'old-user@example.com', 'x', 'user', TRUE, FALSE, ?)
         """,
         (old_user_id, _ts(timedelta(days=-10))),
     )
     await execute(
         """
         INSERT INTO users (id, email, password_hash, role, is_active, is_verified, created_at)
-        VALUES (?, 'recent-user@example.com', 'x', 'user', 1, 0, ?)
+        VALUES (?, 'recent-user@example.com', 'x', 'user', TRUE, FALSE, ?)
         """,
         (recent_user_id, _ts(timedelta(days=-2))),
     )
@@ -95,21 +95,21 @@ async def _seed_overview_rows() -> None:
     await execute(
         """
         INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, revoked, created_at)
-        VALUES (?, ?, 'hash-old', ?, 0, ?)
+        VALUES (?, ?, 'hash-old', ?, FALSE, ?)
         """,
         (str(uuid.uuid4()), old_user_id, _ts(timedelta(days=1)), _ts(timedelta(days=-10))),
     )
     await execute(
         """
         INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, revoked, created_at)
-        VALUES (?, ?, 'hash-revoked', ?, 1, ?)
+        VALUES (?, ?, 'hash-revoked', ?, TRUE, ?)
         """,
         (str(uuid.uuid4()), recent_user_id, _ts(timedelta(days=1)), _ts(timedelta(hours=-1))),
     )
     await execute(
         """
         INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, revoked, created_at)
-        VALUES (?, ?, 'hash-recent', ?, 0, ?)
+        VALUES (?, ?, 'hash-recent', ?, FALSE, ?)
         """,
         (str(uuid.uuid4()), recent_user_id, _ts(timedelta(days=1)), _ts(timedelta(hours=-2))),
     )

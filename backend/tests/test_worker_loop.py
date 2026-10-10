@@ -84,3 +84,23 @@ def test_heartbeat_loop_stops_when_event_set(monkeypatch):
     stop = asyncio.Event()
     asyncio.run(worker._heartbeat_loop(stop))
     assert calls == ["worker"] and sleeps == [5]  # interval floors at 5s
+
+
+@pytest.mark.parametrize("loop_fails", [False, True])
+def test_failed_heartbeat_still_closes_db_and_keeps_loop_error(monkeypatch, lifecycle, loop_fails):
+    async def record_heartbeat(name):
+        raise ConnectionError("heartbeat write failed")
+
+    async def worker_forever(stop_event):
+        await asyncio.sleep(0.01)  # heartbeat task has already died with an error
+        if loop_fails:
+            raise RuntimeError("loop crashed")
+
+    monkeypatch.setattr(worker, "record_heartbeat", record_heartbeat)
+    monkeypatch.setattr(worker, "worker_forever", worker_forever)
+    if loop_fails:
+        with pytest.raises(RuntimeError, match="loop crashed"):  # not masked by the heartbeat error
+            asyncio.run(worker.main())
+    else:
+        asyncio.run(worker.main())
+    assert lifecycle[-1] == "close_db"

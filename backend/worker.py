@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import logging
 
 from backend.database import close_db, init_db, record_heartbeat, require_current_schema
@@ -28,11 +27,16 @@ async def main() -> None:
     finally:
         stop_event.set()
         heartbeat_task.cancel()
-        # Wait for the cancellation to land so an in-flight heartbeat write
-        # never races with the pool being closed underneath it.
-        with contextlib.suppress(asyncio.CancelledError):
+        try:
+            # Wait for the cancellation to land so an in-flight heartbeat write
+            # never races with the pool being closed underneath it.
             await heartbeat_task
-        await close_db()
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001 - a dead heartbeat must not skip cleanup or mask the loop's error
+            logger.exception("worker_heartbeat_failed")
+        finally:
+            await close_db()
         logger.info("worker_stopped")
 
 

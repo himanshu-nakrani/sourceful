@@ -20,6 +20,7 @@ from backend.database import fetch_all
 from backend.services import graph
 from backend.services import graph_communities as communities
 from backend.services import graph_retrieval
+from backend.tests.dbcompat import VECTOR_COLUMN, vector_value
 
 
 def test_extract_from_text_pulls_proper_nouns():
@@ -407,14 +408,15 @@ async def test_graph_lane_returns_chunks_when_seeds_match(monkeypatch):
         """
         INSERT INTO document_chunks (
             id, document_id, owner_id, chunk_index, content, page_number,
-            parent_content, chunk_type, metadata_json, embedding_json
-        ) VALUES (?, ?, ?, 0, ?, NULL, NULL, 'text', NULL, '[]')
-        """,
+            parent_content, chunk_type, metadata_json, {VECTOR_COLUMN}
+        ) VALUES (?, ?, ?, 0, ?, NULL, NULL, 'text', NULL, ?)
+        """.format(VECTOR_COLUMN=VECTOR_COLUMN),
         (
             "chunk-lane-1",
             document_id,
             owner_id,
             "Acme Corp announced a new partnership with Globex.",
+            vector_value(None),
         ),
     )
     await graph.persist_extraction(

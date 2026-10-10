@@ -48,7 +48,7 @@ async def _seed_user(user_id: str, email: str) -> None:
     await execute(
         """
         INSERT INTO users (id, email, password_hash, role, is_active, is_verified)
-        VALUES (?, ?, 'x', 'user', 1, 1)
+        VALUES (?, ?, 'x', 'user', TRUE, TRUE)
         """,
         (user_id, email),
     )

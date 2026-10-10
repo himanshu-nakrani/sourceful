@@ -48,3 +48,42 @@ jobs:
 
       - name: Build web image
         run: docker build -f Dockerfile .
+
+  # Full backend suite against Postgres + pgvector. Runs in parallel with
+  # `test` (SQLite) so it adds little wall-clock time; no frontend/Docker steps.
+  backend-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+      ANON_SESSION_SECRET: ci-postgres-only-not-a-real-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Backend tests (Postgres + pgvector)
+        run: pytest -q -rs backend/tests

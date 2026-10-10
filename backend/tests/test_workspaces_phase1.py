@@ -12,6 +12,7 @@ import uuid
 
 from backend.database import execute, fetch_all
 from backend.routers.deps import anon_owner_id
+from backend.tests.dbcompat import VECTOR_COLUMN, vector_value
 
 
 HEADERS = {"X-Client-Session": "ph1-tester"}
@@ -52,10 +53,10 @@ async def _seed_ready_doc(
     await execute(
         """
         INSERT INTO document_chunks
-            (id, document_id, owner_id, chunk_index, content, page_number, embedding_json)
-        VALUES (?, ?, ?, 0, ?, NULL, '[]')
-        """,
-        (chunk_id, document_id, OWNER, content),
+            (id, document_id, owner_id, chunk_index, content, page_number, {VECTOR_COLUMN})
+        VALUES (?, ?, ?, 0, ?, NULL, ?)
+        """.format(VECTOR_COLUMN=VECTOR_COLUMN),
+        (chunk_id, document_id, OWNER, content, vector_value(None)),
     )
     await execute(
         """
@@ -78,7 +79,7 @@ def test_resolve_workspace_documents_spans_all_ready_sources(client):
         decoy_ws_id = str(uuid.uuid4())
         await execute(
             "INSERT INTO workspaces (id, name, slug, owner_scope, visibility, archived, is_default)"
-            " VALUES (?, 'Decoy', ?, ?, 'private', 0, 0)",
+            " VALUES (?, 'Decoy', ?, ?, 'private', FALSE, FALSE)",
             (decoy_ws_id, f"decoy-{decoy_ws_id[:6]}", OWNER),
         )
         await _seed_ready_doc(decoy_ws_id, title="DECOY.txt", content="decoy")

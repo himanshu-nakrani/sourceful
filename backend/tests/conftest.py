@@ -40,6 +40,24 @@ def cleanup_test_data() -> None:
             pass
 
 
+async def _truncate_postgres_tables() -> None:
+    """Postgres isolation: empty every app table (schema stays migrated).
+
+    SQLite isolation is the per-test database file removed by
+    cleanup_test_data(); Postgres is one shared database, so without this,
+    rows from earlier tests leak into later ones.
+    """
+    from backend.database import fetch_all, execute
+
+    rows = await fetch_all(
+        "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() "
+        "AND tablename <> 'schema_migrations'"
+    )
+    if rows:
+        names = ", ".join('"' + r["tablename"] + '"' for r in rows)
+        await execute(f"TRUNCATE {names} RESTART IDENTITY CASCADE")
+
+
 @pytest.fixture(autouse=True)
 def db_setup():
     cleanup_test_data()
@@ -53,6 +71,8 @@ def db_setup():
         # and fail with CancelledError on lifespan shutdown. Callers re-init
         # lazily (fetch_*/execute call init_db()).
         await init_db()
+        if settings.using_postgres:
+            await _truncate_postgres_tables()
         await record_heartbeat("worker")
         await close_db()
 
@@ -60,6 +80,32 @@ def db_setup():
     yield
     asyncio.run(close_db())
     cleanup_test_data()
+
+
+@pytest.fixture(autouse=True)
+def _close_pool_with_each_event_loop(monkeypatch):
+    """Close the DB pool before any ``asyncio.run()`` inside a test returns.
+
+    Tests call ``asyncio.run(...)`` directly (dozens of times) and never
+    ``close_db()``. On Postgres the psycopg pool may still be growing when that
+    loop shuts down; the cancelled connect is retried with backoff and the
+    run hangs. App entry points (worker, scripts) already close the pool; this
+    gives every test-owned loop the same lifecycle.
+    """
+    import asyncio
+
+    real_run = asyncio.run
+
+    def run(main, *args, **kwargs):
+        async def _wrapped():
+            try:
+                return await main
+            finally:
+                await close_db()
+
+        return real_run(_wrapped(), *args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "run", run)
 
 
 @pytest.fixture

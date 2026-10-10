@@ -16,7 +16,7 @@ async def test_chat_requires_workspace_id_when_provided(client: AsyncClient):
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 1)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, TRUE)
         """,
         (workspace_id, "Test Workspace", f"test-{workspace_id[:8]}", owner_scope, "Test workspace")
     )
@@ -71,14 +71,14 @@ async def test_workspace_sources_scoped_to_workspace(client: AsyncClient):
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 0)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, FALSE)
         """,
         (workspace1_id, "Workspace 1", f"ws1-{workspace1_id[:8]}", owner_scope, "Test workspace 1")
     )
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 0)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, FALSE)
         """,
         (workspace2_id, "Workspace 2", f"ws2-{workspace2_id[:8]}", owner_scope, "Test workspace 2")
     )
@@ -132,14 +132,14 @@ async def test_workspace_artifacts_scoped_to_workspace(client: AsyncClient):
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 0)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, FALSE)
         """,
         (workspace1_id, "Workspace 1", f"ws1-{workspace1_id[:8]}", owner_scope, "Test workspace 1")
     )
     await execute(
         """
         INSERT INTO workspaces (id, name, slug, owner_scope, description, visibility, archived, is_default)
-        VALUES (?, ?, ?, ?, ?, 'private', 0, 0)
+        VALUES (?, ?, ?, ?, ?, 'private', FALSE, FALSE)
         """,
         (workspace2_id, "Workspace 2", f"ws2-{workspace2_id[:8]}", owner_scope, "Test workspace 2")
     )

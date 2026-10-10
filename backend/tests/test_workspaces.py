@@ -161,7 +161,7 @@ def test_migration_default_workspace_is_idempotent(client):
     async def _rerun():
         await init_db()
         return await fetch_all(
-            "SELECT owner_scope, COUNT(*) AS ct FROM workspaces WHERE is_default = 1 GROUP BY owner_scope"
+            "SELECT owner_scope, COUNT(*) AS ct FROM workspaces WHERE is_default = TRUE GROUP BY owner_scope"
         )
 
     rows = asyncio.run(_rerun())

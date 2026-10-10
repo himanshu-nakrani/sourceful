@@ -44,7 +44,9 @@ async def test_sqlite_transaction_is_isolated_from_plain_execute():
             raise RuntimeError("force rollback")
 
     async def plain_write() -> None:
-        await tx_started.wait()
+        # Bounded wait: if the transaction fails before signalling, fail fast
+        # instead of hanging the whole suite.
+        await asyncio.wait_for(tx_started.wait(), timeout=10)
         await execute(
             "INSERT INTO transaction_regression (id, label) VALUES (?, ?)",
             ("survives", "plain execute"),

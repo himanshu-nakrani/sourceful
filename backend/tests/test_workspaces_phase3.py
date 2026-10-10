@@ -32,7 +32,7 @@ def test_owner_can_add_member(client):
         await execute(
             """
             INSERT INTO users (id, email, password_hash, role, is_active, is_verified)
-            VALUES ('user-ph3-1', 'editor@example.com', 'x', 'user', 1, 1)
+            VALUES ('user-ph3-1', 'editor@example.com', 'x', 'user', TRUE, TRUE)
             """,
         )
 

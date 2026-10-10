@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
@@ -232,10 +233,11 @@ class ConfluenceConnector(BaseConnector):
 
             data = response.json()
             body = data.get("body", {}).get("storage", {}).get("value", "")
-            title = data.get("title", "Untitled")
+            # The title is plain text; the body is Confluence storage-format HTML.
+            title = html.escape(data.get("title") or "Untitled")
 
             # Wrap in basic HTML structure
-            html = f"""<!DOCTYPE html>
+            document = f"""<!DOCTYPE html>
 <html>
 <head><title>{title}</title></head>
 <body>
@@ -243,7 +245,7 @@ class ConfluenceConnector(BaseConnector):
 {body}
 </body>
 </html>"""
-            return html.encode("utf-8")
+            return document.encode("utf-8")
 
     async def sync(self, db_session: Any, document_service: Any) -> SyncResult:
         """Perform full sync with Confluence."""

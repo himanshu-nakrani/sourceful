@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useOnChange } from "../lib/use-on-change";
 import { AnimatePresence, motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
@@ -227,10 +228,23 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
     return () => mediaQuery.removeEventListener("change", update);
   }, []);
 
+  // When the document (or auth) changes, clear the previous load's error and
+  // PDF URL during render; the effects below only fetch.
+  const loadTarget = useMemo(
+    () => (auth.clientSessionId && documentId ? { auth, documentId } : null),
+    [auth, documentId],
+  );
+  useOnChange(loadTarget, (target) => {
+    if (target) {
+      setDocumentError(null);
+      setPdfError(null);
+      setPdfUrl(null);
+    }
+  });
+
   useEffect(() => {
     if (!auth.clientSessionId || !documentId) return;
     let cancelled = false;
-    setDocumentError(null);
     void getDocument(auth, documentId)
       .then((nextDoc) => {
         if (!cancelled) setDoc(nextDoc);
@@ -249,8 +263,6 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
     if (!auth.clientSessionId || !documentId) return;
     let objectUrl: string | null = null;
     let cancelled = false;
-    setPdfError(null);
-    setPdfUrl(null);
     void getDocumentContent(auth, documentId)
       .then((blob) => {
         if (cancelled) return;

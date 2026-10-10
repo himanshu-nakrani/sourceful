@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { useOnChange } from "../lib/use-on-change";
 import { Check, Copy, Loader2, Trash2, Users, X } from "lucide-react";
 import {
   addWorkspaceMember,
@@ -78,27 +79,40 @@ export default function WorkspaceMembersPanel({
     | null
   >(null);
 
-  const refresh = useCallback(async () => {
-    if (!open) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [mem, inv] = await Promise.all([
-        listWorkspaceMembers(auth, workspaceId),
-        listWorkspaceInvitations(auth, workspaceId).catch(() => []),
-      ]);
-      setMembers(mem);
-      setInvitations(inv);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load members.");
-    } finally {
-      setLoading(false);
-    }
-  }, [auth, workspaceId, open]);
 
+  // One key per load request: set while the panel is open, and replaced when
+  // its inputs change (same triggers as before). The spinner/error reset is
+  // applied during render; the request runs in the effect and only sets state
+  // after it resolves.
+  const loadRequest = useMemo(
+    () => (open ? { auth, workspaceId } : null),
+    [open, auth, workspaceId],
+  );
+  useOnChange(loadRequest, (request) => {
+    if (request) {
+      setLoading(true);
+      setError(null);
+    }
+  });
   useEffect(() => {
-    if (open) void refresh();
-  }, [open, refresh]);
+    if (!loadRequest) return;
+    const { auth, workspaceId } = loadRequest;
+    const run = async () => {
+      try {
+        const [mem, inv] = await Promise.all([
+          listWorkspaceMembers(auth, workspaceId),
+          listWorkspaceInvitations(auth, workspaceId).catch(() => []),
+        ]);
+        setMembers(mem);
+        setInvitations(inv);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load members.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    void run();
+  }, [loadRequest]);
 
   const handleAddMember = async () => {
     if (!memberUserId.trim()) {

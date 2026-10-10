@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from backend.connectors.base import ConnectorConfig
+from backend.connectors.base import ConnectorConfig, as_utc
 from backend.database import fetch_all
 
 logger = logging.getLogger("ragapp.connectors")
@@ -50,12 +50,21 @@ def _path_filter(raw: Any, field: str) -> list[str] | None:
 
 
 def _timestamp(raw: Any) -> datetime | None:
-    if raw is None or isinstance(raw, datetime):
-        return raw
-    try:
-        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-    except ValueError:
+    """Parse a timestamp column into an aware UTC datetime.
+
+    SQLite ``CURRENT_TIMESTAMP`` values carry no offset but are UTC; returning
+    them naive made connectors crash comparing against aware remote times.
+    """
+    if raw is None:
         return None
+    if isinstance(raw, datetime):
+        value = raw
+    else:
+        try:
+            value = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return as_utc(value)
 
 
 def _credentials(row: dict) -> dict[str, Any] | None:

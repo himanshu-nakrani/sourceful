@@ -11,6 +11,7 @@ from backend.connectors.base import (
     ConnectorConfig,
     RemoteDocument,
     SyncResult,
+    as_utc,
 )
 from backend.connectors.registry import register_connector
 
@@ -104,62 +105,58 @@ class GoogleDriveConnector(BaseConnector):
 
         if since:
             # Google Drive uses RFC 3339 format
-            since_str = since.isoformat()
+            since_str = as_utc(since).isoformat()
             query_parts.append(f"modifiedTime > '{since_str}'")
 
         query = " and ".join(query_parts)
 
         while True:
-            try:
-                response = await asyncio.to_thread(
-                    service.files().list(
-                        q=query,
-                        pageSize=100,
-                        fields="nextPageToken, files(id, name, mimeType, modifiedTime, createdTime, size, parents, webViewLink)",
-                        pageToken=page_token,
-                    ).execute
+            response = await asyncio.to_thread(
+                service.files().list(
+                    q=query,
+                    pageSize=100,
+                    fields="nextPageToken, files(id, name, mimeType, modifiedTime, createdTime, size, parents, webViewLink)",
+                    pageToken=page_token,
+                ).execute
+            )
+
+            for file in response.get("files", []):
+                path = await self._build_path(service, file)
+                if not self.should_include(path):
+                    continue
+
+                modified_at = None
+                if file.get("modifiedTime"):
+                    try:
+                        modified_at = datetime.fromisoformat(file["modifiedTime"].replace("Z", "+00:00"))
+                    except ValueError:
+                        pass
+
+                created_at = None
+                if file.get("createdTime"):
+                    try:
+                        created_at = datetime.fromisoformat(file["createdTime"].replace("Z", "+00:00"))
+                    except ValueError:
+                        pass
+
+                yield RemoteDocument(
+                    source_id=file["id"],
+                    source_type=self.SOURCE_TYPE,
+                    connector_id=self.config.id,
+                    name=file["name"],
+                    path=path,
+                    mime_type=file.get("mimeType"),
+                    modified_at=modified_at,
+                    created_at=created_at,
+                    size_bytes=int(file["size"]) if file.get("size") else None,
+                    metadata={
+                        "webViewLink": file.get("webViewLink"),
+                        "parents": file.get("parents", []),
+                    },
                 )
 
-                for file in response.get("files", []):
-                    path = await self._build_path(service, file)
-                    if not self.should_include(path):
-                        continue
-
-                    modified_at = None
-                    if file.get("modifiedTime"):
-                        try:
-                            modified_at = datetime.fromisoformat(file["modifiedTime"].replace("Z", "+00:00"))
-                        except ValueError:
-                            pass
-
-                    created_at = None
-                    if file.get("createdTime"):
-                        try:
-                            created_at = datetime.fromisoformat(file["createdTime"].replace("Z", "+00:00"))
-                        except ValueError:
-                            pass
-
-                    yield RemoteDocument(
-                        source_id=file["id"],
-                        source_type=self.SOURCE_TYPE,
-                        connector_id=self.config.id,
-                        name=file["name"],
-                        path=path,
-                        mime_type=file.get("mimeType"),
-                        modified_at=modified_at,
-                        created_at=created_at,
-                        size_bytes=int(file["size"]) if file.get("size") else None,
-                        metadata={
-                            "webViewLink": file.get("webViewLink"),
-                            "parents": file.get("parents", []),
-                        },
-                    )
-
-                page_token = response.get("nextPageToken")
-                if not page_token:
-                    break
-            except Exception as e:
-                print(f"Error listing Google Drive files: {e}")
+            page_token = response.get("nextPageToken")
+            if not page_token:
                 break
 
     async def _build_path(self, service, file_obj: dict) -> str:
@@ -256,7 +253,6 @@ class GoogleDriveConnector(BaseConnector):
                 except Exception as e:
                     stats["failed"] += 1
                     last_error = str(e)
-                    print(f"Failed to sync {remote_doc.name}: {e}")
 
             status = "success" if stats["failed"] == 0 else "partial"
 

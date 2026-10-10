@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
 
@@ -62,6 +62,19 @@ class RemoteDocument:
     size_bytes: int | None = None
     download_url: str | None = None  # Temporary URL for fetch
     metadata: dict[str, Any] | None = None  # Source-specific metadata
+
+
+def as_utc(value: datetime | None) -> datetime | None:
+    """Return ``value`` as an aware UTC datetime (naive values are assumed UTC).
+
+    ``last_sync_at`` read from SQLite (``CURRENT_TIMESTAMP``) is naive while
+    remote APIs return aware timestamps; comparing the two raises TypeError.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class BaseConnector(ABC):

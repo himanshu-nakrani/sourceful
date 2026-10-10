@@ -10,6 +10,7 @@ from backend.connectors.base import (
     ConnectorConfig,
     RemoteDocument,
     SyncResult,
+    as_utc,
 )
 from backend.connectors.registry import register_connector
 
@@ -81,47 +82,45 @@ class S3Connector(BaseConnector):
         if not bucket:
             raise ValueError("S3 bucket not configured in credentials")
 
+        since = as_utc(since)
         paginator = client.get_paginator("list_objects_v2")
 
-        try:
-            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-                for obj in page.get("Contents", []):
-                    key = obj["Key"]
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
 
-                    # Skip folder placeholders and unsupported extensions
-                    if key.endswith("/"):
-                        continue
+                # Skip folder placeholders and unsupported extensions
+                if key.endswith("/"):
+                    continue
 
-                    ext = "." + key.split(".")[-1].lower() if "." in key else ""
-                    if ext not in self.SUPPORTED_EXTENSIONS:
-                        continue
+                ext = "." + key.split(".")[-1].lower() if "." in key else ""
+                if ext not in self.SUPPORTED_EXTENSIONS:
+                    continue
 
-                    path = key
-                    if not self.should_include(path):
-                        continue
+                path = key
+                if not self.should_include(path):
+                    continue
 
-                    modified_at = obj.get("LastModified")
-                    if since and modified_at and modified_at < since:
-                        continue
+                modified_at = obj.get("LastModified")
+                if since and modified_at and modified_at < since:
+                    continue
 
-                    yield RemoteDocument(
-                        source_id=f"s3://{bucket}/{key}",
-                        source_type=self.SOURCE_TYPE,
-                        connector_id=self.config.id,
-                        name=key.split("/")[-1],
-                        path=path,
-                        mime_type=self._guess_mime_type(key),
-                        modified_at=modified_at,
-                        size_bytes=obj.get("Size"),
-                        content_hash=obj.get("ETag", "").strip('"'),
-                        metadata={
-                            "bucket": bucket,
-                            "key": key,
-                            "storage_class": obj.get("StorageClass"),
-                        },
-                    )
-        except Exception as e:
-            print(f"Error listing S3 objects: {e}")
+                yield RemoteDocument(
+                    source_id=f"s3://{bucket}/{key}",
+                    source_type=self.SOURCE_TYPE,
+                    connector_id=self.config.id,
+                    name=key.split("/")[-1],
+                    path=path,
+                    mime_type=self._guess_mime_type(key),
+                    modified_at=modified_at,
+                    size_bytes=obj.get("Size"),
+                    content_hash=obj.get("ETag", "").strip('"'),
+                    metadata={
+                        "bucket": bucket,
+                        "key": key,
+                        "storage_class": obj.get("StorageClass"),
+                    },
+                )
 
     def _guess_mime_type(self, key: str) -> str | None:
         """Guess MIME type from extension."""

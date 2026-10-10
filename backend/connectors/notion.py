@@ -10,8 +10,24 @@ from backend.connectors.base import (
     ConnectorConfig,
     RemoteDocument,
     SyncResult,
+    as_utc,
 )
 from backend.connectors.registry import register_connector
+
+
+def _page_title(properties: dict) -> str:
+    """Return a page's title text.
+
+    Every Notion page has exactly one property of ``type == "title"``, but only
+    workspace-level pages name it "title"; database rows use the database's
+    column name (e.g. "Name"), so look it up by type.
+    """
+    candidates = [p for p in properties.values() if isinstance(p, dict) and p.get("type") == "title"]
+    if not candidates and isinstance(properties.get("title"), dict):
+        candidates = [properties["title"]]
+    for prop in candidates:
+        return "".join(t.get("plain_text", "") for t in prop.get("title") or [])
+    return ""
 
 
 @register_connector("notion")
@@ -66,90 +82,81 @@ class NotionConnector(BaseConnector):
         except ImportError:
             raise RuntimeError("httpx not installed")
 
+        since = as_utc(since)
         page_cursor = None
         async with httpx.AsyncClient(
             timeout=30.0, event_hooks=get_ssrf_event_hooks()
         ) as client:
             while True:
-                try:
-                    # Search for pages (excludes databases)
-                    body = {
-                        "filter": {"value": "page", "property": "object"},
-                        "page_size": 100,
-                    }
-                    if page_cursor:
-                        body["start_cursor"] = page_cursor
+                # Search for pages (excludes databases)
+                body = {
+                    "filter": {"value": "page", "property": "object"},
+                    "page_size": 100,
+                }
+                if page_cursor:
+                    body["start_cursor"] = page_cursor
 
-                    response = await client.post(
-                        f"{self._base_url}/search",
-                        headers=self._headers(),
-                        json=body,
-                    )
-                    response.raise_for_status()
-                    data = response.json()
+                response = await client.post(
+                    f"{self._base_url}/search",
+                    headers=self._headers(),
+                    json=body,
+                )
+                response.raise_for_status()
+                data = response.json()
 
-                    for page in data.get("results", []):
-                        page_id = page["id"]
-                        props = page.get("properties", {})
-                        title_prop = props.get("title", {})
-                        title = ""
-                        if "title" in title_prop:
-                            title = "".join(
-                                t.get("plain_text", "") for t in title_prop["title"]
+                for page in data.get("results", []):
+                    page_id = page["id"]
+                    title = _page_title(page.get("properties") or {})
+                    if not title:
+                        title = f"Untitled ({page_id[:8]})"
+
+                    path = title
+                    if not self.should_include(path):
+                        continue
+
+                    modified_str = page.get("last_edited_time")
+                    modified_at = None
+                    if modified_str:
+                        try:
+                            modified_at = datetime.fromisoformat(
+                                modified_str.replace("Z", "+00:00")
                             )
-                        if not title:
-                            title = f"Untitled ({page_id[:8]})"
+                        except ValueError:
+                            pass
 
-                        path = title
-                        if not self.should_include(path):
-                            continue
+                    if since and modified_at and modified_at < since:
+                        continue
 
-                        modified_str = page.get("last_edited_time")
-                        modified_at = None
-                        if modified_str:
-                            try:
-                                modified_at = datetime.fromisoformat(
-                                    modified_str.replace("Z", "+00:00")
-                                )
-                            except ValueError:
-                                pass
+                    created_str = page.get("created_time")
+                    created_at = None
+                    if created_str:
+                        try:
+                            created_at = datetime.fromisoformat(
+                                created_str.replace("Z", "+00:00")
+                            )
+                        except ValueError:
+                            pass
 
-                        if since and modified_at and modified_at < since:
-                            continue
+                    yield RemoteDocument(
+                        source_id=page_id,
+                        source_type=self.SOURCE_TYPE,
+                        connector_id=self.config.id,
+                        name=f"{title}.md",
+                        path=path,
+                        mime_type="text/markdown",
+                        modified_at=modified_at,
+                        created_at=created_at,
+                        metadata={
+                            "url": page.get("url"),
+                            "icon": page.get("icon"),
+                            "archived": page.get("archived", False),
+                        },
+                    )
 
-                        created_str = page.get("created_time")
-                        created_at = None
-                        if created_str:
-                            try:
-                                created_at = datetime.fromisoformat(
-                                    created_str.replace("Z", "+00:00")
-                                )
-                            except ValueError:
-                                pass
-
-                        yield RemoteDocument(
-                            source_id=page_id,
-                            source_type=self.SOURCE_TYPE,
-                            connector_id=self.config.id,
-                            name=f"{title}.md",
-                            path=path,
-                            mime_type="text/markdown",
-                            modified_at=modified_at,
-                            created_at=created_at,
-                            metadata={
-                                "url": page.get("url"),
-                                "icon": page.get("icon"),
-                                "archived": page.get("archived", False),
-                            },
-                        )
-
-                    page_cursor = data.get("next_cursor")
-                    if not page_cursor:
-                        break
-
-                except Exception as e:
-                    print(f"Error listing Notion pages: {e}")
+                page_cursor = data.get("next_cursor")
+                if not page_cursor:
                     break
+
 
     async def _export_page_as_markdown(self, page_id: str) -> str:
         """Export a Notion page as markdown by fetching block content."""

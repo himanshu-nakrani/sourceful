@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
@@ -10,6 +11,7 @@ from backend.connectors.base import (
     ConnectorConfig,
     RemoteDocument,
     SyncResult,
+    as_utc,
 )
 from backend.connectors.registry import register_connector
 
@@ -94,6 +96,7 @@ class ConfluenceConnector(BaseConnector):
         except ImportError:
             raise RuntimeError("httpx not installed")
 
+        since = as_utc(since)
         # Get spaces to crawl
         space_keys = (
             self.config.options.get("space_keys", []) if self.config.options else []
@@ -107,18 +110,15 @@ class ConfluenceConnector(BaseConnector):
 
             # If no specific spaces, list all accessible
             if not space_keys:
-                try:
-                    response = await client.get(
-                        self._api_url("/spaces"),
-                        auth=auth if self._is_cloud else None,
-                        headers=headers,
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        space_keys = [s.get("key") for s in data.get("results", [])]
-                except Exception as e:
-                    print(f"Error listing Confluence spaces: {e}")
-                    return
+                response = await client.get(
+                    self._api_url("/spaces"),
+                    auth=auth if self._is_cloud else None,
+                    headers=headers,
+                )
+                if response.status_code != 200:
+                    raise RuntimeError(f"Failed to list Confluence spaces: HTTP {response.status_code}")
+                data = response.json()
+                space_keys = [s.get("key") for s in data.get("results", [])]
 
             for space_key in space_keys:
                 if not space_key:
@@ -126,86 +126,81 @@ class ConfluenceConnector(BaseConnector):
 
                 cursor = None
                 while True:
-                    try:
-                        # Use pages endpoint with space filter
-                        url = self._api_url("/pages")
-                        params = {
-                            "spaceKey": space_key,
-                            "limit": 100,
-                            "expand": "version",
-                        }
-                        if cursor:
-                            params["cursor"] = cursor
+                    # Use pages endpoint with space filter
+                    url = self._api_url("/pages")
+                    params = {
+                        "spaceKey": space_key,
+                        "limit": 100,
+                        "expand": "version",
+                    }
+                    if cursor:
+                        params["cursor"] = cursor
 
-                        response = await client.get(
-                            url,
-                            params=params,
-                            auth=auth if self._is_cloud else None,
-                            headers=headers,
+                    response = await client.get(
+                        url,
+                        params=params,
+                        auth=auth if self._is_cloud else None,
+                        headers=headers,
+                    )
+
+                    if response.status_code != 200:
+                        raise RuntimeError(
+                            f"Failed to list Confluence pages for space {space_key}: HTTP {response.status_code}"
                         )
 
-                        if response.status_code != 200:
-                            print(
-                                f"Error fetching pages for space {space_key}: {response.status_code}"
-                            )
-                            break
+                    data = response.json()
 
-                        data = response.json()
+                    for page in data.get("results", []):
+                        page_id = page.get("id")
+                        title = page.get("title", "Untitled")
+                        path = f"{space_key}/{title}"
 
-                        for page in data.get("results", []):
-                            page_id = page.get("id")
-                            title = page.get("title", "Untitled")
-                            path = f"{space_key}/{title}"
+                        if not self.should_include(path):
+                            continue
 
-                            if not self.should_include(path):
-                                continue
+                        # Get modification time from version
+                        version = page.get("version", {})
+                        modified_str = version.get("when")
+                        modified_at = None
+                        if modified_str:
+                            try:
+                                modified_at = datetime.fromisoformat(
+                                    modified_str.replace("Z", "+00:00")
+                                )
+                            except ValueError:
+                                pass
 
-                            # Get modification time from version
-                            version = page.get("version", {})
-                            modified_str = version.get("when")
-                            modified_at = None
-                            if modified_str:
-                                try:
-                                    modified_at = datetime.fromisoformat(
-                                        modified_str.replace("Z", "+00:00")
-                                    )
-                                except ValueError:
-                                    pass
+                        if since and modified_at and modified_at < since:
+                            continue
 
-                            if since and modified_at and modified_at < since:
-                                continue
+                        yield RemoteDocument(
+                            source_id=page_id,
+                            source_type=self.SOURCE_TYPE,
+                            connector_id=self.config.id,
+                            name=f"{title}.html",
+                            path=path,
+                            mime_type="text/html",
+                            modified_at=modified_at,
+                            metadata={
+                                "space_key": space_key,
+                                "space_name": page.get("spaceId"),
+                                "url": f"{self._base_url}/pages/viewpage.action?pageId={page_id}",
+                                "author": version.get("by", {}).get("displayName"),
+                            },
+                        )
 
-                            yield RemoteDocument(
-                                source_id=page_id,
-                                source_type=self.SOURCE_TYPE,
-                                connector_id=self.config.id,
-                                name=f"{title}.html",
-                                path=path,
-                                mime_type="text/html",
-                                modified_at=modified_at,
-                                metadata={
-                                    "space_key": space_key,
-                                    "space_name": page.get("spaceId"),
-                                    "url": f"{self._base_url}/pages/viewpage.action?pageId={page_id}",
-                                    "author": version.get("by", {}).get("displayName"),
-                                },
-                            )
+                    # Pagination
+                    links = data.get("_links", {})
+                    cursor = None
+                    if "next" in links:
+                        # Extract cursor from URL
+                        next_url = links["next"]
+                        if "cursor=" in next_url:
+                            cursor = next_url.split("cursor=")[1].split("&")[0]
 
-                        # Pagination
-                        links = data.get("_links", {})
-                        cursor = None
-                        if "next" in links:
-                            # Extract cursor from URL
-                            next_url = links["next"]
-                            if "cursor=" in next_url:
-                                cursor = next_url.split("cursor=")[1].split("&")[0]
-
-                        if not cursor:
-                            break
-
-                    except Exception as e:
-                        print(f"Error processing space {space_key}: {e}")
+                    if not cursor:
                         break
+
 
     async def download_document(self, remote_doc: RemoteDocument) -> bytes:
         """Download page content as HTML."""
@@ -238,10 +233,11 @@ class ConfluenceConnector(BaseConnector):
 
             data = response.json()
             body = data.get("body", {}).get("storage", {}).get("value", "")
-            title = data.get("title", "Untitled")
+            # The title is plain text; the body is Confluence storage-format HTML.
+            title = html.escape(data.get("title") or "Untitled")
 
             # Wrap in basic HTML structure
-            html = f"""<!DOCTYPE html>
+            document = f"""<!DOCTYPE html>
 <html>
 <head><title>{title}</title></head>
 <body>
@@ -249,7 +245,7 @@ class ConfluenceConnector(BaseConnector):
 {body}
 </body>
 </html>"""
-            return html.encode("utf-8")
+            return document.encode("utf-8")
 
     async def sync(self, db_session: Any, document_service: Any) -> SyncResult:
         """Perform full sync with Confluence."""

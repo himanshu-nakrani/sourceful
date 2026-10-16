@@ -84,3 +84,6 @@
 ## 2026-05-25 - Batch Independent Database Queries
 **Learning:** Sequential independent `fetch_all` queries accumulate latency because they wait on database round-trips one by one. This was observed in the `workspace_activity` endpoint fetching messages, artifacts, and source updates sequentially.
 **Action:** Always bundle independent database reads using `asyncio.gather(*tasks)` to parallelize network I/O, drastically reducing latency.
+## 2026-10-16 - Combine SELECT and UPDATE/DELETE using RETURNING
+**Learning:** Sequential `SELECT` existence checks followed by `UPDATE` or `DELETE` statements accumulate latency due to multiple database network roundtrips. The PostgreSQL/SQLite `RETURNING` clause allows performing the operation and retrieving the modified row in a single query.
+**Action:** Use the `RETURNING` clause in combination with `execute_returning` to combine existence checks and mutations into a single database call, halving the network overhead for these operations.

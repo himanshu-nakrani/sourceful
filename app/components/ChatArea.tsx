@@ -1394,7 +1394,19 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                     border: canAsk ? "1px solid transparent" : "1px solid var(--border)",
                   }}
                   aria-label="Send message"
-                  title="Send message"
+                  title={
+                    canAsk
+                      ? "Send message"
+                      : streaming
+                        ? "Wait for response to finish"
+                        : !activeDocumentId
+                          ? "Select a document to chat"
+                          : !settings.providerApiKey.trim()
+                            ? "API key required"
+                            : !question.trim()
+                              ? "Enter a question to send"
+                              : "Send message"
+                  }
                   whileHover={canAsk ? { background: "var(--accent-hover)" } : {}}
                   whileTap={canAsk ? { scale: 0.92 } : {}}
                 >

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import TypeAdapter
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute_returning, fetch_all, fetch_one
 from backend.errors import api_error_response
 from backend.models import (
     Citation,
@@ -114,9 +114,11 @@ async def rename_conversation(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    row = await fetch_one(
-        "SELECT id FROM conversations WHERE id = ? AND owner_id = ?",
-        (conversation_id, context.owner_id),
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and UPDATE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        "UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ? RETURNING id",
+        (body.title.strip(), conversation_id, context.owner_id),
     )
     if not row:
         return api_error_response(
@@ -126,10 +128,6 @@ async def rename_conversation(
             code="CONVERSATION_NOT_FOUND",
             details={"conversation_id": conversation_id},
         )
-    await execute(
-        "UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
-        (body.title.strip(), conversation_id, context.owner_id),
-    )
     return {
         "status": "updated",
         "conversation_id": conversation_id,
@@ -171,8 +169,10 @@ async def delete_conversation(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    row = await fetch_one(
-        "SELECT id FROM conversations WHERE id = ? AND owner_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and DELETE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        "DELETE FROM conversations WHERE id = ? AND owner_id = ? RETURNING id",
         (conversation_id, context.owner_id),
     )
     if not row:
@@ -183,8 +183,4 @@ async def delete_conversation(
             code="CONVERSATION_NOT_FOUND",
             details={"conversation_id": conversation_id},
         )
-    await execute(
-        "DELETE FROM conversations WHERE id = ? AND owner_id = ?",
-        (conversation_id, context.owner_id),
-    )
     return {"status": "deleted", "conversation_id": conversation_id}

@@ -27,7 +27,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import fetch_all, fetch_one
 from backend.errors import api_error_response
 from backend.models import (
     FeedbackRequest,
@@ -93,10 +93,13 @@ async def submit_feedback(
 
     feedback_id = str(uuid.uuid4())
     ts_fn = "NOW()" if settings.using_postgres else "CURRENT_TIMESTAMP"
-    await execute(
+    # ⚡ BOLT OPTIMIZATION: Combine INSERT and SELECT into a single query using RETURNING.
+    # Yielding the row directly via fetch_one avoids a second network roundtrip.
+    row = await fetch_one(
         f"""
         INSERT INTO feedback (id, owner_id, conversation_id, message_id, rating, comment, created_at)
         VALUES (?, ?, ?, ?, ?, ?, {ts_fn})
+        RETURNING id, conversation_id, message_id, rating, comment, created_at
         """,
         (
             feedback_id,
@@ -106,10 +109,6 @@ async def submit_feedback(
             _rating_to_int(body.rating),
             (body.comment or None),
         ),
-    )
-    row = await fetch_one(
-        "SELECT id, conversation_id, message_id, rating, comment, created_at FROM feedback WHERE id = ?",
-        (feedback_id,),
     )
     if row is None:  # defensive — INSERT above was synchronous
         return api_error_response(

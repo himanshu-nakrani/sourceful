@@ -12,9 +12,10 @@ export const TextField = React.forwardRef<
     hint?: string;
     error?: string | null;
     mono?: boolean;
+    required?: boolean;
   } & React.InputHTMLAttributes<HTMLInputElement>
 >(function TextField(
-  { label, hint, error, mono = false, className = "", style, ...rest },
+  { label, hint, error, mono = false, required = false, className = "", style, ...rest },
   ref,
 ) {
   const id = React.useId();
@@ -23,10 +24,16 @@ export const TextField = React.forwardRef<
     <div className={className} style={style}>
       <label htmlFor={id} className="block text-[13px] mb-1.5" style={{ color: "var(--text-secondary)" }}>
         {label}
+        {required && (
+          <span style={{ color: "var(--error)", marginLeft: "0.25rem" }} aria-hidden="true">
+            *
+          </span>
+        )}
       </label>
       <input
         ref={ref}
         id={id}
+        required={required}
         className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none focus-ring transition-all"
         style={{
           background: "var(--bg-surface)",

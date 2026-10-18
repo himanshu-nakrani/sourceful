@@ -9,3 +9,6 @@
 ## 2024-09-12 - Preserving Visible Labels and Dynamic Counts for Screen Readers
 **Learning:** Overriding visible button labels with `aria-label` on disclosure controls (e.g. "Sources: all", "Stream timeline (N events)", "Top N chunks") hides dynamic count and status details from screen reader users and can violate WCAG 2.5.3 (Label in Name). `aria-expanded` already communicates the toggle/collapsed state.
 **Action:** Rely on visible text and `aria-expanded` for accessible naming on disclosure buttons with dynamic counters. For compact action buttons like "Reset to all", ensure any descriptive `aria-label` starts with the exact visible text (e.g., `aria-label="Reset to all sources"`).
+## 2024-05-18 - Added required indicator to TextField
+**Learning:** Adding a visual required indicator (`*`) next to labels in a reusable `TextField` component is a great, simple UX win, especially in forms like Authentication. When implementing visual required indicators (like asterisks), use `aria-hidden="true"` so that screen readers don't read "star" out loud. The `required` attribute on the underlying `<input>` itself handles semantic accessibility.
+**Action:** Always add visual indicators to inputs that are required, while ensuring they are hidden from screen readers using `aria-hidden="true"`.

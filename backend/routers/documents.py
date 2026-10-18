@@ -7,7 +7,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import Response
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.errors import api_error_response
 from backend.models import (
     ChunkPreviewResponse,
@@ -316,8 +316,10 @@ async def delete_document(
     request: Request,
     context: RequestContext = Depends(get_request_context),
 ):
-    row = await fetch_one(
-        "SELECT id FROM documents WHERE id = ? AND owner_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and DELETE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        "DELETE FROM documents WHERE id = ? AND owner_id = ? RETURNING id",
         (document_id, context.owner_id),
     )
     if not row:
@@ -328,8 +330,4 @@ async def delete_document(
             code="DOCUMENT_NOT_FOUND",
             details={"document_id": document_id},
         )
-    await execute(
-        "DELETE FROM documents WHERE id = ? AND owner_id = ?",
-        (document_id, context.owner_id),
-    )
     return {"status": "deleted", "document_id": document_id}

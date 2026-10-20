@@ -17,7 +17,7 @@ try:
 except ImportError:
     orjson = None
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.settings import settings
 
 
@@ -156,7 +156,9 @@ async def create_artifact(
     artifact_id = str(uuid.uuid4())
     # ⚡ BOLT OPTIMIZATION: Use fast orjson serialization when available.
     if metadata:
-        meta_payload = orjson.dumps(metadata).decode("utf-8") if orjson else json.dumps(metadata)
+        meta_payload = (
+            orjson.dumps(metadata).decode("utf-8") if orjson else json.dumps(metadata)
+        )
     else:
         meta_payload = None
     await execute(
@@ -226,7 +228,9 @@ async def update_artifact(
     if metadata is not None:
         sets.append("metadata_json = ?")
         # ⚡ BOLT OPTIMIZATION: Use fast orjson serialization when available.
-        params.append(orjson.dumps(metadata).decode("utf-8") if orjson else json.dumps(metadata))
+        params.append(
+            orjson.dumps(metadata).decode("utf-8") if orjson else json.dumps(metadata)
+        )
     if not sets:
         return existing
     sets.append(f"updated_at = {TIMESTAMP_SQL}")
@@ -248,11 +252,9 @@ async def delete_artifact(artifact_id: str, workspace_id: str) -> bool:
     Returns:
         True if the artifact was deleted, False if it didn't exist.
     """
-    existing = await get_artifact(artifact_id, workspace_id)
-    if not existing:
-        return False
-    await execute(
-        "DELETE FROM workspace_artifacts WHERE id = ? AND workspace_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check with DELETE operation using execute_returning
+    row = await execute_returning(
+        "DELETE FROM workspace_artifacts WHERE id = ? AND workspace_id = ? RETURNING id",
         (artifact_id, workspace_id),
     )
-    return True
+    return bool(row)

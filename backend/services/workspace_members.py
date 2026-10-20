@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.settings import settings
 
 
@@ -236,14 +236,12 @@ async def remove_member(workspace_id: str, member_id: str) -> bool:
     Returns:
         True if the member was removed, False if not found.
     """
-    existing = await fetch_one(
-        "SELECT id FROM workspace_members WHERE id = ? AND workspace_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check with DELETE operation using execute_returning
+    row = await execute_returning(
+        "DELETE FROM workspace_members WHERE id = ? AND workspace_id = ? RETURNING id",
         (member_id, workspace_id),
     )
-    if not existing:
-        return False
-    await execute("DELETE FROM workspace_members WHERE id = ?", (member_id,))
-    return True
+    return bool(row)
 
 
 # ---------- Invitations ----------------------------------------------------
@@ -281,7 +279,9 @@ async def create_invitation(
     token = secrets.token_urlsafe(24)
     expires_at = None
     if expires_in_days:
-        expires_at = (datetime.now(timezone.utc) + timedelta(days=expires_in_days)).isoformat()
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(days=expires_in_days)
+        ).isoformat()
     await execute(
         f"""
         INSERT INTO workspace_invitations
@@ -323,14 +323,12 @@ async def revoke_invitation(workspace_id: str, invitation_id: str) -> bool:
     Returns:
         True if the invitation was revoked, False if not found.
     """
-    existing = await fetch_one(
-        "SELECT id FROM workspace_invitations WHERE id = ? AND workspace_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check with DELETE operation using execute_returning
+    row = await execute_returning(
+        "DELETE FROM workspace_invitations WHERE id = ? AND workspace_id = ? RETURNING id",
         (invitation_id, workspace_id),
     )
-    if not existing:
-        return False
-    await execute("DELETE FROM workspace_invitations WHERE id = ?", (invitation_id,))
-    return True
+    return bool(row)
 
 
 async def accept_invitation(token: str, *, user_id: str) -> dict[str, Any] | None:

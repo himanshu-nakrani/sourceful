@@ -1,0 +1,3 @@
+## 2024-05-18 - Dynamic Tooltips for Disabled Buttons
+**Learning:** Many interactive elements (like submit buttons in forms or modals) are disabled contextually based on form state or loading status. When disabled, standard buttons do not provide feedback to users regarding *why* they are disabled, leading to a confusing UX, especially for assistive technologies. We found multiple critical buttons across Auth and Upload flows missing explanatory context when disabled.
+**Action:** Always provide a dynamic `title` attribute on buttons that are contextually disabled. The `title` should clearly articulate the reason the action is currently unavailable (e.g., "Please select a file to upload" or "Working...").

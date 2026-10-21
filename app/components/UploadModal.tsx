@@ -300,6 +300,18 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
   const canSubmit =
     !flowActive && (mode === "file" ? Boolean(file) : Boolean(urlValue.trim()) && Boolean(activeWorkspaceId));
 
+  const submitTitle = flowActive
+    ? "Processing..."
+    : mode === "file" && !file
+      ? "Please select a file to upload"
+      : mode === "url" && !urlValue.trim()
+        ? "Please enter a valid URL"
+        : mode === "url" && !activeWorkspaceId
+          ? "Please select a workspace"
+          : mode === "file"
+            ? "Upload file"
+            : "Import from URL";
+
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     setDragOver(false);
@@ -586,7 +598,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
         <Button variant="secondary" onClick={handleClose}>
           Cancel
         </Button>
-        <Button variant="primary" onClick={handleSubmit} disabled={!canSubmit}>
+        <Button variant="primary" onClick={handleSubmit} disabled={!canSubmit} title={submitTitle}>
           {submitting ? "Working…" : mode === "file" ? "Upload" : "Import URL"}
         </Button>
       </div>

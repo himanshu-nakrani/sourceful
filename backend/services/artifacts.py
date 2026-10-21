@@ -17,7 +17,7 @@ try:
 except ImportError:
     orjson = None
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.settings import settings
 
 
@@ -248,11 +248,10 @@ async def delete_artifact(artifact_id: str, workspace_id: str) -> bool:
     Returns:
         True if the artifact was deleted, False if it didn't exist.
     """
-    existing = await get_artifact(artifact_id, workspace_id)
-    if not existing:
-        return False
-    await execute(
-        "DELETE FROM workspace_artifacts WHERE id = ? AND workspace_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and DELETE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        "DELETE FROM workspace_artifacts WHERE id = ? AND workspace_id = ? RETURNING id",
         (artifact_id, workspace_id),
     )
-    return True
+    return bool(row)

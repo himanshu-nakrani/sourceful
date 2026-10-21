@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.settings import settings
 
 
@@ -204,16 +204,15 @@ async def update_member_role(
     """
     if role not in ROLES:
         raise ValueError(f"Invalid role: {role}")
-    existing = await fetch_one(
-        "SELECT id FROM workspace_members WHERE id = ? AND workspace_id = ?",
-        (member_id, workspace_id),
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and UPDATE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    updated = await execute_returning(
+        "UPDATE workspace_members SET role = ? WHERE id = ? AND workspace_id = ? RETURNING id",
+        (role, member_id, workspace_id),
     )
-    if not existing:
+    if not updated:
         return None
-    await execute(
-        "UPDATE workspace_members SET role = ? WHERE id = ?",
-        (role, member_id),
-    )
+
     row = await fetch_one(
         """
         SELECT m.id, m.workspace_id, m.user_id, m.role, m.joined_at, u.email
@@ -236,14 +235,13 @@ async def remove_member(workspace_id: str, member_id: str) -> bool:
     Returns:
         True if the member was removed, False if not found.
     """
-    existing = await fetch_one(
-        "SELECT id FROM workspace_members WHERE id = ? AND workspace_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and DELETE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        "DELETE FROM workspace_members WHERE id = ? AND workspace_id = ? RETURNING id",
         (member_id, workspace_id),
     )
-    if not existing:
-        return False
-    await execute("DELETE FROM workspace_members WHERE id = ?", (member_id,))
-    return True
+    return bool(row)
 
 
 # ---------- Invitations ----------------------------------------------------
@@ -323,14 +321,13 @@ async def revoke_invitation(workspace_id: str, invitation_id: str) -> bool:
     Returns:
         True if the invitation was revoked, False if not found.
     """
-    existing = await fetch_one(
-        "SELECT id FROM workspace_invitations WHERE id = ? AND workspace_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and DELETE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        "DELETE FROM workspace_invitations WHERE id = ? AND workspace_id = ? RETURNING id",
         (invitation_id, workspace_id),
     )
-    if not existing:
-        return False
-    await execute("DELETE FROM workspace_invitations WHERE id = ?", (invitation_id,))
-    return True
+    return bool(row)
 
 
 async def accept_invitation(token: str, *, user_id: str) -> dict[str, Any] | None:

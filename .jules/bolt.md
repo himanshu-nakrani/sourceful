@@ -88,3 +88,6 @@
 ## 2026-05-26 - Optimize DELETE/UPDATE existence checks with execute_returning
 **Learning:** Checking for entity existence sequentially via `fetch_one` before deleting or updating it adds an unnecessary database roundtrip. The `execute_returning` helper function supports `RETURNING` clauses in both SQLite and Postgres.
 **Action:** Use `execute_returning` with a `RETURNING id` clause on `DELETE` and `UPDATE` statements to combine existence checks with the modification operation into a single database network roundtrip.
+## 2026-05-27 - Use existing execute_returning for DELETE/UPDATE
+**Learning:** Checking for entity existence sequentially via `fetch_one` before deleting or updating it adds an unnecessary database roundtrip. The `execute_returning` helper function supports `RETURNING` clauses in both SQLite and Postgres.
+**Action:** Use `execute_returning` with a `RETURNING id` clause on `DELETE` and `UPDATE` statements to combine existence checks with the modification operation into a single database network roundtrip.

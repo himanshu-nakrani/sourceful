@@ -12,3 +12,6 @@
 ## 2024-05-18 - Added required indicator to TextField
 **Learning:** Adding a visual required indicator (`*`) next to labels in a reusable `TextField` component is a great, simple UX win, especially in forms like Authentication. When implementing visual required indicators (like asterisks), use `aria-hidden="true"` so that screen readers don't read "star" out loud. The `required` attribute on the underlying `<input>` itself handles semantic accessibility.
 **Action:** Always add visual indicators to inputs that are required, while ensuring they are hidden from screen readers using `aria-hidden="true"`.
+## 2024-05-18 - Provide Actionable Empty States and Clear Search Affordances
+**Learning:** When users filter lists (like document search) and receive no results, a static "No matches" empty state can be a dead end. Additionally, clearing a long search term via backspace is tedious. Adding a clear button (e.g., an 'X' icon) within the search input and an explicit "Clear search" CTA in the empty state immediately resolves the user's dead end and reduces interaction friction.
+**Action:** When implementing search or filter inputs, always ensure there is a single-click action to clear the input, and ensure empty states resulting from filters offer an actionable button to clear those filters.

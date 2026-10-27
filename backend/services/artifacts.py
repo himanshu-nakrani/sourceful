@@ -17,7 +17,7 @@ try:
 except ImportError:
     orjson = None
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.settings import settings
 
 
@@ -207,9 +207,6 @@ async def update_artifact(
     Raises:
         ValueError: If title or content is provided but empty.
     """
-    existing = await get_artifact(artifact_id, workspace_id)
-    if not existing:
-        return None
     sets: list[str] = []
     params: list[Any] = []
     if title is not None:
@@ -228,13 +225,19 @@ async def update_artifact(
         # ⚡ BOLT OPTIMIZATION: Use fast orjson serialization when available.
         params.append(orjson.dumps(metadata).decode("utf-8") if orjson else json.dumps(metadata))
     if not sets:
-        return existing
+        return await get_artifact(artifact_id, workspace_id)
     sets.append(f"updated_at = {TIMESTAMP_SQL}")
     params.extend([artifact_id, workspace_id])
-    await execute(
-        f"UPDATE workspace_artifacts SET {', '.join(sets)} WHERE id = ? AND workspace_id = ?",
+
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and UPDATE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        f"UPDATE workspace_artifacts SET {', '.join(sets)} WHERE id = ? AND workspace_id = ? RETURNING id",
         tuple(params),
     )
+    if not row:
+        return None
+
     return await get_artifact(artifact_id, workspace_id)
 
 
@@ -248,11 +251,10 @@ async def delete_artifact(artifact_id: str, workspace_id: str) -> bool:
     Returns:
         True if the artifact was deleted, False if it didn't exist.
     """
-    existing = await get_artifact(artifact_id, workspace_id)
-    if not existing:
-        return False
-    await execute(
-        "DELETE FROM workspace_artifacts WHERE id = ? AND workspace_id = ?",
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and DELETE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        "DELETE FROM workspace_artifacts WHERE id = ? AND workspace_id = ? RETURNING id",
         (artifact_id, workspace_id),
     )
-    return True
+    return row is not None

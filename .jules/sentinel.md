@@ -59,3 +59,8 @@
 **Vulnerability:** The `content` field in `CreateArtifactRequest` and `UpdateArtifactRequest` lacked a maximum length validation. This could allow malicious users to submit excessively large payloads, potentially causing Denial of Service (DoS) by exhausting memory or database storage.
 **Learning:** Input validation in a FastAPI application should be handled idiomaticaly using Pydantic's `Field` attributes on the schema, ensuring early rejection (HTTP 422) before reaching router logic.
 **Prevention:** Always define `max_length` using Pydantic's `Field` for user-provided string inputs, especially those representing free-form text or document content, to prevent unbounded payload submissions.
+
+## 2026-10-27 - Enforce Input Length Limits on Pydantic Request Models
+**Vulnerability:** Missing input length limits on unbounded string fields like `document_id`, `conversation_id`, `message_id`, `workspace_id`, and `user_id` in Pydantic request models.
+**Learning:** These fields, intended for bounded identifiers (e.g., UUIDs), were configured in `backend/models.py` with `min_length` but lacked `max_length` constraints. This could potentially allow excessively large payload injections, leading to Denial of Service (DoS) due to excessive memory consumption and CPU parsing overhead.
+**Prevention:** Always enforce a `max_length` (e.g., `max_length=128`) constraint in Pydantic `Field()` definitions for string identifiers in request models to reject unreasonably large inputs at the validation boundary.

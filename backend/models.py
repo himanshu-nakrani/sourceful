@@ -10,7 +10,7 @@ from backend.settings import settings
 
 class Citation(BaseModel):
     chunk_id: str
-    document_id: str
+    document_id: str = Field(max_length=128)
     excerpt: str
     score: float
     page_number: int | None = None
@@ -38,7 +38,7 @@ class DocumentResponse(BaseModel):
     created_at: datetime
     processed_at: datetime | None = None
     last_error: str | None = None
-    workspace_id: str | None = None
+    workspace_id: str | None = Field(default=None, max_length=128)
 
 
 class DocumentListResponse(BaseModel):
@@ -47,7 +47,7 @@ class DocumentListResponse(BaseModel):
 
 class JobResponse(BaseModel):
     id: str
-    document_id: str
+    document_id: str = Field(max_length=128)
     status: str
     stage: str
     progress: float
@@ -64,7 +64,7 @@ class JobResponse(BaseModel):
 
 
 class IngestResponse(BaseModel):
-    document_id: str
+    document_id: str = Field(max_length=128)
     job_id: str | None = None
     status: str
     embedding_model: str
@@ -74,17 +74,17 @@ class IngestResponse(BaseModel):
 class ChatRequest(BaseModel):
     provider: Literal["openai", "gemini"]
     model: str = Field(max_length=128)
-    document_id: str | None = None
+    document_id: str | None = Field(default=None, max_length=128)
     document_ids: list[str] | None = None
     question: str = Field(min_length=1, max_length=settings.max_question_length)
-    conversation_id: str | None = None
+    conversation_id: str | None = Field(default=None, min_length=1, max_length=128)
     top_k: int | None = Field(default=None, ge=1, le=20)
     similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     # Phase 1 — workspace-scoped chat. When ``workspace_id`` is provided and no
     # explicit ``document_id``/``document_ids`` are supplied, retrieval spans
     # all ready sources in the workspace. ``source_ids`` optionally narrows
     # retrieval to a subset of ``workspace_sources.id`` values.
-    workspace_id: str | None = None
+    workspace_id: str | None = Field(default=None, max_length=128)
     source_ids: list[str] | None = None
     # Phase 2 — analysis mode. ``ask`` is the default grounded Q&A mode.
     # ``compare`` produces structured similarities/differences across sources;
@@ -97,9 +97,9 @@ class ChatRequest(BaseModel):
 class RerunMessageRequest(BaseModel):
     provider: Literal["openai", "gemini"]
     model: str = Field(max_length=128)
-    document_id: str
-    conversation_id: str = Field(min_length=1)
-    message_id: str = Field(min_length=1)
+    document_id: str = Field(max_length=128)
+    conversation_id: str = Field(min_length=1, max_length=128)
+    message_id: str = Field(min_length=1, max_length=128)
     top_k: int | None = Field(default=None, ge=1, le=20)
     similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -115,22 +115,22 @@ class MessageResponse(BaseModel):
 
 class ConversationResponse(BaseModel):
     id: str
-    document_id: str
+    document_id: str = Field(max_length=128)
     title: str
     created_at: datetime
     updated_at: datetime
     messages: list[MessageResponse] = []
-    workspace_id: str | None = None
+    workspace_id: str | None = Field(default=None, max_length=128)
 
 
 class ConversationListItem(BaseModel):
     id: str
-    document_id: str
+    document_id: str = Field(max_length=128)
     title: str
     created_at: datetime
     updated_at: datetime
     message_count: int = 0
-    workspace_id: str | None = None
+    workspace_id: str | None = Field(default=None, max_length=128)
 
 
 class ConversationListResponse(BaseModel):
@@ -143,7 +143,7 @@ class UpdateConversationRequest(BaseModel):
 
 class ChunkPreviewResponse(BaseModel):
     chunk_id: str
-    document_id: str
+    document_id: str = Field(max_length=128)
     content: str
     page_number: int | None = None
     chunk_index: int
@@ -227,6 +227,7 @@ class AnalyticsOverviewResponse(BaseModel):
 
 class StructuredExtractRequest(BaseModel):
     """Request body for structured field extraction (Phase 2.6)."""
+
     provider: Literal["openai", "gemini"]
     model: str = Field(max_length=128)
     schema_fields: dict = Field(
@@ -237,7 +238,8 @@ class StructuredExtractRequest(BaseModel):
 
 class StructuredExtractResponse(BaseModel):
     """Response from structured field extraction."""
-    document_id: str
+
+    document_id: str = Field(max_length=128)
     fields: dict
     model: str
     token_usage: dict | None = None
@@ -246,8 +248,8 @@ class StructuredExtractResponse(BaseModel):
 class FeedbackRequest(BaseModel):
     """Phase 3.8: thumbs-up/down per assistant message."""
 
-    conversation_id: str = Field(min_length=1)
-    message_id: str = Field(min_length=1)
+    conversation_id: str = Field(min_length=1, max_length=128)
+    message_id: str = Field(min_length=1, max_length=128)
     rating: Literal["up", "down"]
     comment: str | None = Field(default=None, max_length=2000)
 
@@ -300,7 +302,7 @@ class WorkspaceSourceResponse(BaseModel):
     id: str
     workspace_id: str
     source_type: Literal["file", "url", "note"]
-    document_id: str | None = None
+    document_id: str | None = Field(default=None, max_length=128)
     source_title: str
     source_url: str | None = None
     mime_type: str | None = None
@@ -331,11 +333,13 @@ class CreateUrlSourceRequest(BaseModel):
 class ArtifactResponse(BaseModel):
     id: str
     workspace_id: str
-    artifact_type: Literal["user_note", "saved_answer", "saved_brief", "extraction_result"]
+    artifact_type: Literal[
+        "user_note", "saved_answer", "saved_brief", "extraction_result"
+    ]
     title: str
     content: str
     metadata: dict = Field(default_factory=dict)
-    source_message_id: str | None = None
+    source_message_id: str | None = Field(default=None, max_length=128)
     created_by: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -346,11 +350,13 @@ class ArtifactListResponse(BaseModel):
 
 
 class CreateArtifactRequest(BaseModel):
-    artifact_type: Literal["user_note", "saved_answer", "saved_brief", "extraction_result"] = "user_note"
+    artifact_type: Literal[
+        "user_note", "saved_answer", "saved_brief", "extraction_result"
+    ] = "user_note"
     title: str = Field(min_length=1, max_length=300)
     content: str = Field(min_length=1, max_length=100_000)
     metadata: dict | None = None
-    source_message_id: str | None = None
+    source_message_id: str | None = Field(default=None, max_length=128)
 
 
 class UpdateArtifactRequest(BaseModel):
@@ -360,9 +366,11 @@ class UpdateArtifactRequest(BaseModel):
 
 
 class SaveAssistantMessageRequest(BaseModel):
-    message_id: str = Field(min_length=1)
+    message_id: str = Field(min_length=1, max_length=128)
     title: str | None = Field(default=None, max_length=300)
-    artifact_type: Literal["saved_answer", "saved_brief", "extraction_result"] | None = None
+    artifact_type: (
+        Literal["saved_answer", "saved_brief", "extraction_result"] | None
+    ) = None
 
 
 class WorkspaceMemberResponse(BaseModel):
@@ -379,7 +387,7 @@ class WorkspaceMemberListResponse(BaseModel):
 
 
 class CreateWorkspaceMemberRequest(BaseModel):
-    user_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1, max_length=128)
     role: Literal["owner", "admin", "editor", "viewer"] = "viewer"
 
 

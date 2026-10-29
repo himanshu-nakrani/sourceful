@@ -20,6 +20,7 @@ import {
   Upload,
   Users,
   PanelLeftClose,
+  X,
 } from "lucide-react";
 import {
   deleteConversation,
@@ -425,7 +426,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
       {/* Search */}
       <div className="relative px-3 pb-2 flex-shrink-0">
         <div
-          className="flex items-center gap-2 px-2.5 py-1.5 transition-colors"
+          className="flex items-center gap-2 px-2.5 py-1.5 transition-colors relative"
           style={{
             background: "var(--bg-surface)",
             border: `1px solid ${searchFocused ? "var(--border-strong)" : "var(--border)"}`,
@@ -433,7 +434,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
             boxShadow: searchFocused ? "0 0 0 2px var(--accent-primary-soft)" : "none",
           }}
         >
-          <Search size={12} style={{ color: "var(--text-muted)" }} />
+          <Search size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
           {/* [a11y] Added aria-label — input has no associated label element */}
           <input
             value={search}
@@ -442,9 +443,27 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
             onBlur={() => setSearchFocused(false)}
             placeholder="Search documents"
             aria-label="Search documents"
-            className="w-full bg-transparent text-xs outline-none"
-            style={{ color: "var(--text-primary)" }}
+            className="w-full bg-transparent text-xs outline-none min-w-0"
+            style={{ color: "var(--text-primary)", paddingRight: search ? "24px" : "0" }}
           />
+          <AnimatePresence>
+            {search ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={transitionFast}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center"
+              >
+                <GhostIconButton
+                  label="Clear search"
+                  onClick={() => setSearch("")}
+                >
+                  <X size={12} />
+                </GhostIconButton>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -524,6 +543,13 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
               search
                 ? "Try a different search term."
                 : "Upload a document to start grounding chat in your sources."
+            }
+            action={
+              search ? (
+                <Button variant="secondary" size="sm" onClick={() => setSearch("")}>
+                  Clear search
+                </Button>
+              ) : undefined
             }
           />
         ) : null}

@@ -15,3 +15,6 @@
 ## 2024-05-18 - Provide Actionable Empty States and Clear Search Affordances
 **Learning:** When users filter lists (like document search) and receive no results, a static "No matches" empty state can be a dead end. Additionally, clearing a long search term via backspace is tedious. Adding a clear button (e.g., an 'X' icon) within the search input and an explicit "Clear search" CTA in the empty state immediately resolves the user's dead end and reduces interaction friction.
 **Action:** When implementing search or filter inputs, always ensure there is a single-click action to clear the input, and ensure empty states resulting from filters offer an actionable button to clear those filters.
+## 2024-11-20 - Use dynamic tooltips to clarify disabled element states
+**Learning:** A statically labelled disabled button (e.g. `title="Send message"`) does not tell the user *why* they cannot interact with it, creating a confusing dead-end.
+**Action:** Always provide dynamic `title` attributes on disabled buttons that change based on application state to clearly explain the blocker (e.g. `title={isLoading ? "Wait for response to finish" : "Enter a question to send"}`).

@@ -693,7 +693,13 @@ export function NotebookView({ documentId, initialPage = 1, onClose }: NotebookV
                     type="submit"
                     variant="primary"
                     aria-label="Send message"
-                    title="Send message"
+                    title={
+                      isLoading
+                        ? "Wait for response to finish"
+                        : !input.trim()
+                          ? "Enter a question to send"
+                          : "Send message"
+                    }
                     disabled={isLoading || !input.trim()}
                   >
                     <Send className="h-4 w-4" />

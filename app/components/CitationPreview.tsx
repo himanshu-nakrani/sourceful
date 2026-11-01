@@ -119,6 +119,7 @@ export function CitationPreview({
       onMouseLeave={hide}
       onFocus={(event) => show(event.currentTarget)}
       onBlur={hide}
+      onClickCapture={() => { clearTimers(); setOpen(false); }}
     >
       {children}
       {createPortal(

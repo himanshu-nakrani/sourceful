@@ -13,20 +13,22 @@ import {
   Bug,
   ChevronDown,
   ChevronRight,
-  FileText,
   Focus,
   KeyRound,
   LayoutPanelLeft,
   Loader2,
   Monitor,
   PanelLeftOpen,
+  PanelRight,
   RefreshCcw,
-  Settings,
+  Search,
   StopCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 import TrustAnalyticsPanel from "./TrustAnalyticsPanel";
+import DocumentLibrary from "./DocumentLibrary";
 import MessageBubble from "./MessageBubble";
-import SourceCard from "./SourceCard";
+import SourceInspector from "./SourceInspector";
 import { MessageSkeleton } from "./Skeleton";
 import { Button, EmptyState, ErrorBanner, StatusDot } from "./ui";
 import {
@@ -54,6 +56,7 @@ import { useToast } from "./Toast";
 
 interface ChatAreaProps {
   onUploadClick: () => void;
+  onCommandPalette: () => void;
 }
 
 /** Distance from the bottom (px) within which auto-scroll stays engaged. */
@@ -69,7 +72,7 @@ const STICKY_THRESHOLD_PX = 80;
  * @param onUploadClick - Callback invoked when the user chooses to upload a document from the empty state
  * @returns The chat area React element
  */
-export default function ChatArea({ onUploadClick }: ChatAreaProps) {
+export default function ChatArea({ onUploadClick, onCommandPalette }: ChatAreaProps) {
   const { state, dispatch } = useStore();
   const {
     documents,
@@ -80,6 +83,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
     appendToMessage,
     refreshConversations,
     selectConversation,
+    selectDocument,
     setMessages,
     updateMessageSources,
     updateMessageId,
@@ -94,6 +98,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const [workspaceSources, setWorkspaceSources] = useState<WorkspaceSource[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[] | null>(null);
   const [sourceFilterOpen, setSourceFilterOpen] = useState(false);
+  const sourceFilterId = React.useId();
+  const sourceFilterTriggerRef = useRef<HTMLButtonElement>(null);
 
   const chatLayout = settings.chatLayout ?? "default";
   const router = useRouter();
@@ -117,10 +123,39 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const [rerunningMessageId, setRerunningMessageId] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [sourcePanelOpen, setSourcePanelOpen] = useState(true);
+  const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false);
+  const [inspectedSources, setInspectedSources] = useState<Citation[] | null>(null);
+  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
+  const desktopSourceToggleRef = useRef<HTMLButtonElement>(null);
   const [lastStages, setLastStages] = useState<RetrievalStages | null>(null);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
   const [lastGrounding, setLastGrounding] = useState<GroundingSummary | null>(null);
   const [streamEvents, setStreamEvents] = useState<Array<{ at: number; label: string; detail?: string }>>([]);
+  const latestAnswer = useMemo(
+    () => [...messages].reverse().find((message) => message.role === "assistant"),
+    [messages]
+  );
+  const visibleSources = inspectedSources ?? (streaming && currentSources.length ? currentSources : latestAnswer?.sources ?? []);
+  useOnChange(`${activeDocumentId}:${activeConversationId}:${streaming}`, () => {
+    setInspectedSources(null);
+    setSelectedChunkId(null);
+    setMobileSourcesOpen(false);
+  });
+  const inspectSources = useCallback((sources: Citation[], selected?: Citation) => {
+    setInspectedSources(sources);
+    setSelectedChunkId((selected ?? sources[0])?.chunk_id ?? null);
+    setSourcePanelOpen(true);
+    if (!window.matchMedia("(min-width: 1280px)").matches) setMobileSourcesOpen(true);
+  }, []);
+  const handleCitationSelect = useCallback((citation: Citation, sources: Citation[]) => inspectSources(sources, citation), [inspectSources]);
+  useOnChange(chatLayout, (layout) => setSourcePanelOpen(layout !== "focus"));
+  const closeSources = () => {
+    setSourcePanelOpen(false);
+    setMobileSourcesOpen(false);
+    if (window.matchMedia("(min-width: 1280px)").matches) desktopSourceToggleRef.current?.focus();
+  };
+
   const [feedbackState, setFeedbackState] = useState<Record<string, MessageFeedbackState>>({});
   const [lastHint, setLastHint] = useState<ActiveLearningHint | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -639,46 +674,17 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   }, [activeConversationId, messages.length, streaming, stopStreaming]);
 
   const renderEmptyState = () => {
-    if (!settings.providerApiKey.trim()) {
-      return (
-        <EmptyState
-          icon={<KeyRound size={16} />}
-          title="API Key Required"
-          description="Add your OpenAI or Google AI API key in Settings to start chatting with your documents."
-          action={
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
-            >
-              Open Settings
-            </Button>
-          }
-        />
-      );
-    }
+    const hasProvider = Boolean(settings.providerApiKey.trim());
 
-    if (!activeDocument) {
+    if (!activeDocument) return <DocumentLibrary onUploadClick={onUploadClick} />;
+
+    if (!hasProvider) {
       return (
         <EmptyState
-          icon={<FileText size={16} />}
-          title="Welcome to Document RAG"
-          description="Upload a document, inspect the extracted chunks, and ask grounded questions with source citations."
-          action={
-            <div className="flex gap-2">
-              <Button variant="primary" size="sm" onClick={onUploadClick}>
-                Upload Document
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
-              >
-                <Settings size={13} />
-                Open Settings
-              </Button>
-            </div>
-          }
+          icon={<KeyRound size={20} />}
+          title="Connect a model"
+          description="Add an OpenAI or Gemini API key in Settings to ask questions about this document."
+          action={<Button variant="primary" onClick={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}>Connect provider</Button>}
         />
       );
     }
@@ -687,92 +693,41 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       const failed = activeDocument.status === "error";
       return (
         <EmptyState
-          icon={
-            failed ? (
-              <AlertTriangle size={16} />
-            ) : (
-              <Loader2 size={16} className="animate-spin" />
-            )
-          }
-          title={failed ? "Indexing Failed" : "Indexing In Progress"}
-          description={
-            failed
-              ? activeDocument.last_error || "The document could not be indexed."
-              : "The worker is preparing chunks and embeddings for this document."
-          }
-          action={
-            failed ? (
-              <Button variant="primary" size="sm" onClick={handleRetryDocument}>
-                <RefreshCcw size={13} />
-                Retry Indexing
-              </Button>
-            ) : undefined
-          }
+          icon={failed ? <AlertTriangle size={20} /> : <Loader2 size={20} className="animate-spin" />}
+          title={failed ? "This document needs another try" : "Getting your document ready"}
+          description={failed ? activeDocument.last_error || "We couldn’t prepare this document. Try processing it again." : "We’re reading your file and preparing it for questions. This can take a moment."}
+          action={failed ? <Button variant="primary" onClick={handleRetryDocument}><RefreshCcw size={14} /> Try again</Button> : undefined}
         />
       );
     }
 
     return (
-      <motion.div
-        className="flex flex-col items-center justify-center py-20"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: EASE_OUT }}
-      >
-        <div
-          className="flex items-center justify-center rounded-lg mb-5"
-          style={{
-            width: 52,
-            height: 52,
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <FileText size={22} style={{ color: "var(--accent-primary)" }} />
-        </div>
-        <h3
-          className="display text-lg font-semibold mb-1"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Ask about {activeDocument.filename}
-        </h3>
-        <p className="text-sm mb-8 text-center max-w-md" style={{ color: "var(--text-tertiary)" }}>
-          Retrieved chunks will appear with similarity scores and page references.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
+      <div className="mx-auto w-full max-w-[620px] py-10 sm:py-16">
+        <p className="index-label mb-5" style={{ color: "var(--accent-primary)" }}>Document questions</p>
+        <h1 className="editorial-heading text-[42px] leading-[1.05] sm:text-[50px]" style={{ color: "var(--text-primary)" }}>Ask this document.</h1>
+        <p className="mt-4 max-w-[390px] text-sm leading-7" style={{ color: "var(--text-secondary)" }}>Start with a question. Each answer includes the source passages used to write it.</p>
+        <div className="mt-10" style={{ borderTop: "1px solid var(--border)" }}>
           {suggestions.map((suggestion, i) => (
-            <motion.button
+            <button
               key={suggestion}
               type="button"
-              onClick={() => {
-                setQuestion(suggestion);
-                textareaRef.current?.focus();
-              }}
-              className="text-left px-4 py-3 rounded-lg text-sm transition-colors"
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-secondary)",
-              }}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + i * 0.05, duration: 0.25, ease: EASE_OUT }}
-              whileHover={{
-                borderColor: "var(--border-hover)",
-                background: "var(--bg-surface-hover)",
-              }}
+              onClick={() => { setQuestion(suggestion); textareaRef.current?.focus(); }}
+              className="focus-ring group flex w-full items-center gap-4 py-4 text-left text-[13px] transition-colors hover:bg-[var(--bg-surface-hover)]"
+              style={{ borderBottom: "1px solid var(--border)", color: "var(--text-secondary)" }}
             >
-              <span className="inline-block mr-1.5" style={{ color: "var(--accent-primary)" }}>→</span>
-              {suggestion}
-            </motion.button>
+              <span className="data-num pl-1 text-[10px]" style={{ color: "var(--text-muted)" }}>{String(i + 1).padStart(2, "0")}</span>
+              <span className="flex-1">{suggestion}</span>
+              <ArrowUp size={14} className="mr-2 rotate-45 opacity-40 transition-opacity group-hover:opacity-100" style={{ color: "var(--accent-primary)" }} />
+            </button>
           ))}
         </div>
-      </motion.div>
+      </div>
     );
   };
 
-  const layoutMaxWidth =
-    chatLayout === "focus" ? "max-w-4xl" : chatLayout === "research" ? "max-w-full" : "max-w-3xl";
+  const layoutMaxWidth = !activeDocument
+    ? "max-w-[1120px]"
+    : chatLayout === "focus" ? "max-w-[780px]" : chatLayout === "research" ? "max-w-full" : "max-w-[720px]";
 
   const multiDocStatus = activeDocuments.some((d) => d.status === "error")
     ? ("error" as const)
@@ -787,185 +742,277 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         : ("processing" as const);
 
   return (
-    <div className="flex-1 flex flex-col h-full w-full min-w-0">
-      {/* Header bar — hairline bottom border, ghost icon controls */}
-      <div
-        className="flex items-center gap-2 px-4 flex-shrink-0 relative"
-        style={{
-          height: "var(--header-height)",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--bg-primary)",
-        }}
+    <main className="flex h-full w-full min-w-0 flex-1">
+      <div className="relative flex h-full min-w-0 flex-1 flex-col">
+      <header
+        className="relative z-20 flex shrink-0 items-center gap-3 px-4 sm:px-7"
+        style={{ minHeight: "var(--header-height)", borderBottom: "1px solid var(--border)", background: "var(--bg-primary)" }}
       >
-        <motion.button
+        <button
           type="button"
           onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
-          className={`p-1.5 rounded-md transition-colors ${sidebarOpen ? 'md:hidden' : ''}`}
+          className={`focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--bg-secondary)] ${sidebarOpen ? "md:hidden" : ""}`}
           style={{ color: "var(--text-tertiary)" }}
           aria-label="Toggle sidebar"
           title="Toggle sidebar"
-          whileHover={{ color: "var(--text-secondary)", background: "var(--bg-surface)" }}
-          whileTap={{ scale: 0.92 }}
-        >
-          <PanelLeftOpen size={16} />
-        </motion.button>
-        {isMultiDoc ? (
-          <div className="flex items-center gap-2 min-w-0">
-            <StatusDot
-              tone={multiDocStatus}
-              pulse={multiDocStatus === "processing"}
-            />
-            <span
-              className="text-[13px] font-medium truncate"
-              style={{ color: "var(--text-primary)" }}
-            >
-              {activeDocumentIds.length} documents
-            </span>
-            <span
-              className="data-num flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded"
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-tertiary)",
-              }}
-            >
-              {activeDocuments.reduce((sum, d) => sum + d.chunk_count, 0)} chunks
-            </span>
-          </div>
-        ) : activeDocument ? (
-          <div className="flex items-center gap-2 min-w-0">
-            <StatusDot
-              tone={singleDocStatus}
-              pulse={singleDocStatus === "processing"}
-            />
-            <span
-              className="text-[13px] font-medium truncate"
-              style={{ color: "var(--text-primary)" }}
-              title={activeDocument.filename}
-            >
-              {activeDocument.filename}
-            </span>
-            <span
-              className="data-num flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded"
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-tertiary)",
-              }}
-            >
-              {activeDocument.chunk_count} chunks
-            </span>
-          </div>
-        ) : (
-          <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Select a document to start
-          </span>
-        )}
-        <div className="flex-1" />
-        {activeDocument && !isMultiDoc && (
-          <motion.button
-            type="button"
-            onClick={() => router.push(`/documents/${activeDocument.id}/notebook`)}
-            className="p-1.5 rounded-md flex items-center gap-1.5 mr-1 transition-colors"
-            style={{ color: "var(--text-tertiary)" }}
-            aria-label="Open notebook view"
-            title="Open notebook view"
-            whileHover={{ color: "var(--text-secondary)", background: "var(--bg-surface)" }}
-            whileTap={{ scale: 0.92 }}
-          >
-            <BookOpen size={14} />
-            <span className="text-[11px] font-medium hidden sm:inline">Notebook</span>
-          </motion.button>
-        )}
-        {/* Layout mode toggle — segmented control with hairline dividers */}
-        <div
-          className="flex items-center rounded-md overflow-hidden mr-1"
-          style={{ border: "1px solid var(--border)", background: "var(--bg-secondary)" }}
-          role="group"
-          aria-label="Chat layout mode"
-        >
-          {(["default", "focus", "research"] as const).map((mode, index) => {
-            const icons = { default: <Monitor size={12} />, focus: <Focus size={12} />, research: <LayoutPanelLeft size={12} /> };
-            const titles = { default: "Default", focus: "Focus", research: "Research" };
-            const active = chatLayout === mode;
-            return (
-              <motion.button
-                key={mode}
-                type="button"
-                onClick={() => {
-                  dispatch({ type: "SET_SETTINGS", payload: { chatLayout: mode } });
-                  // Focus mode: collapse sidebar. Default/Research: restore it.
-                  if (mode === "focus") {
-                    dispatch({ type: "SET_SIDEBAR", payload: false });
-                  } else {
-                    dispatch({ type: "SET_SIDEBAR", payload: true });
-                  }
-                }}
-                aria-pressed={active}
-                aria-label={`${titles[mode]} layout`}
-                title={`${titles[mode]} layout`}
-                className="px-2 py-1.5 flex items-center gap-1 text-[10px] font-medium transition-colors"
-                style={{
-                  color: active ? "var(--text-primary)" : "var(--text-muted)",
-                  background: active ? "var(--bg-surface)" : "transparent",
-                  borderLeft: index > 0 ? "1px solid var(--border)" : "none",
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {icons[mode]}
-                {active ? <span>{titles[mode]}</span> : null}
-              </motion.button>
-            );
-          })}
-        </div>
-        <motion.button
-          type="button"
-          onClick={() => setAnalyticsOpen((v) => !v)}
-          className="p-1.5 rounded-md flex items-center justify-center transition-colors"
-          style={{
-            color: analyticsOpen ? "var(--accent-primary)" : "var(--text-tertiary)",
-            background: analyticsOpen ? "var(--accent-primary-soft)" : "transparent",
-          }}
-          aria-label="Toggle trust analytics panel"
-          aria-pressed={analyticsOpen}
-          title="Trust analytics"
-          whileHover={{ color: analyticsOpen ? "var(--accent-primary)" : "var(--text-secondary)" }}
-          whileTap={{ scale: 0.92 }}
-        >
-          <BarChart3 size={14} />
-        </motion.button>
-        <motion.button
-          type="button"
-          onClick={() => setDebugOpen((v) => !v)}
-          className="p-1.5 rounded-md flex items-center gap-1.5 transition-colors"
-          style={{
-            color: debugOpen ? "var(--accent-secondary)" : "var(--text-tertiary)",
-            background: debugOpen ? "var(--accent-secondary-soft)" : "transparent",
-          }}
-          aria-label="Toggle retrieval debug panel"
-          aria-pressed={debugOpen}
-          title="Retrieval debug panel"
-          whileHover={{ color: debugOpen ? "var(--accent-secondary)" : "var(--text-secondary)" }}
-          whileTap={{ scale: 0.92 }}
-        >
-          <Bug size={14} />
-          <span className="text-[11px] font-medium hidden sm:inline">Debug</span>
-        </motion.button>
-        {activeDocument && activeDocument.status !== "ready" ? (
-          <motion.button
-            type="button"
-            onClick={handleRetryDocument}
-            className="p-1.5 rounded-md flex items-center justify-center transition-colors"
-            style={{ color: "var(--text-tertiary)" }}
-            aria-label="Retry processing document"
-            title="Retry processing document"
-            whileHover={{ rotate: 180, color: "var(--text-secondary)" }}
-            transition={{ duration: 0.4 }}
-          >
-            <RefreshCcw size={14} />
-          </motion.button>
+        ><PanelLeftOpen size={19} /></button>
+        <nav className="flex min-w-0 flex-1 items-center gap-2.5 text-xs" aria-label="Breadcrumb">
+          {activeDocument || isMultiDoc ? (
+            <>
+              <button type="button" onClick={() => void selectDocument(null)} className="focus-ring shrink-0 rounded-sm px-1 py-2 transition-colors hover:text-[var(--text-primary)]" style={{ color: "var(--text-muted)" }}>Library</button>
+              <span aria-hidden="true" style={{ color: "var(--text-faint)" }}>/</span>
+              <span className="truncate font-medium" style={{ color: "var(--text-primary)" }} title={isMultiDoc ? undefined : activeDocument?.filename}>{isMultiDoc ? `${activeDocumentIds.length} documents` : activeDocument?.filename}</span>
+              <StatusDot tone={isMultiDoc ? multiDocStatus : singleDocStatus} pulse={(isMultiDoc ? multiDocStatus : singleDocStatus) === "processing"} />
+            </>
+          ) : (
+            <>
+              <span className="hidden truncate sm:inline" style={{ color: "var(--text-muted)" }}>{state.workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ?? "Workspace"}</span>
+              <span className="hidden sm:inline" aria-hidden="true" style={{ color: "var(--text-faint)" }}>/</span>
+              <span style={{ color: "var(--text-primary)" }}>Library</span>
+            </>
+          )}
+        </nav>
+        {!activeDocument ? (
+          <button type="button" onClick={onCommandPalette} className="focus-ring inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs" style={{ color: "var(--text-secondary)", borderColor: "var(--border)" }} aria-label="Open quick actions"><Search size={14} /><span className="hidden sm:inline">Quick actions</span><kbd className="data-num hidden text-[10px] sm:inline" style={{ color: "var(--text-muted)" }}>⌘ K</kbd></button>
         ) : null}
-      </div>
+        {activeDocument && !isMultiDoc ? (
+          <button type="button" onClick={() => router.push(`/documents/${activeDocument.id}/notebook`)} className="focus-ring hidden items-center gap-2 rounded-md px-2.5 py-2 text-xs transition-colors hover:bg-[var(--bg-secondary)] sm:flex" style={{ color: "var(--text-secondary)" }} aria-label="Open notebook view" title="Open notebook view"><BookOpen size={16} /><span className="hidden sm:inline">Notebook</span></button>
+        ) : null}
+        {activeDocument || isMultiDoc ? (
+          <details
+            className="relative"
+            onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }}
+            onKeyDown={(event) => { if (event.key === "Escape") { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}
+          >
+            <summary aria-label="View options" title="View options" className="focus-ring flex cursor-pointer list-none items-center gap-2 rounded-lg px-2.5 py-2 text-xs transition-colors hover:bg-[var(--bg-secondary)] [&::-webkit-details-marker]:hidden" style={{ color: "var(--text-secondary)" }}><SlidersHorizontal size={16} /><span className="hidden sm:inline">View</span><ChevronDown size={12} /></summary>
+            <div className="absolute right-0 top-full z-30 mt-2 w-[264px] rounded-lg p-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-lg)" }}>
+              {activeDocument && !isMultiDoc ? <button type="button" onClick={() => router.push(`/documents/${activeDocument.id}/notebook`)} className="focus-ring mb-3 flex w-full items-center gap-2 rounded-md px-2 py-2 text-xs sm:hidden" style={{ color: "var(--text-secondary)" }}><BookOpen size={15} />Open document</button> : null}
+              <p className="px-1 pb-2 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Workspace view</p>
+              <div className="grid grid-cols-3 gap-1 rounded-lg p-1" style={{ background: "var(--bg-secondary)" }} role="group" aria-label="Chat layout mode">
+                {(["default", "focus", "research"] as const).map((mode) => {
+                  const icons = { default: <Monitor size={15} />, focus: <Focus size={15} />, research: <LayoutPanelLeft size={15} /> };
+                  const titles = { default: "Default", focus: "Focus", research: "Research" };
+                  const active = chatLayout === mode;
+                  return <button key={mode} type="button" aria-pressed={active} aria-label={`${titles[mode]} layout`} className="focus-ring flex flex-col items-center gap-1.5 rounded-md px-1 py-2.5 text-[11px] transition-colors" style={{ color: active ? "var(--text-primary)" : "var(--text-muted)", background: active ? "var(--bg-surface)" : "transparent", boxShadow: active ? "var(--shadow-xs)" : "none" }} onClick={() => { dispatch({ type: "SET_SETTINGS", payload: { chatLayout: mode } }); dispatch({ type: "SET_SIDEBAR", payload: mode !== "focus" }); setSourcePanelOpen(mode !== "focus"); }}>{icons[mode]}{titles[mode]}</button>;
+                })}
+              </div>
+                </div>
+              <div className="flex items-center gap-2 px-2.5 pb-2.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                <span className="sr-only">Answer style</span>
+                <select aria-label="Answer style" value={chatMode} onChange={(event) => setChatMode(event.target.value as ChatMode)} className="focus-ring cursor-pointer rounded-md px-2 py-1.5 text-xs outline-none" style={{ background: "transparent", color: "var(--text-secondary)", border: "none" }}>
+                  <option value="ask">Ask a question</option>
+                  <option value="compare">Compare sources</option>
+                  <option value="extract">Extract details</option>
+                  <option value="brief">Create a brief</option>
+                </select>
+              </label>
+
+              {/* Per-source filter (Phase 1). Hidden when not inside a workspace
+                  or when the workspace has fewer than 2 ready sources. */}
+              {activeWorkspaceId && workspaceSourcesError ? (
+                <span
+                  className="ml-1 text-[10px] px-2 py-1 rounded-md"
+                  style={{ color: "var(--error)", border: "1px solid var(--error-soft)" }}
+                  role="alert"
+                  title={workspaceSourcesError}
+                >
+                  source filter unavailable
+                </span>
+              ) : activeWorkspaceId && workspaceSources.length >= 2 ? (
+                <div
+                  className="ml-1 relative"
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget)) setSourceFilterOpen(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && sourceFilterOpen) {
+                      event.stopPropagation();
+                      setSourceFilterOpen(false);
+                      sourceFilterTriggerRef.current?.focus();
+                    }
+                  }}
+                >
+                  <button
+                    ref={sourceFilterTriggerRef}
+                    type="button"
+                    onClick={() => setSourceFilterOpen((v) => !v)}
+                    aria-controls={sourceFilterId}
+                    aria-expanded={sourceFilterOpen}
+                    className="focus-ring flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-[var(--bg-secondary)]"
+                    style={{
+                      background: selectedSourceIds ? "var(--accent-primary-soft)" : "transparent",
+                      color: selectedSourceIds ? "var(--accent-primary)" : "var(--text-muted)",
+                      border: "none",
+                    }}
+                    title="Restrict retrieval to selected workspace sources"
+                  >
+                    Sources:{" "}
+                    <span className="data-num">
+                      {selectedSourceIds ? selectedSourceIds.length : "all"}
+                    </span>
+                  </button>
+                  {sourceFilterOpen ? (
+                    <div
+                      className="absolute bottom-full mb-1 left-0 z-30 w-72 rounded-lg overflow-hidden"
+                      style={{
+                        background: "var(--bg-elevated)",
+                        border: "none",
+                        boxShadow: "var(--shadow-md)",
+                      }}
+                      id={sourceFilterId}
+                      role="group"
+                      aria-label="Filter workspace sources"
+                    >
+                      <div
+                        className="flex items-center justify-between px-3 py-2"
+                        style={{ borderBottom: "1px solid var(--border)" }}
+                      >
+                        <span
+                          className="text-[10px] uppercase tracking-widest"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          Filter sources
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSourceIds(null);
+                            setSourceFilterOpen(false);
+                            sourceFilterTriggerRef.current?.focus();
+                          }}
+                          aria-label="Reset to all sources"
+                          className="text-[10px] font-medium focus-ring rounded px-1"
+                          style={{ color: "var(--accent-primary)" }}
+                        >
+                          Reset to all
+                        </button>
+                      </div>
+                      <ul className="max-h-64 overflow-y-auto">
+                        {workspaceSources.map((src) => {
+                          const checked = selectedSourceIds
+                            ? selectedSourceIds.includes(src.id)
+                            : false;
+                          const isReady = src.status === "ready";
+                          return (
+                            <li key={src.id}>
+                              <label
+                                className="w-full flex items-center gap-2 px-3 py-2 text-xs cursor-pointer transition-colors hover:bg-[var(--bg-surface)]"
+                                style={{
+                                  color: isReady
+                                    ? "var(--text-primary)"
+                                    : "var(--text-muted)",
+                                  opacity: isReady ? 1 : 0.6,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={!isReady}
+                                  style={{ accentColor: "var(--accent-primary)" }}
+                                  onChange={(e) => {
+                                    setSelectedSourceIds((prev) => {
+                                      const base = prev ?? [];
+                                      if (e.target.checked) {
+                                        return [...new Set([...base, src.id])];
+                                      }
+                                      const next = base.filter((id) => id !== src.id);
+                                      // If unchecking the last one, fall back to
+                                      // "all sources" so the user can't accidentally
+                                      // submit an empty filter.
+                                      return next.length === 0 ? null : next;
+                                    });
+                                  }}
+                                />
+                                <span className="flex-1 truncate">
+                                  {src.source_title}
+                                </span>
+                                <span
+                                  className="text-[10px] uppercase tracking-widest"
+                                  style={{ color: "var(--text-muted)" }}
+                                >
+                                  {src.source_type}
+                                </span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {streaming ? (
+                  <motion.button
+                    type="button"
+                    onClick={stopStreaming}
+                    className="flex items-center justify-center rounded-md transition-colors focus-ring"
+                    style={{
+                      width: 32,
+                      height: 32,
+                      background: "var(--error-soft)",
+                      color: "var(--error)",
+                      border: "1px solid var(--error-soft)",
+                    }}
+                    aria-label="Stop generating response"
+                    title="Stop generating response"
+                    whileHover={{ filter: "brightness(1.15)" }}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <StopCircle size={16} />
+                  </motion.button>
+                ) : null}
+                <motion.button
+                  type="submit"
+                  disabled={!canAsk}
+                  className="flex items-center justify-center rounded-md transition-colors focus-ring disabled:cursor-not-allowed"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    background: canAsk ? "var(--accent)" : "transparent",
+                    color: canAsk ? "var(--accent-fg)" : "var(--text-muted)",
+                    border: canAsk ? "1px solid transparent" : "1px solid var(--border)",
+                  }}
+                  aria-label="Send message"
+                  title={
+                    canAsk
+                      ? "Send message"
+                      : streaming
+                        ? "Wait for response to finish"
+                        : !activeDocumentId
+                          ? "Select a document to chat"
+                          : !settings.providerApiKey.trim()
+                            ? "API key required"
+                            : !question.trim()
+                              ? "Enter a question to send"
+                              : "Send message"
+                  }
+                  whileHover={canAsk ? { background: "var(--accent-hover)" } : {}}
+                  whileTap={canAsk ? { scale: 0.92 } : {}}
+                >
+                  {streaming ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
+                </motion.button>
+              </div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-col gap-1 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+                <button type="button" onClick={() => setAnalyticsOpen((v) => !v)} aria-pressed={analyticsOpen} aria-label="Toggle trust analytics panel" className="focus-ring flex items-center gap-2.5 rounded-lg px-2 py-2.5 text-xs hover:bg-[var(--bg-secondary)]" style={{ color: analyticsOpen ? "var(--accent-primary)" : "var(--text-secondary)" }}><BarChart3 size={15} />Answer insights{analyticsOpen ? <span className="ml-auto">On</span> : null}</button>
+                <button type="button" onClick={() => setDebugOpen((v) => !v)} aria-pressed={debugOpen} aria-label="Toggle retrieval debug panel" className="focus-ring flex items-center gap-2.5 rounded-lg px-2 py-2.5 text-xs hover:bg-[var(--bg-secondary)]" style={{ color: debugOpen ? "var(--accent-primary)" : "var(--text-secondary)" }}><Bug size={15} />Retrieval details{debugOpen ? <span className="ml-auto">On</span> : null}</button>
+              </div>
+            </div>
+          </details>
+        ) : null}
+        {activeDocument ? (
+          <>
+            <button ref={desktopSourceToggleRef} type="button" className="focus-ring hidden items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors xl:inline-flex" style={{ color: sourcePanelOpen ? "var(--text-primary)" : "var(--text-secondary)", borderColor: "var(--border)", background: sourcePanelOpen ? "var(--bg-secondary)" : "transparent" }} onClick={() => setSourcePanelOpen((open) => !open)} aria-expanded={sourcePanelOpen} aria-label="Toggle sources panel"><PanelRight size={15} /><span>Sources</span></button>
+            <button type="button" className="focus-ring inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs xl:hidden" style={{ color: "var(--text-secondary)", borderColor: "var(--border)" }} onClick={() => setMobileSourcesOpen(true)} aria-expanded={mobileSourcesOpen} aria-label="Open sources"><PanelRight size={15} /><span className="hidden sm:inline">Sources</span></button>
+          </>
+        ) : null}
+        {activeDocument?.status === "error" ? <button type="button" onClick={handleRetryDocument} className="focus-ring flex h-9 w-9 items-center justify-center rounded-lg hover:bg-[var(--bg-secondary)]" style={{ color: "var(--text-tertiary)" }} aria-label="Retry processing document" title="Retry processing document"><RefreshCcw size={16} /></button> : null}
+      </header>
 
       <TrustAnalyticsPanel
         open={analyticsOpen}
@@ -987,38 +1034,10 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       <div className="flex-1 relative min-h-0">
         <div
           ref={scrollContainerRef}
-          className={`absolute inset-0 overflow-y-auto py-6 ${chatLayout === "focus" ? "px-6" : "px-4"}`}
+          className={`absolute inset-0 overflow-y-auto py-7 sm:py-10 ${chatLayout === "focus" ? "px-6" : "px-4 sm:px-8"}`}
           style={{ background: "var(--bg-primary)" }}
         >
-          <div className={`${layoutMaxWidth} mx-auto flex flex-col gap-4`}>
-            {chatLayout === "research" && (() => {
-              const latestAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-              const stickySources = streaming && currentSources.length
-                ? currentSources
-                : latestAssistant?.sources ?? [];
-              if (!stickySources.length) return null;
-              return (
-                <div
-                  className="sticky top-0 z-10 -mx-4 px-4 py-2"
-                  style={{
-                    background: "var(--bg-primary)",
-                    borderBottom: "1px solid var(--border)",
-                    backdropFilter: "blur(8px)",
-                  }}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className="text-[10px] font-semibold uppercase tracking-widest"
-                      style={{ color: "var(--text-tertiary)" }}
-                    >
-                      Active sources ·{" "}
-                      <span className="data-num">{stickySources.length}</span>
-                    </span>
-                  </div>
-                  <SourceCard sources={stickySources} />
-                </div>
-              );
-            })()}
+          <div className={`${layoutMaxWidth} mx-auto flex flex-col gap-6`}>
             {messagesError ? (
               <div className="px-4 py-6">
                 <ErrorBanner
@@ -1036,7 +1055,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
             ) : (
               <>
                 {messages.map((message, idx) => (
-                  <React.Fragment key={message.id}>
+                  <div key={message.id} className="flex min-w-0 flex-col gap-2">
                     <motion.div
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1044,6 +1063,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                     >
                       <MessageBubble
                         message={message}
+                        onCitationSelect={handleCitationSelect}
+                        onSave={message.role === "assistant" && message.id && !message.id.startsWith("temp-") && activeWorkspaceId && canEdit ? handleSaveToWorkspace : undefined}
+                        saving={savingMessageId === message.id}
                         onRerun={
                           // [FIX 5.6] no rerun on unreconciled temp ids or without a durable conversation
                           message.role === "user" &&
@@ -1068,29 +1090,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                         feedbackState={feedbackState[message.id] ?? "idle"}
                       />
                     </motion.div>
-                    {message.role === "assistant" && message.sources?.length ? (
-                      <SourceCard sources={message.sources} />
-                    ) : null}
-                    {message.role === "assistant" && message.id && !message.id.startsWith("temp-") && activeWorkspaceId && canEdit ? (
-                      <button
-                        type="button"
-                        onClick={() => handleSaveToWorkspace(message)}
-                        disabled={savingMessageId === message.id}
-                        className="self-start text-[11px] px-2 py-1 rounded-md transition-colors"
-                        style={{
-                          background: "var(--bg-surface)",
-                          color: "var(--text-tertiary)",
-                          border: "1px solid var(--border)",
-                          opacity: savingMessageId === message.id ? 0.6 : 1,
-                        }}
-                        title="Save this answer to the workspace as a saved_answer artifact"
-                      >
-                        {savingMessageId === message.id ? "Saving…" : "Save to workspace"}
-                      </button>
-                    ) : null}
-                  </React.Fragment>
+
+                  </div>
                 ))}
-                {streaming && currentSources.length ? <SourceCard sources={currentSources} /> : null}
                 {!streaming && lastHint ? (
                   <ActiveLearningHintBanner hint={lastHint} />
                 ) : null}
@@ -1169,175 +1171,10 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
 
       {/* Input area */}
       {activeDocument?.status === "ready" ? (
-        <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ background: "var(--bg-primary)" }}>
+        <div className="flex-shrink-0 px-4 pb-5 pt-3 sm:px-8" style={{ background: "var(--bg-primary)" }}>
           <form onSubmit={handleSubmit} className={`${layoutMaxWidth} mx-auto relative`}>
-            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span
-                className="text-[10px] uppercase tracking-widest mr-1"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Mode
-              </span>
-              {/* Mode selector — segmented control */}
-              <div
-                className="flex items-center rounded-md overflow-hidden"
-                style={{ border: "1px solid var(--border)", background: "var(--bg-secondary)" }}
-                role="group"
-                aria-label="Chat mode"
-              >
-                {(["ask", "compare", "extract", "brief"] as const).map((mode, index) => {
-                  const active = chatMode === mode;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setChatMode(mode)}
-                      aria-pressed={active}
-                      className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors"
-                      style={{
-                        background: active ? "var(--bg-surface)" : "transparent",
-                        color: active ? "var(--text-primary)" : "var(--text-muted)",
-                        borderLeft: index > 0 ? "1px solid var(--border)" : "none",
-                      }}
-                      title={
-                        mode === "ask"
-                          ? "Grounded Q&A (default)"
-                          : mode === "compare"
-                          ? "Compare similarities/differences across sources"
-                          : mode === "extract"
-                            ? "Normalized field extraction with citations"
-                            : "Executive brief / study guide"
-                      }
-                    >
-                      {mode}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Per-source filter (Phase 1). Hidden when not inside a workspace
-                  or when the workspace has fewer than 2 ready sources. */}
-              {activeWorkspaceId && workspaceSourcesError ? (
-                <span
-                  className="ml-1 text-[10px] px-2 py-1 rounded-md"
-                  style={{ color: "var(--error)", border: "1px solid var(--error-soft)" }}
-                  role="alert"
-                  title={workspaceSourcesError}
-                >
-                  source filter unavailable
-                </span>
-              ) : activeWorkspaceId && workspaceSources.length >= 2 ? (
-                <div className="ml-1 relative">
-                  <button
-                    type="button"
-                    onClick={() => setSourceFilterOpen((v) => !v)}
-                    aria-haspopup="listbox"
-                    aria-expanded={sourceFilterOpen}
-                    className="text-[10px] font-medium px-2 py-1 rounded-md transition-colors flex items-center gap-1"
-                    style={{
-                      background: selectedSourceIds ? "var(--accent-primary-soft)" : "transparent",
-                      color: selectedSourceIds ? "var(--accent-primary)" : "var(--text-muted)",
-                      border: "1px solid var(--border)",
-                    }}
-                    title="Restrict retrieval to selected workspace sources"
-                  >
-                    Sources:{" "}
-                    <span className="data-num">
-                      {selectedSourceIds ? selectedSourceIds.length : "all"}
-                    </span>
-                  </button>
-                  {sourceFilterOpen ? (
-                    <div
-                      className="absolute bottom-full mb-1 left-0 z-30 w-72 rounded-lg overflow-hidden"
-                      style={{
-                        background: "var(--bg-elevated)",
-                        border: "1px solid var(--border)",
-                        boxShadow: "var(--shadow-md)",
-                      }}
-                      role="listbox"
-                    >
-                      <div
-                        className="flex items-center justify-between px-3 py-2"
-                        style={{ borderBottom: "1px solid var(--border)" }}
-                      >
-                        <span
-                          className="text-[10px] uppercase tracking-widest"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          Filter sources
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedSourceIds(null);
-                            setSourceFilterOpen(false);
-                          }}
-                          aria-label="Reset to all sources"
-                          className="text-[10px] font-medium focus-ring rounded px-1"
-                          style={{ color: "var(--accent-primary)" }}
-                        >
-                          Reset to all
-                        </button>
-                      </div>
-                      <ul className="max-h-64 overflow-y-auto">
-                        {workspaceSources.map((src) => {
-                          const checked = selectedSourceIds
-                            ? selectedSourceIds.includes(src.id)
-                            : false;
-                          const isReady = src.status === "ready";
-                          return (
-                            <li key={src.id}>
-                              <label
-                                className="w-full flex items-center gap-2 px-3 py-2 text-xs cursor-pointer transition-colors hover:bg-[var(--bg-surface)]"
-                                style={{
-                                  color: isReady
-                                    ? "var(--text-primary)"
-                                    : "var(--text-muted)",
-                                  opacity: isReady ? 1 : 0.6,
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  disabled={!isReady}
-                                  style={{ accentColor: "var(--accent-primary)" }}
-                                  onChange={(e) => {
-                                    setSelectedSourceIds((prev) => {
-                                      const base = prev ?? [];
-                                      if (e.target.checked) {
-                                        return [...new Set([...base, src.id])];
-                                      }
-                                      const next = base.filter((id) => id !== src.id);
-                                      // If unchecking the last one, fall back to
-                                      // "all sources" so the user can't accidentally
-                                      // submit an empty filter.
-                                      return next.length === 0 ? null : next;
-                                    });
-                                  }}
-                                />
-                                <span className="flex-1 truncate">
-                                  {src.source_title}
-                                </span>
-                                <span
-                                  className="text-[10px] uppercase tracking-widest"
-                                  style={{ color: "var(--text-muted)" }}
-                                >
-                                  {src.source_type}
-                                </span>
-                              </label>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <div
-              className="flex items-end rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-surface)] transition-[border-color,box-shadow,opacity] duration-150 focus-within:border-[var(--border-hover)] focus-within:shadow-[0_0_0_3px_var(--accent-soft)]"
-              style={{ opacity: streaming ? 0.7 : 1 }}
-            >
+            <div className="rounded-xl border border-[var(--border-hover)] bg-[var(--bg-surface)] transition-[border-color,box-shadow] focus-within:border-[var(--accent-primary)] focus-within:shadow-[0_0_0_3px_var(--accent-soft)]">
+              <div className="flex items-end" style={{ opacity: streaming ? 0.7 : 1 }}>
               <textarea
                 ref={textareaRef}
                 value={question}
@@ -1350,77 +1187,41 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                 }}
                 placeholder={
                   streaming
-                    ? "Assistant is responding… press Stop to interrupt"
+                    ? "Writing an answer…"
                     : settings.providerApiKey.trim()
-                    ? "Ask a question about your document…"
-                    : "Add your provider API key in Settings first"
+                    ? "Ask your sources…"
+                    : "Connect a provider first"
                 }
                 disabled={!settings.providerApiKey.trim() || streaming}
                 rows={1}
                 aria-label="Ask a question about your document"
-                className="flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none rounded-lg disabled:cursor-not-allowed"
-                style={{ color: "var(--text-primary)", maxHeight: 160, minHeight: 44 }}
+                className="min-w-0 flex-1 resize-none rounded-xl bg-transparent px-4 py-4 text-sm outline-none disabled:cursor-not-allowed"
+                style={{ color: "var(--text-primary)", maxHeight: 160, minHeight: 60 }}
               />
-              <div className="flex items-center gap-1.5 p-1.5">
-                {streaming ? (
-                  <motion.button
-                    type="button"
-                    onClick={stopStreaming}
-                    className="flex items-center justify-center rounded-md transition-colors focus-ring"
-                    style={{
-                      width: 32,
-                      height: 32,
-                      background: "var(--error-soft)",
-                      color: "var(--error)",
-                      border: "1px solid var(--error-soft)",
-                    }}
-                    aria-label="Stop generating response"
-                    title="Stop generating response"
-                    whileHover={{ filter: "brightness(1.15)" }}
-                    whileTap={{ scale: 0.9 }}
-                  >
-                    <StopCircle size={16} />
-                  </motion.button>
-                ) : null}
-                <motion.button
-                  type="submit"
-                  disabled={!canAsk}
-                  className="flex items-center justify-center rounded-md transition-colors focus-ring disabled:cursor-not-allowed"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    background: canAsk ? "var(--accent)" : "transparent",
-                    color: canAsk ? "var(--accent-fg)" : "var(--text-muted)",
-                    border: canAsk ? "1px solid transparent" : "1px solid var(--border)",
-                  }}
-                  aria-label="Send message"
-                  title={
-                    canAsk
-                      ? "Send message"
-                      : streaming
-                        ? "Wait for response to finish"
-                        : !activeDocumentId
-                          ? "Select a document to chat"
-                          : !settings.providerApiKey.trim()
-                            ? "API key required"
-                            : !question.trim()
-                              ? "Enter a question to send"
-                              : "Send message"
-                  }
-                  whileHover={canAsk ? { background: "var(--accent-hover)" } : {}}
-                  whileTap={canAsk ? { scale: 0.92 } : {}}
-                >
-                  {streaming ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
-                </motion.button>
-              </div>
+
+            <div className="mt-2.5 flex items-center justify-between gap-3 px-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+              <span>Check important details against the sources.</span>
+              <span className="hidden shrink-0 sm:inline">↵ Send · ⇧ ↵ New line</span>
             </div>
-            <p className="text-center mt-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
-              Sources include chunk IDs, scores, and page references.
-            </p>
           </form>
         </div>
       ) : null}
-    </div>
+      </div>
+      {activeDocument ? (
+        <SourceInspector
+          open={sourcePanelOpen}
+          mobileOpen={mobileSourcesOpen}
+          sources={visibleSources}
+          documents={documents}
+          document={activeDocument}
+          selectedChunkId={selectedChunkId}
+          onClose={closeSources}
+          onSelect={(citation) => setSelectedChunkId(citation.chunk_id)}
+          onOpenDocument={(documentId, pageNumber) => router.push(`/documents/${encodeURIComponent(documentId)}/notebook${pageNumber ? `?page=${pageNumber}` : ""}`)}
+          streaming={streaming}
+        />
+      ) : null}
+    </main>
   );
 }
 

@@ -1,0 +1,285 @@
+.rail {
+  flex: 0 0 clamp(290px, 26vw, 336px);
+  width: clamp(290px, 26vw, 336px);
+  max-width: 336px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+ 
+}
+.panel {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+ 
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: var(--header-height);
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+ 
+}
+.eyebrow {
+  margin: 0 0 0.3rem;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-transform: uppercase;
+ 
+}
+.title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 22px;
+  line-height: 1.1;
+ 
+}
+.headerActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+ 
+}
+.count {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+ 
+}
+.closeButton {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+ 
+}
+.closeButton:hover, .openButton:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+ 
+}
+.helper {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 18px 22px 4px;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+ 
+}
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+ 
+}
+.sourceList {
+  margin: 0;
+  padding: 0 14px 24px;
+  list-style: none;
+ 
+}
+.listItem + .listItem {
+  border-top: 1px solid var(--border);
+ 
+}
+.passage {
+  margin: 0;
+  padding: 18px 10px 20px 12px;
+  border-left: 2px solid transparent;
+  scroll-margin-block: 0.75rem;
+  transition: border-color 150ms ease, background-color 150ms ease;
+ 
+}
+.passageSelected {
+  border-left-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+ 
+}
+.passage:focus-visible, .closeButton:focus-visible, .indexButton:focus-visible, .openButton:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+ 
+}
+.passageHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.35rem 0.65rem;
+ 
+}
+.indexButton {
+  grid-row: 1 / span 2;
+  min-width: 1.5rem;
+  padding: 0.05rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  text-align: left;
+ 
+}
+.indexButton:hover {
+  color: var(--accent-primary-hover);
+ 
+}
+.sourceIdentity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.18rem;
+ 
+}
+.filename {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+ 
+}
+.openButton {
+  grid-column: 2;
+  justify-self: start;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+ 
+}
+.openButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+ 
+}
+.excerpt {
+  margin: 0.75rem 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+ 
+}
+.retrievalDetails {
+  margin-top: 14px;
+  padding-top: 0;
+ 
+}
+.retrievalDetails summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+ 
+}
+.detailList, .documentFacts {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+ 
+}
+.detailList > div, .documentFacts > div {
+  display: grid;
+  grid-template-columns: minmax(4.3rem, auto) minmax(0, 1fr);
+  gap: 0.6rem;
+  font-size: 0.68rem;
+  line-height: 1.4;
+ 
+}
+.detailList dt, .documentFacts dt {
+  color: var(--text-muted);
+ 
+}
+.detailList dd, .documentFacts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  text-align: right;
+ 
+}
+.detailValue {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+ 
+}
+.emptyState {
+  max-width: 25rem;
+  padding: 1.45rem 1.15rem 2rem;
+ 
+}
+.documentTitle {
+  margin: 0.55rem 0 1rem;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+ 
+}
+.documentFacts {
+  gap: 0.6rem;
+  margin-top: 1rem;
+ 
+}
+.emptyTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+ 
+}
+.emptyNote {
+  margin: 1.3rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.55;
+ 
+}
+.mobileModal {
+  display: flex;
+  min-height: 0;
+  max-height: calc(100dvh - 2rem);
+  flex-direction: column;
+  overflow: hidden;
+ 
+}
+.mobilePanel {
+  height: min(72dvh, 680px);
+ 
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .passage {
+  transition: none;
+ 
+}
+}

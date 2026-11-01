@@ -1,12 +1,10 @@
 "use client";
 
 import React from "react";
-import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 
 import type { AuthUser } from "../lib/api";
 import { startGoogleOAuth } from "../lib/oauth";
-import { staggerContainer, staggerItem } from "../lib/motion";
 import OAuthCallback from "./OAuthCallback";
 import { Button, ErrorBanner, TextField } from "./ui";
 
@@ -122,134 +120,112 @@ export default function AuthForm({
 
   return (
     <div
-      className="rounded-xl"
-      style={{
-        background: "var(--bg-secondary)",
-        border: "1px solid var(--border)",
-        boxShadow: "var(--shadow-md)",
-      }}
+      className={compact ? \"rounded-[6px] border p-5 sm:p-6\" : undefined}
+      style={compact ? { background: \"var(--bg-surface)\", borderColor: \"var(--border)\" } : undefined}
     >
       <OAuthCallback onAuthenticated={handleOAuthAuthenticated} onError={handleOAuthError} />
-      <motion.div
-        variants={staggerContainer}
-        initial="hidden"
-        animate="show"
-        className={compact ? "p-5" : "p-6 sm:p-7"}
-      >
+      <div className=\"w-full\">
         {onSwitchToSetup ? (
           <button
-            type="button"
+            type=\"button\"
             onClick={onSwitchToSetup}
-            className="-ml-1 mb-4 inline-flex items-center gap-1.5 rounded-sm px-1 text-[13px] transition-colors focus-ring"
-            style={{ color: "var(--text-tertiary)" }}
+            className=\"focus-ring mb-6 inline-flex items-center gap-2 rounded-[6px] text-[12px] font-medium\"
+            style={{ color: \"var(--text-tertiary)\" }}
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft size={14} aria-hidden=\"true\" />
             Back to setup
           </button>
         ) : null}
 
-        {/* Segmented mode control — disabled while submitting (Fix 6.7.1).
-            Uses aria-pressed toggle buttons rather than role="tablist"/"tab":
-            there is no tabpanel and no aria-controls target here, and the ARIA
-            tab pattern also mandates arrow-key navigation that this control
-            does not implement. A pressed-button group is the honest role. */}
-        <motion.div
-          variants={staggerItem}
-          role="group"
-          aria-label="Authentication mode"
-          className="grid grid-cols-2 gap-1 rounded-lg p-1"
-          style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+        <header className=\"mb-6\">
+          <h2
+            className=\"text-[30px] leading-tight tracking-[-0.025em]\"
+            style={{ color: \"var(--text-primary)\", fontFamily: \"var(--font-editorial), Georgia, serif\" }}
+          >
+            {mode === \"login\" ? \"Sign in\" : \"Create an account\"}
+          </h2>
+          <p className=\"mt-2 text-[13px] leading-5\" style={{ color: \"var(--text-secondary)\" }}>
+            {mode === \"login\" ? \"Enter your email and password to continue.\" : \"Create an account with your email and a password.\"}
+          </p>
+        </header>
+
+        <div
+          role=\"group\"
+          aria-label=\"Authentication mode\"
+          className=\"mb-6 flex gap-5 border-b\"
+          style={{ borderColor: \"var(--border)\" }}
         >
-          {(["login", "signup"] as const).map((tab) => {
+          {([\"login\", \"signup\"] as const).map((tab) => {
             const active = mode === tab;
             return (
               <button
                 key={tab}
-                type="button"
+                type=\"button\"
                 aria-pressed={active}
                 disabled={loading}
                 onClick={() => setMode(tab)}
-                className="rounded-md px-4 py-1.5 text-[13px] font-medium transition-colors focus-ring disabled:cursor-not-allowed"
+                className=\"focus-ring -mb-px rounded-t-[6px] border-b-2 px-1 py-2 text-[13px] font-medium\"
                 style={{
-                  background: active ? "var(--bg-elevated)" : "transparent",
-                  color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                  border: `1px solid ${active ? "var(--border-hover)" : "transparent"}`,
+                  background: \"transparent\",
+                  borderBottomColor: active ? \"var(--accent-primary)\" : \"transparent\",
+                  color: active ? \"var(--text-primary)\" : \"var(--text-secondary)\",
                 }}
               >
-                {tab === "login" ? "Login" : "Sign up"}
+                {tab === \"login\" ? \"Sign in\" : \"Create account\"}
               </button>
             );
           })}
-        </motion.div>
+        </div>
 
-        <form className="mt-5 flex flex-col gap-4" onSubmit={submit}>
-          <motion.div variants={staggerItem}>
-            <TextField
-              label="Email"
-              type="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              autoComplete="email"
-            />
-          </motion.div>
-          <motion.div variants={staggerItem}>
-            <TextField
-              label="Password"
-              type="password"
-              required
-              minLength={mode === "signup" ? 8 : undefined}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder={mode === "login" ? "Enter your password" : "Minimum 8 characters"}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-            />
-          </motion.div>
+        <form onSubmit={submit} className=\"grid gap-4\">
+          <TextField
+            label=\"Email\"
+            type=\"email\"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder=\"you@example.com\"
+            autoComplete=\"email\"
+          />
+          <TextField
+            label=\"Password\"
+            type=\"password\"
+            required
+            minLength={mode === \"signup\" ? 8 : undefined}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder={mode === \"login\" ? \"Enter your password\" : \"Minimum 8 characters\"}
+            autoComplete={mode === \"login\" ? \"current-password\" : \"new-password\"}
+          />
 
-          {error ? (
-            <motion.div variants={staggerItem}>
-              <ErrorBanner message={error} />
-            </motion.div>
-          ) : null}
+          {error ? <ErrorBanner message={error} /> : null}
 
-          <motion.div variants={staggerItem}>
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              className="w-full"
-              disabled={loading}
-            >
-              {loading ? "Working..." : mode === "login" ? "Login" : "Create account"}
-            </Button>
-          </motion.div>
+          <Button type=\"submit\" variant=\"primary\" size=\"lg\" className=\"w-full\" disabled={loading}>
+            {loading ? \"One moment…\" : mode === \"login\" ? \"Sign in\" : \"Create account\"}
+          </Button>
         </form>
 
         {googleClientId ? (
-          <motion.div variants={staggerItem} className="mt-5">
-            <div className="flex items-center gap-3" aria-hidden="true">
-              <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-              <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-                or
-              </span>
-              <div className="h-px flex-1" style={{ background: "var(--border)" }} />
+          <div className=\"mt-5\">
+            <div className=\"mb-4 flex items-center gap-3\" aria-hidden=\"true\">
+              <span className=\"h-px flex-1\" style={{ background: \"var(--border)\" }} />
+              <span className=\"text-[11px]\" style={{ color: \"var(--text-muted)\" }}>or</span>
+              <span className=\"h-px flex-1\" style={{ background: \"var(--border)\" }} />
             </div>
-
             <Button
-              type="button"
-              variant="secondary"
-              size="lg"
-              className="mt-4 w-full"
+              type=\"button\"
+              variant=\"secondary\"
+              size=\"lg\"
+              className=\"w-full\"
               onClick={handleGoogleSignIn}
               disabled={loading}
             >
               <GoogleMark />
               Continue with Google
             </Button>
-          </motion.div>
+          </div>
         ) : null}
-      </motion.div>
+      </div>
     </div>
   );
 }

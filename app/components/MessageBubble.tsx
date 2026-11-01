@@ -6,31 +6,15 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { motion } from "framer-motion";
-import { Bot, Check, Copy, RefreshCcw, ThumbsDown, ThumbsUp, User, Scale, FileText, ListTree } from "lucide-react";
+import { Check, Copy, RefreshCcw, ThumbsDown, ThumbsUp, Scale, FileText, ListTree } from "lucide-react";
 import type { Citation, Message } from "../lib/api";
 import { CitationPreview } from "./CitationPreview";
-import { Meter } from "./ui";
 
 export type MessageFeedbackState = "idle" | "up" | "down" | "pending" | "error";
 
-function getConfidenceRailClass(sources: Citation[] | null | undefined): string {
-  if (!sources || sources.length === 0) return "";
-  const avg = sources.reduce((s, c) => s + c.score, 0) / sources.length;
-  if (avg >= 0.75) return "confidence-high-rail";
-  if (avg >= 0.45) return "confidence-med-rail";
-  return "confidence-low-rail";
-}
-
-function getConfidenceTooltip(sources: Citation[] | null | undefined): string | undefined {
-  if (!sources || sources.length === 0) return undefined;
-  const avg = sources.reduce((s, c) => s + c.score, 0) / sources.length;
-  const pct = Math.round(avg * 100);
-  const tier = avg >= 0.75 ? "Strong" : avg >= 0.45 ? "Medium" : "Weak";
-  return `${tier} grounding · avg retrieval score ${pct}% across ${sources.length} source${sources.length === 1 ? "" : "s"}`;
-}
-
 interface MessageBubbleProps {
   message: Message;
+  onCitationSelect?: (citation: Citation, sources: Citation[]) => void;
   onRerun?: (message: Message) => void;
   rerunDisabled?: boolean;
   /** When false but the assistant message is empty, show a placeholder instead of infinite typing dots. */
@@ -45,7 +29,7 @@ interface MessageBubbleProps {
 // excerpt and page reference.
 const CITATION_RE = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
 
-function renderWithInlineCitations(text: string, sources: Citation[]): React.ReactNode[] {
+function renderWithInlineCitations(text: string, sources: Citation[], onSelect?: (citation: Citation) => void): React.ReactNode[] {
   if (!sources?.length || !text) return [text];
   const nodes: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -59,7 +43,7 @@ function renderWithInlineCitations(text: string, sources: Citation[]): React.Rea
       .map((part) => Number.parseInt(part.trim(), 10))
       .filter((n) => Number.isFinite(n));
     nodes.push(
-      <CitationPills key={`cite-${start}`} indices={indices} sources={sources} />
+      <CitationPills key={`cite-${start}`} indices={indices} sources={sources} onSelect={onSelect} />
     );
     lastIndex = start + match[0].length;
   }
@@ -67,11 +51,11 @@ function renderWithInlineCitations(text: string, sources: Citation[]): React.Rea
   return nodes;
 }
 
-function rewriteCitations(children: React.ReactNode, sources: Citation[]): React.ReactNode {
+function rewriteCitations(children: React.ReactNode, sources: Citation[], onSelect?: (citation: Citation) => void): React.ReactNode {
   if (!sources?.length) return children;
   return React.Children.map(children, (child) => {
     if (typeof child === "string") {
-      return renderWithInlineCitations(child, sources);
+      return renderWithInlineCitations(child, sources, onSelect);
     }
     return child;
   });
@@ -80,9 +64,11 @@ function rewriteCitations(children: React.ReactNode, sources: Citation[]): React
 function CitationPills({
   indices,
   sources,
+  onSelect,
 }: {
   indices: number[];
   sources: Citation[];
+  onSelect?: (citation: Citation) => void;
 }) {
   return (
     <>
@@ -95,7 +81,7 @@ function CitationPills({
           return (
             <span
               key={`${label}-${idx}`}
-              className="data-num inline-flex items-center mx-[2px] px-1 text-[10px] leading-none"
+              className="data-num inline-flex items-center mx-[2px] px-1 text-xs leading-none"
               style={{
                 borderRadius: "var(--radius-xs)",
                 color: "var(--text-muted)",
@@ -108,24 +94,15 @@ function CitationPills({
             </span>
           );
         }
+        const sourceLabel = `Source ${label}${source.page_number ? `, page ${source.page_number}` : ""}`;
+        const chipClass = "data-num mx-0.5 inline-flex cursor-pointer items-center rounded-sm border border-transparent bg-[var(--accent-primary-soft)] px-1.5 py-0.5 align-baseline text-[10px] leading-none text-[var(--accent-primary)] focus-ring hover:border-[var(--accent-primary)]";
         return (
           <CitationPreview key={`${label}-${idx}`} citation={source}>
-            <span
-              tabIndex={0}
-              aria-label={`Source ${label}${source.page_number ? `, page ${source.page_number}` : ""}`}
-              className="data-num inline-flex items-center mx-[2px] px-1 text-[10px] leading-none transition-colors focus-ring"
-              style={{
-                borderRadius: "var(--radius-xs)",
-                background: "var(--accent-primary-soft)",
-                color: "var(--accent-primary)",
-                border: "1px solid var(--accent-primary-soft)",
-                cursor: "help",
-                verticalAlign: "super",
-                lineHeight: 1.4,
-              }}
-            >
-              [{label}]
-            </span>
+            {onSelect ? (
+              <button type="button" className={chipClass} aria-label={`Inspect ${sourceLabel.toLowerCase()}`} onClick={() => onSelect(source)}>[{label}]</button>
+            ) : (
+              <span className={chipClass} tabIndex={0} aria-label={sourceLabel}>[{label}]</span>
+            )}
           </CitationPreview>
         );
       })}
@@ -133,32 +110,22 @@ function CitationPills({
   );
 }
 
-/**
- * Compact provenance summary rendered above the answer when the assistant
- * message carries retrieved sources: count, score range (mono data-num),
- * and a compact confidence meter of the average retrieval score.
- */
+/** Keep the grounding cue close to the answer without surfacing retrieval scores. */
 function ProvenanceSummary({ sources }: { sources: Citation[] }) {
-  const scores = sources.map((s) => s.score).filter((n) => Number.isFinite(n));
-  if (!scores.length) return null;
-  const lo = Math.min(...scores);
-  const hi = Math.max(...scores);
-  const avg = scores.reduce((sum, n) => sum + n, 0) / scores.length;
+  if (!sources.length) return null;
+  const avg = sources.reduce((sum, source) => sum + source.score, 0) / sources.length;
   return (
     <div
-      className="flex items-center gap-2.5 flex-wrap mb-2.5 pb-2"
-      style={{ borderBottom: "1px solid var(--border)" }}
+      className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+      role="note"
     >
-      <span
-        className="text-[10px] uppercase tracking-widest"
-        style={{ color: "var(--text-tertiary)" }}
-      >
-        Evidence
+      <FileText size={13} aria-hidden="true" style={{ color: "var(--accent-primary)" }} />
+      <span style={{ color: "var(--text-tertiary)" }}>
+        Based on {sources.length} source {sources.length === 1 ? "passage" : "passages"}.
       </span>
-      <span className="data-num text-[11px]" style={{ color: "var(--text-secondary)" }}>
-        {sources.length} {sources.length === 1 ? "source" : "sources"} · {lo.toFixed(2)}–{hi.toFixed(2)}
-      </span>
-      <Meter value={avg} compact label="avg" showValue />
+      {avg < 0.45 ? (
+        <span style={{ color: "var(--warning)" }}>Some matches may be less relevant.</span>
+      ) : null}
     </div>
   );
 }
@@ -169,6 +136,7 @@ function ProvenanceSummary({ sources }: { sources: Citation[] }) {
 // during rapid state updates from token streaming.
 const MessageBubble = React.memo(function MessageBubble({
   message,
+  onCitationSelect,
   onRerun,
   rerunDisabled = false,
   isStreaming = false,
@@ -176,15 +144,30 @@ const MessageBubble = React.memo(function MessageBubble({
   feedbackState = "idle",
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const [copyState, setCopyState] = React.useState<"idle" | "copied" | "error">("idle");
+  React.useEffect(() => {
+    if (copyState !== "copied") return;
+    const timer = window.setTimeout(() => setCopyState("idle"), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
+  const copyAnswer = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+  };
   const canShowFeedback =
     !isUser && !isStreaming && Boolean(onFeedback) && Boolean(message.content);
   const feedbackPending = feedbackState === "pending";
   const feedbackRecorded = feedbackState === "up" || feedbackState === "down";
 
   const mode = message.mode;
+  const modeLabel = mode ? mode.charAt(0).toUpperCase() + mode.slice(1) : "";
   const modeBadge = !isUser && mode && mode !== "ask" ? (
     <span
-      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded-sm mb-1.5"
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium mb-3"
       style={{
         background:
           mode === "compare"
@@ -201,91 +184,31 @@ const MessageBubble = React.memo(function MessageBubble({
         border: "1px solid var(--border)",
       }}
     >
-      {mode === "compare" && <Scale size={10} />}
-      {mode === "extract" && <FileText size={10} />}
-      {mode === "brief" && <ListTree size={10} />}
-      {mode}
+      {mode === "compare" && <Scale size={12} aria-hidden="true" />}
+      {mode === "extract" && <FileText size={12} aria-hidden="true" />}
+      {mode === "brief" && <ListTree size={12} aria-hidden="true" />}
+      {modeLabel}
     </span>
   ) : null;
 
-  const isBrief = !isUser && mode === "brief";
-
   return (
-    <div
-      className="flex gap-3"
-      style={{ justifyContent: isUser ? "flex-end" : "flex-start", maxWidth: "100%" }}
-    >
-      {!isUser ? (
-        <div className="flex-shrink-0 flex items-start pt-0.5">
-          <div
-            className="flex items-center justify-center"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "var(--radius-md)",
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <Bot size={14} style={{ color: "var(--accent-primary)" }} />
-          </div>
-        </div>
-      ) : null}
-
-      <div
-        className={`${
-          !isUser && message.sources?.length && !isStreaming
-            ? getConfidenceRailClass(message.sources)
-            : ""
-        }`}
-        title={!isUser && !isStreaming ? getConfidenceTooltip(message.sources) : undefined}
-        style={{
-          maxWidth: isUser ? "75%" : "85%",
-          // User turns are compact hairline surface cards; assistant turns sit
-          // borderless on the canvas with only the confidence rail as edge.
-          // NOTE: no inline `border` on assistant turns — an inline shorthand
-          // would override the confidence-rail class's border-left.
-          background: isUser ? "var(--bg-surface)" : "transparent",
-          border: isUser ? "1px solid var(--border)" : undefined,
-          borderRadius: isUser ? "var(--radius-lg)" : "var(--radius-xs)",
-          padding: isUser ? "10px 14px" : "4px 6px 4px 12px",
-          color: "var(--text-primary)",
-        }}
-      >
+    <article className={`group/message w-full min-w-0 ${isUser ? "pt-1" : ""}`}>
+      <div className="mb-4 flex items-center gap-3">
+        <span className="index-label" style={{ color: isUser ? "var(--text-muted)" : "var(--accent-primary)" }}>{isUser ? "Question" : "Answer"}</span>
+        <span className="h-px flex-1" aria-hidden="true" style={{ background: "var(--border)" }} />
+        {isUser && onRerun ? (
+          <button type="button" onClick={() => onRerun(message)} disabled={rerunDisabled} aria-label="Rerun this message" title="Ask this question again" className="focus-ring inline-flex items-center gap-1.5 rounded-sm px-1 py-1 text-[11px] transition-opacity disabled:opacity-40 md:opacity-0 md:group-hover/message:opacity-100 md:group-focus-within/message:opacity-100" style={{ color: "var(--text-tertiary)" }}><RefreshCcw size={12} />Ask again</button>
+        ) : null}
+      </div>
+      <div style={{ color: "var(--text-primary)" }}>
         {isUser ? (
           <div className="flex flex-col gap-2">
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-            {onRerun ? (
-              <div className="flex justify-end">
-                <motion.button
-                  type="button"
-                  onClick={() => onRerun(message)}
-                  disabled={rerunDisabled}
-                  aria-label="Rerun this message"
-                  title="Rerun this message"
-                  className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] transition-colors"
-                  style={{
-                    background: "transparent",
-                    color: "var(--text-tertiary)",
-                    border: "1px solid var(--border)",
-                    opacity: rerunDisabled ? 0.55 : 1,
-                  }}
-                  whileHover={{ borderColor: "var(--border-hover)", color: "var(--text-secondary)" }}
-                  whileTap={{ scale: 0.92 }}
-                >
-                  <RefreshCcw size={10} />
-                  Rerun
-                </motion.button>
-              </div>
-            ) : null}
+            <p className="editorial-heading whitespace-pre-wrap text-[28px] leading-[1.25] sm:text-[32px]">{message.content}</p>
+
           </div>
         ) : (
-          <div
-            className="markdown-body"
-            style={isBrief ? { borderLeft: "2px solid var(--accent-secondary)", paddingLeft: 12, marginLeft: -4 } : undefined}
-          >
+          <div className="markdown-body">
             {modeBadge}
-            {message.sources?.length ? <ProvenanceSummary sources={message.sources} /> : null}
             {!message.content ? (
               isStreaming ? (
                 <TypingIndicator />
@@ -316,14 +239,14 @@ const MessageBubble = React.memo(function MessageBubble({
                   p({ children, ...props }) {
                     return (
                       <p {...props}>
-                        {rewriteCitations(children, message.sources ?? [])}
+                        {rewriteCitations(children, message.sources ?? [], onCitationSelect ? (citation) => onCitationSelect(citation, message.sources ?? []) : undefined)}
                       </p>
                     );
                   },
                   li({ children, ...props }) {
                     return (
                       <li {...props}>
-                        {rewriteCitations(children, message.sources ?? [])}
+                        {rewriteCitations(children, message.sources ?? [], onCitationSelect ? (citation) => onCitationSelect(citation, message.sources ?? []) : undefined)}
                       </li>
                     );
                   },
@@ -332,36 +255,25 @@ const MessageBubble = React.memo(function MessageBubble({
                 {message.content}
               </ReactMarkdown>
             )}
-            {canShowFeedback ? (
-              <FeedbackControls
-                message={message}
-                state={feedbackState}
-                pending={feedbackPending}
-                recorded={feedbackRecorded}
-                onFeedback={onFeedback!}
-              />
+            {message.sources?.length ? <ProvenanceSummary sources={message.sources} /> : null}
+            {!isStreaming && message.content ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button type="button" onClick={copyAnswer} className="focus-ring inline-flex items-center gap-1.5 rounded-sm px-1 py-1 text-[11px]" style={{ color: "var(--text-tertiary)" }} aria-label="Copy answer">
+                  {copyState === "copied" ? <Check size={13} /> : <Copy size={13} />}
+                  {copyState === "copied" ? "Copied" : "Copy answer"}
+                </button>
+                <span role="status" className="sr-only">{copyState === "copied" ? "Answer copied to clipboard." : ""}</span>
+                {copyState === "error" ? <span className="text-xs" role="alert" style={{ color: "var(--error)" }}>Couldn’t copy. Select the text to copy it.</span> : null}
+                {canShowFeedback ? (
+                  <FeedbackControls message={message} pending={feedbackPending} recorded={feedbackRecorded} state={feedbackState} onFeedback={onFeedback!} />
+                ) : null}
+              </div>
             ) : null}
           </div>
         )}
       </div>
 
-      {isUser ? (
-        <div className="flex-shrink-0 flex items-start pt-0.5">
-          <div
-            className="flex items-center justify-center"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "var(--radius-md)",
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <User size={14} style={{ color: "var(--text-tertiary)" }} />
-          </div>
-        </div>
-      ) : null}
-    </div>
+    </article>
   );
 });
 export default MessageBubble;
@@ -390,17 +302,14 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           borderTopRightRadius: "var(--radius-md)",
         }}
       >
-        <span
-          className="data-num uppercase"
-          style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text-tertiary)" }}
-        >
+        <span className="data-num text-xs font-medium" style={{ color: "var(--text-tertiary)" }}>
           {language}
         </span>
         {/* [a11y] Added aria-label — icon-only button needs accessible name */}
         <motion.button
           type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-medium transition-colors focus-ring"
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-ring"
           style={{
             color: copied ? "var(--success)" : "var(--text-muted)",
             background: "transparent",
@@ -410,7 +319,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           title={copied ? "Code copied" : "Copy code to clipboard"}
           whileTap={{ scale: 0.9 }}
         >
-          {copied ? <Check size={10} /> : <Copy size={10} />}
+          {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
           {copied ? "Copied" : "Copy"}
         </motion.button>
       </div>
@@ -457,62 +366,76 @@ function FeedbackControls({
     : null;
   return (
     <div
-      className="flex items-center gap-2 pt-3 mt-3"
-      style={{
-        borderTop: "1px solid var(--border)",
-        color: "var(--text-muted)",
-      }}
+      className="flex items-center gap-1.5"
+      style={{ color: "var(--text-muted)" }}
     >
-      <span className="text-[11px]">Was this helpful?</span>
+      <span className="hidden text-[11px] sm:inline" style={{ color: "var(--text-tertiary)" }}>
+        Was this helpful?
+      </span>
       <motion.button
         type="button"
         aria-label="Thumbs up"
         title="Thumbs up"
+        aria-pressed={up}
         disabled={pending || recorded}
         onClick={() => onFeedback(message, "up")}
+        whileHover={{ background: up ? "var(--success-soft)" : "var(--bg-tertiary)" }}
         whileTap={{ scale: 0.9 }}
-        className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] transition-colors"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-ring"
         style={{
           background: up ? "var(--success-soft)" : "transparent",
           color: up ? "var(--success)" : "var(--text-muted)",
-          border: "1px solid var(--border)",
+          border: "1px solid transparent",
           cursor: pending || recorded ? "default" : "pointer",
           opacity: pending ? 0.6 : 1,
         }}
       >
-        <ThumbsUp size={11} />
+        <ThumbsUp size={14} aria-hidden="true" />
       </motion.button>
       <motion.button
         type="button"
         aria-label="Thumbs down"
         title="Thumbs down"
+        aria-pressed={down}
         disabled={pending || recorded}
         onClick={() => onFeedback(message, "down")}
+        whileHover={{ background: down ? "var(--error-soft)" : "var(--bg-tertiary)" }}
         whileTap={{ scale: 0.9 }}
-        className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] transition-colors"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-ring"
         style={{
           background: down ? "var(--error-soft)" : "transparent",
           color: down ? "var(--error)" : "var(--text-muted)",
-          border: "1px solid var(--border)",
+          border: "1px solid transparent",
           cursor: pending || recorded ? "default" : "pointer",
           opacity: pending ? 0.6 : 1,
         }}
       >
-        <ThumbsDown size={11} />
+        <ThumbsDown size={14} aria-hidden="true" />
       </motion.button>
-      {label ? <span className="text-[11px]">{label}</span> : null}
+      {label ? (
+        <span
+          className="text-xs"
+          style={{ color: state === "error" ? "var(--error)" : "var(--text-tertiary)" }}
+          role={state === "error" ? "alert" : "status"}
+          aria-live={state === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
+        >
+          {label}
+        </span>
+      ) : null}
     </div>
   );
 }
 
 function TypingIndicator() {
   return (
-    <div className="flex gap-1.5 items-center py-1">
+    <div className="flex gap-1.5 items-center py-1" role="status" aria-label="Assistant is responding">
       {[0, 0.15, 0.3].map((delay, i) => (
         <motion.div
           key={i}
           className="w-1.5 h-1.5 rounded-full"
           style={{ background: "var(--accent-secondary)" }}
+          aria-hidden="true"
           animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
           transition={{ duration: 1, repeat: Infinity, delay, ease: "easeInOut" }}
         />

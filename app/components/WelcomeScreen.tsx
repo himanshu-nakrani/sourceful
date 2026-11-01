@@ -2,11 +2,12 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 import { type AuthUser, type Provider } from "../lib/api";
 import { staggerContainer, staggerItem } from "../lib/motion";
 import { useStore, DEFAULT_CHAT, DEFAULT_EMBEDDING } from "../lib/store";
 import AuthForm from "./AuthForm";
+import Brand from "./Brand";
 import { Button, TextField } from "./ui";
 
 interface WelcomeScreenProps {
@@ -64,7 +65,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
   if (showLogin) {
     return (
       <div
-        className="flex min-h-screen items-center justify-center px-4 py-10"
+        className="flex min-h-[100dvh] flex-col items-center justify-center gap-8 px-5 py-10"
         style={{ background: "var(--bg-primary)" }}
       >
         <div className="w-full max-w-md">
@@ -80,13 +81,14 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center px-4 py-10"
+      className="flex min-h-[100dvh] flex-col items-center justify-center gap-8 px-5 py-10"
       style={{ background: "var(--bg-primary)" }}
     >
+      <Brand />
       <motion.div
-        className="w-full max-w-md rounded-xl p-6 sm:p-7"
+        className="w-full max-w-[440px] rounded-2xl p-7 sm:p-9"
         style={{
-          background: "var(--bg-secondary)",
+          background: "var(--bg-surface)",
           border: "1px solid var(--border)",
           boxShadow: "var(--shadow-md)",
         }}
@@ -99,34 +101,34 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           className="text-[10px] font-semibold uppercase tracking-widest"
           style={{ color: "var(--text-muted)" }}
         >
-          Quick setup
+          Make it yours
         </motion.p>
         <motion.h1
           variants={staggerItem}
-          className="display mt-3 text-2xl font-semibold"
+          className="display mt-3 text-[28px] font-semibold tracking-tight"
           style={{ color: "var(--text-primary)" }}
         >
-          Connect a provider
+          Connect your AI
         </motion.h1>
         <motion.p
           variants={staggerItem}
           className="mt-2 text-sm leading-relaxed"
           style={{ color: "var(--text-secondary)" }}
         >
-          Bring your own model key to start asking questions across your documents.
+          Choose a provider and bring your own key. A clearer view of your documents is one step away.
         </motion.p>
 
         <motion.form
           variants={staggerItem}
           onSubmit={handleSubmit}
-          className="mt-6 flex flex-col gap-4"
+          className="mt-7 flex flex-col gap-5"
         >
           {/* Provider segmented control */}
           <div
             role="group"
             aria-label="Provider"
             className="grid grid-cols-2 gap-1 rounded-lg p-1"
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+            style={{ background: "var(--bg-secondary)" }}
           >
             {(["openai", "gemini"] as const).map((p) => {
               const active = provider === p;
@@ -138,9 +140,9 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
                   aria-pressed={active}
                   className="rounded-md px-4 py-2 text-[13px] font-medium transition-colors focus-ring"
                   style={{
-                    background: active ? "var(--bg-elevated)" : "transparent",
+                    background: active ? "var(--bg-surface)" : "transparent",
                     color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                    border: `1px solid ${active ? "var(--border-hover)" : "transparent"}`,
+                    boxShadow: active ? "var(--shadow-xs)" : "none",
                   }}
                 >
                   {p === "openai" ? "OpenAI" : "Gemini"}
@@ -152,7 +154,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           {/* API key */}
           <TextField
             label={provider === "openai" ? "OpenAI API key" : "Google AI API key"}
-            hint="Stored in this browser session and sent as a request header to your self-hosted API on each call."
+            hint="Stored for this browser session. Sent only to your self-hosted API with your requests."
             error={error}
             mono
             type="password"
@@ -166,11 +168,14 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           />
 
           <Button type="submit" variant="primary" size="lg" className="w-full">
-            Get Started
+            Open workspace
             <ArrowRight size={15} />
           </Button>
         </motion.form>
 
+        <motion.p variants={staggerItem} className="mt-5 flex items-center justify-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+          <ShieldCheck size={13} /> Your models. Your control.
+        </motion.p>
         <motion.div variants={staggerItem} className="mt-4">
           <Button
             type="button"

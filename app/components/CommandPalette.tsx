@@ -13,6 +13,7 @@ import {
   X,
   Focus,
   LayoutPanelLeft,
+  Library,
   Monitor,
   Contrast,
   Wind,
@@ -93,6 +94,18 @@ function Palette({ onClose, onUpload, onSettings }: Omit<CommandPaletteProps, "o
 
   const staticCommands: CommandItem[] = useMemo(
     () => [
+      {
+        id: "library",
+        label: "Open library",
+        description: "Browse and find your documents",
+        icon: <Library size={14} />,
+        group: "Actions",
+        action: () => {
+          void selectDocument(null);
+          onClose();
+        },
+        keywords: ["library", "home", "documents", "browse"],
+      },
       {
         id: "upload",
         label: "Upload Document",
@@ -200,7 +213,7 @@ function Palette({ onClose, onUpload, onSettings }: Omit<CommandPaletteProps, "o
         keywords: ["layout", "research", "full", "wide"],
       },
     ],
-    [settings, onUpload, onSettings, onClose, dispatch, selectConversation],
+    [settings, onUpload, onSettings, onClose, dispatch, selectConversation, selectDocument],
   );
 
   const docCommands: CommandItem[] = useMemo(

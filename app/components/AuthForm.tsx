@@ -122,11 +122,10 @@ export default function AuthForm({
 
   return (
     <div
-      className="rounded-xl"
+      className="rounded-2xl"
       style={{
-        background: "var(--bg-secondary)",
-        border: "1px solid var(--border)",
-        boxShadow: "var(--shadow-md)",
+        background: compact ? "var(--bg-surface)" : "transparent",
+        border: compact ? "1px solid var(--border)" : "none",
       }}
     >
       <OAuthCallback onAuthenticated={handleOAuthAuthenticated} onError={handleOAuthError} />
@@ -134,7 +133,7 @@ export default function AuthForm({
         variants={staggerContainer}
         initial="hidden"
         animate="show"
-        className={compact ? "p-5" : "p-6 sm:p-7"}
+        className={compact ? "p-6" : ""}
       >
         {onSwitchToSetup ? (
           <button
@@ -148,6 +147,15 @@ export default function AuthForm({
           </button>
         ) : null}
 
+        <motion.div variants={staggerItem} className="mb-7">
+          <h2 className="text-[28px] font-semibold tracking-[-0.035em]" style={{ color: "var(--text-primary)" }}>
+            {mode === "login" ? "Welcome back" : "Make space for better answers"}
+          </h2>
+          <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
+            {mode === "login" ? "Sign in to pick up where your curiosity left off." : "Create your account and bring your knowledge together."}
+          </p>
+        </motion.div>
+
         {/* Segmented mode control — disabled while submitting (Fix 6.7.1).
             Uses aria-pressed toggle buttons rather than role="tablist"/"tab":
             there is no tabpanel and no aria-controls target here, and the ARIA
@@ -157,8 +165,8 @@ export default function AuthForm({
           variants={staggerItem}
           role="group"
           aria-label="Authentication mode"
-          className="grid grid-cols-2 gap-1 rounded-lg p-1"
-          style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+          className="grid grid-cols-2 gap-1 rounded-xl p-1"
+          style={{ background: "var(--bg-secondary)" }}
         >
           {(["login", "signup"] as const).map((tab) => {
             const active = mode === tab;
@@ -169,20 +177,20 @@ export default function AuthForm({
                 aria-pressed={active}
                 disabled={loading}
                 onClick={() => setMode(tab)}
-                className="rounded-md px-4 py-1.5 text-[13px] font-medium transition-colors focus-ring disabled:cursor-not-allowed"
+                className="rounded-lg px-4 py-2 text-[13px] font-medium transition-colors focus-ring disabled:cursor-not-allowed"
                 style={{
-                  background: active ? "var(--bg-elevated)" : "transparent",
+                  background: active ? "var(--bg-surface)" : "transparent",
                   color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                  border: `1px solid ${active ? "var(--border-hover)" : "transparent"}`,
+                  boxShadow: active ? "var(--shadow-xs)" : "none",
                 }}
               >
-                {tab === "login" ? "Login" : "Sign up"}
+                {tab === "login" ? "Sign in" : "Create account"}
               </button>
             );
           })}
         </motion.div>
 
-        <form className="mt-5 flex flex-col gap-4" onSubmit={submit}>
+        <form className="mt-6 flex flex-col gap-5" onSubmit={submit}>
           <motion.div variants={staggerItem}>
             <TextField
               label="Email"
@@ -221,7 +229,7 @@ export default function AuthForm({
               className="w-full"
               disabled={loading}
             >
-              {loading ? "Working..." : mode === "login" ? "Login" : "Create account"}
+              {loading ? "One moment…" : mode === "login" ? "Sign in" : "Create account"}
             </Button>
           </motion.div>
         </form>

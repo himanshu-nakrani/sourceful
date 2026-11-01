@@ -76,7 +76,10 @@ function AppShell() {
     onEscape: () => {
       if (cmdPaletteOpen) setCmdPaletteOpen(false);
       else if (uploadOpen) closeUpload();
-      else dispatch({ type: "SET_SETTINGS_OPEN", payload: false });
+      else if (state.settingsOpen) dispatch({ type: "SET_SETTINGS_OPEN", payload: false });
+      else if (window.matchMedia("(max-width: 767px)").matches) {
+        dispatch({ type: "SET_SIDEBAR", payload: false });
+      }
     },
   });
 
@@ -142,7 +145,7 @@ function AppShell() {
         />
       )}
       <Sidebar onUploadClick={() => openUpload()} />
-      <ChatArea onUploadClick={() => openUpload()} />
+      <ChatArea onUploadClick={() => openUpload()} onCommandPalette={() => setCmdPaletteOpen(true)} />
       <UploadModal open={uploadOpen} onClose={closeUpload} initialFile={dropFile} />
       <SettingsPanel
         open={state.settingsOpen}

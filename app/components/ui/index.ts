@@ -1,5 +1,5 @@
 /**
- * Shared UI primitives for the Signal design system.
+ * Shared UI primitives.
  * See individual files for detailed docs.
  */
 

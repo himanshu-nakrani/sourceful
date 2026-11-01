@@ -1,35 +1,30 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { useOnChange } from "../lib/use-on-change";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Check, ChevronDown, RotateCcw } from "lucide-react";
 import { fetchModels, logout, type ModelsResponse, type Provider } from "../lib/api";
 import { DEFAULT_CHAT, DEFAULT_EMBEDDING, useStore, type AppSettings } from "../lib/store";
-import { transitionFast, transitionNormal } from "../lib/motion";
+import { transitionFast } from "../lib/motion";
 import AuthForm from "./AuthForm";
-import { Button, Modal, SelectField, SliderField, StatusDot, TextField, ToggleField } from "./ui";
+import { Button, Modal, SelectField, SliderField, TextField, ToggleField } from "./ui";
 
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
 }
 
-/**
- * Signal accent packs offered in the Display section. The hex values are the
- * pack colors themselves and are used only as swatch chip fills; everything
- * else routes through the `[data-accent]` token overrides in globals.css.
- */
+/** Display labels can evolve without changing the saved accent identifiers. */
 const ACCENT_PACKS: { value: string; label: string; color: string }[] = [
-  { value: "lime", label: "Lime", color: "#c6f24e" },
-  { value: "pulse", label: "Pulse", color: "#67e8f9" },
-  { value: "beam", label: "Beam", color: "#fbbf24" },
+  { value: "lime", label: "Rust", color: "var(--accent-primary)" },
+  { value: "pulse", label: "Ocean blue", color: "var(--info)" },
+  { value: "beam", label: "Amber", color: "var(--warning)" },
 ];
 
 /**
- * Legacy persisted pack names map onto the nearest Signal pack (mirroring the
- * `[data-accent]` overrides in globals.css). Used only to highlight the active
- * swatch for users who saved a preference before the migration.
+ * Legacy persisted names stay mapped to the current accent identifiers for
+ * users whose preferences predate the migration.
  */
 const LEGACY_PACK_ALIASES: Record<string, string> = {
   terracotta: "lime",
@@ -79,7 +74,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [modelsError, setModelsError] = useState(false);
   const [modelsRetryCount, setModelsRetryCount] = useState(0);
   const [showAuth, setShowAuth] = useState(false);
-  const [showRetrieval, setShowRetrieval] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // [Fix 5.4] Stable auth identity built from its primitive parts so effects
   // and children that depend on it don't re-run on every render.
@@ -174,9 +169,9 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     });
 
   const modelHint = modelsLoading
-    ? "Loading models…"
+    ? "Loading available models…"
     : !settings.providerApiKey.trim()
-      ? "Enter API key to see available models"
+      ? "Add an API key to choose available models."
       : undefined;
 
   return (
@@ -199,7 +194,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             Settings
           </h2>
           <p className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>
-            Credentials stored in this browser session only.
+            Preferences save automatically. Your API key stays in this browser tab’s session storage.
           </p>
         </div>
         <Button variant="primary" size="sm" onClick={onClose}>
@@ -207,12 +202,18 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </Button>
       </div>
 
-      {/* Scroll column */}
       <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
-        {/* ---- Provider ---- */}
-        <section className="flex flex-col gap-3">
-          <Eyebrow>Provider</Eyebrow>
-          <div className="flex gap-1.5">
+        <section aria-labelledby="provider-section-title" className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h3 id="provider-section-title" className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              AI provider
+            </h3>
+            <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+              Choose a provider, add its key, and select your models.
+            </p>
+          </div>
+
+          <div role="group" aria-label="AI provider" className="flex gap-2">
             {providers.map((provider) => {
               const active = settings.provider === provider.value;
               return (
@@ -253,81 +254,73 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             hint="Used for uploads, reprocessing, embeddings, and chat."
           />
 
-          {/* Dynamic model dropdowns */}
-          <div className="grid grid-cols-2 gap-3">
-            <SelectField
-              label="Chat Model"
-              value={settings.chatModel}
-              options={(models?.chat_models ?? [DEFAULT_CHAT[settings.provider]]).map((m) => ({
-                value: m,
-                label: m,
-              }))}
-              onChange={(event) =>
-                dispatch({ type: "SET_SETTINGS", payload: { chatModel: event.target.value } })
-              }
-              disabled={!settings.providerApiKey.trim() || modelsLoading}
-              hint={modelHint}
-            />
-            <SelectField
-              label="Embedding Model"
-              value={settings.embeddingModel}
-              options={(models?.embedding_models ?? [DEFAULT_EMBEDDING[settings.provider]]).map((m) => ({
-                value: m,
-                label: m,
-              }))}
-              onChange={(event) =>
-                dispatch({ type: "SET_SETTINGS", payload: { embeddingModel: event.target.value } })
-              }
-              disabled={!settings.providerApiKey.trim() || modelsLoading}
-              hint={modelHint}
-            />
-          </div>
-
-          {modelsError ? (
-            <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-              Couldn&apos;t load model list — using defaults.{" "}
-              <button
-                type="button"
-                onClick={() => setModelsRetryCount((n) => n + 1)}
-                className="underline underline-offset-2 rounded focus-ring"
-                style={{ color: "var(--accent-primary)" }}
-              >
-                Retry
-              </button>
-            </p>
-          ) : null}
-
-          <div
-            className="rounded-lg px-3 py-2.5 flex items-start gap-2.5"
-            style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)" }}
-          >
-            <span className="mt-1.5">
-              <StatusDot tone="success" />
-            </span>
-            <div className="text-xs leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
-              <p>
-                Session:{" "}
-                <span className="data-num" style={{ color: "var(--text-secondary)" }}>
-                  {settings.clientSessionId}
-                </span>
-              </p>
-              <p className="mt-0.5">Models remembered locally. Keys stay in session storage.</p>
+          <div className="flex flex-col gap-2" aria-busy={modelsLoading}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <SelectField
+                label="Chat model"
+                value={settings.chatModel}
+                options={(models?.chat_models ?? [DEFAULT_CHAT[settings.provider]]).map((m) => ({
+                  value: m,
+                  label: m,
+                }))}
+                onChange={(event) =>
+                  dispatch({ type: "SET_SETTINGS", payload: { chatModel: event.target.value } })
+                }
+                disabled={!settings.providerApiKey.trim() || modelsLoading}
+              />
+              <SelectField
+                label="Embedding model"
+                value={settings.embeddingModel}
+                options={(models?.embedding_models ?? [DEFAULT_EMBEDDING[settings.provider]]).map((m) => ({
+                  value: m,
+                  label: m,
+                }))}
+                onChange={(event) =>
+                  dispatch({ type: "SET_SETTINGS", payload: { embeddingModel: event.target.value } })
+                }
+                disabled={!settings.providerApiKey.trim() || modelsLoading}
+              />
             </div>
+            {modelHint ? (
+              <p className="text-xs" style={{ color: "var(--text-tertiary)" }} aria-live="polite">
+                {modelHint}
+              </p>
+            ) : null}
+            {modelsError ? (
+              <p className="text-xs" style={{ color: "var(--text-tertiary)" }} role="status">
+                Couldn&apos;t load model list — using defaults.{" "}
+                <button
+                  type="button"
+                  onClick={() => setModelsRetryCount((n) => n + 1)}
+                  className="underline underline-offset-2 rounded focus-ring"
+                  style={{ color: "var(--accent-primary)" }}
+                >
+                  Retry
+                </button>
+              </p>
+            ) : null}
           </div>
         </section>
 
         <Divider />
 
-        {/* ---- Display ---- */}
-        <section className="flex flex-col gap-4">
-          <Eyebrow>Display</Eyebrow>
+        <section aria-labelledby="appearance-section-title" className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h3 id="appearance-section-title" className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              Appearance
+            </h3>
+            <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+              Set the theme and accessibility preferences for this browser.
+            </p>
+          </div>
 
-          {/* Theme segmented control */}
           <div className="flex flex-col gap-1.5">
             <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>
               Theme
             </span>
             <div
+              role="group"
+              aria-label="Theme"
               className="grid grid-cols-2 gap-1 p-1 rounded-lg"
               style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)" }}
             >
@@ -353,12 +346,11 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             </div>
           </div>
 
-          {/* Accent pack swatches — pack colors are the chip fills themselves */}
           <div className="flex flex-col gap-1.5">
             <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>
               Accent
             </span>
-            <div className="flex gap-1.5">
+            <div role="group" aria-label="Accent color" className="flex gap-2">
               {ACCENT_PACKS.map((pack) => {
                 const active = activeAccentPack === pack.value;
                 return (
@@ -393,16 +385,16 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           </div>
 
           <ToggleField
-            label="High Contrast"
-            description="Stronger text and border contrast."
+            label="High contrast"
+            description="Increase text and border contrast."
             checked={settings.highContrast}
             onCheckedChange={(checked) =>
               dispatch({ type: "SET_SETTINGS", payload: { highContrast: checked } })
             }
           />
           <ToggleField
-            label="Reduce Motion"
-            description="Disable animations and transitions."
+            label="Reduce motion"
+            description="Limit interface animations and transitions."
             checked={settings.reducedMotion}
             onCheckedChange={(checked) =>
               dispatch({ type: "SET_SETTINGS", payload: { reducedMotion: checked } })
@@ -412,11 +404,11 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
 
         <Divider />
 
-        {/* ---- Retrieval (collapsible) ---- */}
         <CollapsibleSection
-          title="Retrieval Settings"
-          open={showRetrieval}
-          onToggle={() => setShowRetrieval((value) => !value)}
+          title="Advanced settings"
+          description="Retrieval tuning and session details"
+          open={showAdvanced}
+          onToggle={() => setShowAdvanced((value) => !value)}
         >
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
@@ -457,14 +449,25 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 Minimum similarity score to include a chunk.
               </p>
             </div>
+            <div className="flex flex-col gap-1 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+              <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                Browser session ID
+              </span>
+              <span className="data-num text-xs break-all" style={{ color: "var(--text-tertiary)" }}>
+                {settings.clientSessionId}
+              </span>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Used to scope data for this browser session.
+              </span>
+            </div>
           </div>
         </CollapsibleSection>
 
         <Divider />
 
-        {/* ---- Sign-in (collapsible) ---- */}
         <CollapsibleSection
-          title={user ? `Signed in as ${user.email}` : "Sign in (optional)"}
+          title="Account"
+          description={user ? `Signed in as ${user.email}` : "Optional · sync data across devices"}
           open={showAuth}
           onToggle={() => setShowAuth((value) => !value)}
         >
@@ -493,7 +496,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       >
         <Button variant="ghost" size="sm" onClick={resetDefaults}>
           <RotateCcw size={12} />
-          Reset defaults
+          Reset model defaults
         </Button>
         <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
           Esc to close
@@ -505,17 +508,6 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
 
 /* ---------- Local sub-components ---------- */
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      className="text-[10px] font-semibold uppercase tracking-widest"
-      style={{ color: "var(--text-muted)" }}
-    >
-      {children}
-    </span>
-  );
-}
-
 function Divider() {
   return <div aria-hidden="true" className="h-px" style={{ background: "var(--border)" }} />;
 }
@@ -526,26 +518,39 @@ function Divider() {
  */
 function CollapsibleSection({
   title,
+  description,
   open,
   onToggle,
   children,
 }: {
   title: string;
+  description?: string;
   open: boolean;
   onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const contentId = useId();
+
   return (
     <div className="flex flex-col">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-2 py-1 rounded-md transition-colors focus-ring"
+        aria-controls={contentId}
+        className="w-full flex items-center justify-between gap-3 py-1 rounded-md text-left transition-colors focus-ring"
         style={{ color: "var(--text-secondary)" }}
       >
-        <span className="text-[13px] font-medium truncate">{title}</span>
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="text-[13px] font-medium">{title}</span>
+          {description ? (
+            <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+              {description}
+            </span>
+          ) : null}
+        </span>
         <motion.span
+          aria-hidden="true"
           animate={{ rotate: open ? 180 : 0 }}
           transition={transitionFast}
           className="shrink-0"
@@ -554,19 +559,9 @@ function CollapsibleSection({
           <ChevronDown size={14} />
         </motion.span>
       </button>
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={transitionNormal}
-            className="overflow-hidden"
-          >
-            <div className="pt-3 pb-1">{children}</div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      <div id={contentId} hidden={!open} className="pt-3 pb-1">
+        {children}
+      </div>
     </div>
   );
 }

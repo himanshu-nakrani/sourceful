@@ -32,9 +32,11 @@ const ESTIMATED_CARD_HEIGHT = 230;
 export function CitationPreview({
   citation,
   children,
+  suppressMobilePreview = false,
 }: {
   citation: Citation;
   children: React.ReactNode;
+  suppressMobilePreview?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{
@@ -60,7 +62,7 @@ export function CitationPreview({
   const show = useCallback(
     (target: HTMLElement) => {
       clearTimers();
-      if (window.matchMedia("(max-width: 767px)").matches) return;
+      if (suppressMobilePreview && window.matchMedia("(max-width: 767px)").matches) return;
       openTimer.current = window.setTimeout(() => {
         const rect = target.getBoundingClientRect();
         const placeAbove =
@@ -78,7 +80,7 @@ export function CitationPreview({
         setOpen(true);
       }, OPEN_DELAY_MS);
     },
-    [clearTimers],
+    [clearTimers, suppressMobilePreview],
   );
 
   const hide = useCallback(() => {
@@ -115,7 +117,14 @@ export function CitationPreview({
       onMouseLeave={hide}
       onFocus={(event) => show(event.currentTarget)}
       onBlur={hide}
-      onClickCapture={() => { clearTimers(); setOpen(false); }}
+      onClickCapture={(event) => {
+        if (!suppressMobilePreview && window.matchMedia("(max-width: 767px)").matches && !open) {
+          show(event.currentTarget);
+          return;
+        }
+        clearTimers();
+        setOpen(false);
+      }}
     >
       {children}
       {createPortal(

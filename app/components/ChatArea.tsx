@@ -137,7 +137,13 @@ export default function ChatArea({ onUploadClick, onCommandPalette }: ChatAreaPr
     [messages]
   );
   const visibleSources = inspectedSources ?? (streaming && currentSources.length ? currentSources : latestAnswer?.sources ?? []);
-  useOnChange(`${activeDocumentId}:${activeConversationId}:${streaming}`, () => {
+  useOnChange(`${activeDocumentId}:${activeConversationId}`, () => {
+    setInspectedSources(null);
+    setSelectedChunkId(null);
+    setMobileSourcesOpen(false);
+  });
+  useOnChange(streaming, (started) => {
+    if (!started) return;
     setInspectedSources(null);
     setSelectedChunkId(null);
     setMobileSourcesOpen(false);

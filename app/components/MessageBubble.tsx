@@ -99,7 +99,7 @@ function CitationPills({
         const sourceLabel = `Source ${label}${source.page_number ? `, page ${source.page_number}` : ""}`;
         const chipClass = "data-num mx-0.5 inline-flex cursor-pointer items-center rounded-sm border border-transparent bg-[var(--accent-primary-soft)] px-1.5 py-0.5 align-baseline text-[10px] leading-none text-[var(--accent-primary)] focus-ring hover:border-[var(--accent-primary)]";
         return (
-          <CitationPreview key={`${label}-${idx}`} citation={source}>
+          <CitationPreview key={`${label}-${idx}`} citation={source} suppressMobilePreview={Boolean(onSelect)}>
             {onSelect ? (
               <button type="button" className={chipClass} style={{ minWidth: 24, minHeight: 24 }} aria-label={`Inspect ${sourceLabel.toLowerCase()}`} onClick={() => onSelect(source)}>[{label}]</button>
             ) : (

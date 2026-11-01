@@ -84,7 +84,7 @@ export function SelectField({
       </label>
       <select
         id={id}
-        className="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus-ring transition-all appearance-none cursor-pointer"
+        className="w-full rounded-md px-3 py-2.5 text-sm outline-none focus-ring transition-all appearance-none cursor-pointer"
         style={{
           background: "var(--bg-surface)",
           border: "1px solid var(--border)",
@@ -166,7 +166,7 @@ export function ToggleField({
       role="switch"
       aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
-      className="w-full flex items-center justify-between gap-4 rounded-lg px-3 py-2.5 text-left transition-colors focus-ring"
+      className="w-full flex items-center justify-between gap-4 rounded-md px-3 py-2.5 text-left transition-colors focus-ring"
       style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
     >
       <span className="flex flex-col gap-0.5">

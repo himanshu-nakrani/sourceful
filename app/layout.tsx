@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -8,10 +8,11 @@ const inter = Inter({
   display: "swap",
 });
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+const editorial = Newsreader({
+  variable: "--font-editorial",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500"],
+  style: ["normal", "italic"],
   display: "swap",
 });
 
@@ -55,7 +56,8 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} h-full`}
+      data-theme="light"
+      className={`${inter.variable} ${editorial.variable} ${jetbrainsMono.variable} h-full`}
       // The pre-paint script below mutates `data-theme`, `data-contrast`,
       // `data-motion`, and `data-accent` on <html> from localStorage before
       // hydration. This is the canonical FOUC-prevention pattern; the
@@ -71,7 +73,7 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem('rag-prefs');if(p){var d=JSON.parse(p);var r=document.documentElement;if(d.theme==='light')r.setAttribute('data-theme','light');if(d.highContrast)r.setAttribute('data-contrast','high');if(d.reducedMotion)r.setAttribute('data-motion','reduced');var pack=d.accentPack;if(pack==='emerald')pack='pulse';else if(pack==='amber')pack='beam';else if(pack==='terracotta')pack='lime';if(pack&&pack!=='lime')r.setAttribute('data-accent',pack);}}catch(e){}})();`,
+            __html: `(function(){try{var p=localStorage.getItem('rag-prefs');if(p){var d=JSON.parse(p);var r=document.documentElement;if(d.theme==='light'||d.theme==='dark')r.setAttribute('data-theme',d.theme);if(d.highContrast)r.setAttribute('data-contrast','high');if(d.reducedMotion)r.setAttribute('data-motion','reduced');var pack=d.accentPack;if(pack==='emerald')pack='pulse';else if(pack==='amber')pack='beam';else if(pack==='terracotta')pack='lime';if(pack&&pack!=='lime')r.setAttribute('data-accent',pack);}}catch(e){}})();`,
           }}
         />
       </head>

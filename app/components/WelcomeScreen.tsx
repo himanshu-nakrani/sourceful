@@ -1,12 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { type AuthUser, type Provider } from "../lib/api";
-import { staggerContainer, staggerItem } from "../lib/motion";
 import { useStore, DEFAULT_CHAT, DEFAULT_EMBEDDING } from "../lib/store";
 import AuthForm from "./AuthForm";
+import Brand from "./Brand";
 import { Button, TextField } from "./ui";
 
 interface WelcomeScreenProps {
@@ -63,126 +62,116 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
 
   if (showLogin) {
     return (
-      <div
-        className="flex min-h-screen items-center justify-center px-4 py-10"
-        style={{ background: "var(--bg-primary)" }}
-      >
-        <div className="w-full max-w-md">
+      <main className="min-h-[100dvh]" style={{ background: "var(--bg-primary)" }}>
+        <header className="border-b px-6 py-5 sm:px-10" style={{ borderColor: "var(--border)" }}>
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+            <Brand />
+            <span className="text-[10px] font-medium tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>ACCOUNT</span>
+          </div>
+        </header>
+        <section className="mx-auto w-full max-w-[500px] px-6 py-10 sm:px-8 sm:py-16">
           <AuthForm
-            compact
             onSwitchToSetup={() => setShowLogin(false)}
             onAuthenticated={handleAuthenticated}
           />
-        </div>
-      </div>
+        </section>
+      </main>
     );
   }
 
   return (
-    <div
-      className="flex min-h-screen items-center justify-center px-4 py-10"
-      style={{ background: "var(--bg-primary)" }}
-    >
-      <motion.div
-        className="w-full max-w-md rounded-xl p-6 sm:p-7"
-        style={{
-          background: "var(--bg-secondary)",
-          border: "1px solid var(--border)",
-          boxShadow: "var(--shadow-md)",
-        }}
-        variants={staggerContainer}
-        initial="hidden"
-        animate="show"
-      >
-        <motion.p
-          variants={staggerItem}
-          className="text-[10px] font-semibold uppercase tracking-widest"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Quick setup
-        </motion.p>
-        <motion.h1
-          variants={staggerItem}
-          className="display mt-3 text-2xl font-semibold"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Connect a provider
-        </motion.h1>
-        <motion.p
-          variants={staggerItem}
-          className="mt-2 text-sm leading-relaxed"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          Bring your own model key to start asking questions across your documents.
-        </motion.p>
+    <main className="min-h-[100dvh]" style={{ background: "var(--bg-primary)" }}>
+      <header className="border-b px-6 py-5 sm:px-10" style={{ borderColor: "var(--border)" }}>
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <Brand />
+          <span className="text-[10px] font-medium tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>SETUP</span>
+        </div>
+      </header>
 
-        <motion.form
-          variants={staggerItem}
-          onSubmit={handleSubmit}
-          className="mt-6 flex flex-col gap-4"
-        >
-          {/* Provider segmented control */}
-          <div
-            role="group"
-            aria-label="Provider"
-            className="grid grid-cols-2 gap-1 rounded-lg p-1"
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+      <div className="mx-auto grid w-full max-w-6xl gap-10 px-6 py-10 sm:px-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)] lg:gap-16 lg:py-20">
+        <section className="max-w-md">
+          <p className="text-[10px] font-medium tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>
+            MODEL CONFIGURATION
+          </p>
+          <h1
+            className="mt-4 text-[38px] leading-[1.06] tracking-[-0.035em] sm:text-[44px]"
+            style={{ color: "var(--text-primary)", fontFamily: "var(--font-editorial), Georgia, serif" }}
           >
-            {(["openai", "gemini"] as const).map((p) => {
-              const active = provider === p;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setProvider(p)}
-                  aria-pressed={active}
-                  className="rounded-md px-4 py-2 text-[13px] font-medium transition-colors focus-ring"
-                  style={{
-                    background: active ? "var(--bg-elevated)" : "transparent",
-                    color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                    border: `1px solid ${active ? "var(--border-hover)" : "transparent"}`,
-                  }}
-                >
-                  {p === "openai" ? "OpenAI" : "Gemini"}
-                </button>
-              );
-            })}
+            Connect a model
+          </h1>
+          <p className="mt-4 max-w-[360px] text-[14px] leading-6" style={{ color: "var(--text-secondary)" }}>
+            Choose a provider and enter an API key to use it for document answers.
+          </p>
+        </section>
+
+        <section
+          className="w-full max-w-xl border-t pt-6 lg:justify-self-end lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0"
+          style={{ borderColor: "var(--border)" }}
+          aria-label="Provider configuration"
+        >
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div
+              role="group"
+              aria-label="Provider"
+              className="flex gap-5 border-b"
+              style={{ borderColor: "var(--border)" }}
+            >
+              {(["openai", "gemini"] as const).map((p) => {
+                const active = provider === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setProvider(p)}
+                    aria-pressed={active}
+                    className="focus-ring -mb-px rounded-t-[6px] border-b-2 px-1 py-2 text-[13px] font-medium"
+                    style={{
+                      background: "transparent",
+                      borderBottomColor: active ? "var(--accent-primary)" : "transparent",
+                      color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                    }}
+                  >
+                    {p === "openai" ? "OpenAI" : "Gemini"}
+                  </button>
+                );
+              })}
+            </div>
+
+            <TextField
+              label={provider === "openai" ? "OpenAI API key" : "Google AI API key"}
+              hint="Stored for this browser session. Sent only to your self-hosted API with your requests."
+              error={error}
+              mono
+              type="password"
+              value={apiKey}
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                setError(null);
+              }}
+              placeholder={provider === "openai" ? "sk-..." : "Google AI API key"}
+              autoComplete="off"
+            />
+
+            <Button type="submit" variant="primary" size="lg" className="w-full">
+              Open workspace
+              <ArrowRight size={15} aria-hidden="true" />
+            </Button>
+          </form>
+
+          <div className="mt-7 border-t pt-5" style={{ borderColor: "var(--border)" }}>
+            <p className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Already have an account?</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              className="mt-1"
+              onClick={() => setShowLogin(true)}
+            >
+              Sign in
+            </Button>
           </div>
-
-          {/* API key */}
-          <TextField
-            label={provider === "openai" ? "OpenAI API key" : "Google AI API key"}
-            hint="Stored in this browser session and sent as a request header to your self-hosted API on each call."
-            error={error}
-            mono
-            type="password"
-            value={apiKey}
-            onChange={(e) => {
-              setApiKey(e.target.value);
-              setError(null);
-            }}
-            placeholder={provider === "openai" ? "sk-..." : "Google AI API key"}
-            autoComplete="off"
-          />
-
-          <Button type="submit" variant="primary" size="lg" className="w-full">
-            Get Started
-            <ArrowRight size={15} />
-          </Button>
-        </motion.form>
-
-        <motion.div variants={staggerItem} className="mt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            size="lg"
-            className="w-full"
-            onClick={() => setShowLogin(true)}
-          >
-            Sign in instead
-          </Button>
-        </motion.div>
-      </motion.div>
-    </div>
+        </section>
+      </div>
+    </main>
   );
 }

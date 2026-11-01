@@ -29,13 +29,6 @@ const CLOSE_DELAY_MS = 90;
 const CARD_WIDTH = 320;
 const ESTIMATED_CARD_HEIGHT = 230;
 
-function scoreColor(score: number): string {
-  if (!Number.isFinite(score)) return "var(--text-muted)";
-  if (score >= 0.8) return "var(--confidence-high)";
-  if (score >= 0.6) return "var(--confidence-med)";
-  return "var(--confidence-low)";
-}
-
 export function CitationPreview({
   citation,
   children,
@@ -67,6 +60,7 @@ export function CitationPreview({
   const show = useCallback(
     (target: HTMLElement) => {
       clearTimers();
+      if (window.matchMedia("(max-width: 767px)").matches) return;
       openTimer.current = window.setTimeout(() => {
         const rect = target.getBoundingClientRect();
         const placeAbove =
@@ -105,9 +99,11 @@ export function CitationPreview({
     };
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", closeNow, true);
+    window.addEventListener("resize", closeNow);
     return () => {
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", closeNow, true);
+      window.removeEventListener("resize", closeNow);
     };
   }, [open, clearTimers]);
 
@@ -119,6 +115,7 @@ export function CitationPreview({
       onMouseLeave={hide}
       onFocus={(event) => show(event.currentTarget)}
       onBlur={hide}
+      onClickCapture={() => { clearTimers(); setOpen(false); }}
     >
       {children}
       {createPortal(
@@ -157,22 +154,7 @@ export function CitationPreview({
                 >
                   {citation.page_number ? `Page ${citation.page_number}` : "Excerpt"}
                 </span>
-                {Number.isFinite(citation.score) ? (
-                  <span className="flex items-baseline gap-1.5">
-                    <span
-                      className="text-[10px] uppercase tracking-widest"
-                      style={{ color: "var(--text-tertiary)" }}
-                    >
-                      relevance
-                    </span>
-                    <span
-                      className="data-num text-[12px] font-semibold"
-                      style={{ color: scoreColor(citation.score) }}
-                    >
-                      {citation.score.toFixed(2)}
-                    </span>
-                  </span>
-                ) : null}
+
               </div>
               <p
                 className="text-[12px] leading-relaxed"

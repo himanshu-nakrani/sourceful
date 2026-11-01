@@ -4,6 +4,7 @@ import NotebookClient from "./NotebookClient";
 
 interface NotebookPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ page?: string | string[] }>;
 }
 
 export async function generateMetadata({ params }: NotebookPageProps): Promise<Metadata> {
@@ -18,6 +19,9 @@ export async function generateMetadata({ params }: NotebookPageProps): Promise<M
  * Server shell for the notebook route: carries route metadata and mounts the
  * client notebook viewer.
  */
-export default function NotebookPage({ params }: NotebookPageProps) {
-  return <NotebookClient params={params} />;
+export default async function NotebookPage({ params, searchParams }: NotebookPageProps) {
+  const query = await searchParams;
+  const page = Number(Array.isArray(query.page) ? query.page[0] : query.page);
+  const initialPage = Number.isSafeInteger(page) && page > 0 ? page : 1;
+  return <NotebookClient params={params} initialPage={initialPage} />;
 }

@@ -3,163 +3,62 @@
 import React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Activity, FileSearch, ShieldCheck } from "lucide-react";
-
+import { ArrowRight, Check, FileText, Quote, ShieldCheck } from "lucide-react";
 import type { AuthUser } from "../lib/api";
-import { staggerContainer, staggerItem } from "../lib/motion";
+import { EASE_OUT } from "../lib/motion";
 import { useStore } from "../lib/store";
 import AuthForm from "./AuthForm";
+import Brand from "./Brand";
 
-const features = [
-  {
-    icon: <FileSearch size={15} />,
-    title: "Cited answers",
-    description: "Every response links to the document chunks it was assembled from.",
-  },
-  {
-    icon: <ShieldCheck size={15} />,
-    title: "Scoped data",
-    description: "Uploads and conversations stay tied to your authenticated account.",
-  },
-  {
-    icon: <Activity size={15} />,
-    title: "Live ingestion",
-    description: "Worker jobs report stage-by-stage progress for each document.",
-  },
-];
-
-/**
- * Auth gate UI for the /login page. Left panel is the product evidence
- * console; right panel is the shared AuthForm card, which reports success
- * here — this component only dispatches SET_CURRENT_USER and nothing else
- * (the /login gate handles the setup flag and redirect).
- */
 export default function AuthScreen() {
   const { dispatch } = useStore();
-
-  const handleAuthenticated = React.useCallback(
-    (user: AuthUser) => {
-      dispatch({ type: "SET_CURRENT_USER", payload: user });
-    },
-    [dispatch],
-  );
+  const handleAuthenticated = React.useCallback((user: AuthUser) => {
+    dispatch({ type: "SET_CURRENT_USER", payload: user });
+  }, [dispatch]);
 
   return (
-    <div
-      className="flex min-h-screen items-center justify-center px-4 py-10"
-      style={{ background: "var(--bg-primary)" }}
-    >
-      <motion.div
-        className="grid w-full max-w-4xl items-stretch gap-4 lg:grid-cols-2"
-        variants={staggerContainer}
-        initial="hidden"
-        animate="show"
-      >
-        {/* Evidence console */}
-        <motion.section
-          variants={staggerItem}
-          className="relative overflow-hidden rounded-xl"
-          style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+    <main className="flex min-h-[100dvh] flex-col lg:grid lg:grid-cols-2" style={{ background: "var(--bg-surface)" }}>
+      <section className="flex flex-col px-7 py-8 sm:px-12 lg:min-h-[100dvh] lg:px-14 lg:py-10 xl:px-20" style={{ background: "var(--bg-secondary)" }}>
+        <Brand />
+        <motion.div
+          className="mx-auto hidden w-full max-w-lg flex-1 flex-col justify-center py-12 lg:flex lg:py-16"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, ease: EASE_OUT }}
         >
-          <div
-            aria-hidden="true"
-            className="panel-grid pointer-events-none absolute inset-0"
-            style={{ opacity: 0.5 }}
-          />
-          <div className="relative flex h-full flex-col p-6 sm:p-8">
-            <p
-              className="text-[10px] font-semibold uppercase tracking-widest"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Sourceful
-            </p>
-            <h1
-              className="display mt-4 text-2xl font-semibold leading-snug"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Traceable document QA.
-            </h1>
-            <p
-              className="mt-3 max-w-sm text-sm leading-relaxed"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              Sign in to ask questions across your library — every answer carries the
-              evidence it was built from.
-            </p>
-
-            <div className="mt-auto flex flex-col pt-8">
-              {features.map((feature) => (
-                <FeatureRow
-                  key={feature.title}
-                  icon={feature.icon}
-                  title={feature.title}
-                  description={feature.description}
-                />
-              ))}
+          <p className="mb-5 text-xs font-medium tracking-[0.12em]" style={{ color: "var(--accent-primary)" }}>A LITTLE LESS SEARCHING. A LOT MORE CLARITY.</p>
+          <h1 className="text-[38px] font-semibold leading-[1.12] tracking-[-0.045em] sm:text-5xl xl:text-[56px]" style={{ color: "var(--text-primary)" }}>
+            Your documents.<br /><span style={{ color: "var(--accent-primary)" }}>A clearer perspective.</span>
+          </h1>
+          <p className="mt-6 max-w-[390px] text-[15px] leading-7" style={{ color: "var(--text-secondary)" }}>
+            Turn scattered information into answers you can trust. Ask, explore, and trace every insight back to its source.
+          </p>
+          <div className="mt-10 hidden sm:block" aria-label="Illustrative example of a cited answer">
+            <div className="rounded-2xl p-5 sm:p-6" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-md)" }}>
+              <div className="flex items-center gap-3 pb-4" style={{ borderBottom: "1px solid var(--border)" }}>
+                <span className="flex h-10 w-9 items-center justify-center rounded-lg" style={{ background: "var(--accent-primary-soft)", color: "var(--accent-primary)" }}><FileText size={19} strokeWidth={1.5} /></span>
+                <div className="min-w-0 flex-1"><p className="text-[13px] font-medium" style={{ color: "var(--text-primary)" }}>Product strategy.pdf</p><p className="mt-0.5 text-xs" style={{ color: "var(--text-muted)" }}>Ready to explore</p></div>
+                <Check size={15} style={{ color: "var(--accent-primary)" }} />
+              </div>
+              <p className="mt-5 text-[13px] font-medium" style={{ color: "var(--text-primary)" }}>What are the team’s top priorities?</p>
+              <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-secondary)" }}>Focus the roadmap, talk to customers, and measure what matters.</p>
+              <span className="mt-4 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium" style={{ background: "var(--accent-primary-soft)", color: "var(--accent-primary)" }}><Quote size={11} /> Product strategy · p. 4</span>
             </div>
-          </div>
-        </motion.section>
-
-        {/* Auth console */}
-        <motion.div variants={staggerItem} className="flex">
-          <div className="w-full">
-            <AuthForm onAuthenticated={handleAuthenticated} />
-            {/* Sourceful is BYOK and usable without an account (data is scoped
-                to an anonymous client session). `/` redirects here, so without
-                this link the anonymous path would only be reachable by typing
-                the /dashboard URL directly. */}
-            <p className="mt-4 text-center text-xs" style={{ color: "var(--text-tertiary)" }}>
-              <Link
-                href="/dashboard"
-                className="rounded focus-ring underline underline-offset-2"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                Continue without an account
-              </Link>{" "}
-              — bring your own API key, data stays in this browser session.
-            </p>
+            <p className="mt-3 text-center text-[11px]" style={{ color: "var(--text-muted)" }}>A glimpse of your workspace · illustrative example</p>
           </div>
         </motion.div>
-      </motion.div>
-    </div>
-  );
-}
-
-function FeatureRow({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div
-      className="flex items-start gap-3 border-t py-3.5"
-      style={{ borderColor: "var(--border)" }}
-    >
-      <span
-        className="inline-flex shrink-0 rounded-md p-1.5"
-        style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          color: "var(--accent-secondary)",
-        }}
-      >
-        {icon}
-      </span>
-      <div>
-        <p className="text-[13px] font-medium" style={{ color: "var(--text-primary)" }}>
-          {title}
-        </p>
-        <p
-          className="mt-0.5 text-xs leading-relaxed"
-          style={{ color: "var(--text-tertiary)" }}
-        >
-          {description}
-        </p>
-      </div>
-    </div>
+        <p className="hidden items-center gap-2 text-xs lg:flex" style={{ color: "var(--text-tertiary)" }}><ShieldCheck size={14} /> Self-hosted. Your models. Your control.</p>
+      </section>
+      <section className="flex flex-1 flex-col items-center justify-center px-6 py-10 sm:px-12 lg:py-16" aria-label="Sign in to Sourceful">
+        <div className="w-full max-w-[380px]">
+          <AuthForm onAuthenticated={handleAuthenticated} />
+          <div className="mt-8 pt-6 text-center" style={{ borderTop: "1px solid var(--border)" }}>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Prefer to try it on your own?</p>
+            <Link href="/dashboard" className="focus-ring mt-3 inline-flex items-center gap-2 rounded-md text-[13px] font-medium transition-colors hover:underline underline-offset-4" style={{ color: "var(--accent-primary)" }}>Continue without an account <ArrowRight size={14} /></Link>
+            <p className="mt-2 text-[11px] leading-5" style={{ color: "var(--text-muted)" }}>Bring your own API key. Your session stays separate.</p>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }

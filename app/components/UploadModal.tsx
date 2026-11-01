@@ -311,15 +311,6 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
     ? Math.min(100, Math.max(8, Math.round((job.progress || 0) * 100)))
     : 0;
 
-  const fileTone =
-    status === "done"
-      ? "success"
-      : status === "error"
-        ? "error"
-        : status === "queued" || status === "processing"
-          ? "processing"
-          : "idle";
-
   const statusLabel =
     status === "queued"
       ? "Queued for processing"
@@ -336,7 +327,7 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
       open={open}
       onClose={handleClose}
       busy={submitting}
-      title="Add a source"
+      title={mode === "file" ? "Upload a document" : "Import from a URL"}
       width={480}
       className="flex flex-col overflow-hidden"
     >
@@ -347,10 +338,12 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
       >
         <div>
           <h2 className="display text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-            Add a source
+            {mode === "file" ? "Upload a document" : "Import from a URL"}
           </h2>
           <p className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>
-            File or URL — queued for durable background indexing.
+            {mode === "file"
+              ? "Add a document to your library. Indexing runs in the background."
+              : "Import a web page or direct PDF into the active workspace."}
           </p>
         </div>
         <Button
@@ -366,48 +359,123 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
 
       {/* Body */}
       <div className="px-5 py-4 flex flex-col gap-4">
-        {/* File / URL mode tabs */}
-        <div
-          className="flex items-center gap-1 p-1 rounded-lg"
-          style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)" }}
-        >
-          {(["file", "url"] as const).map((tabMode) => {
-            const isActive = mode === tabMode;
-            return (
+        {mode === "file" ? (
+          <div className="flex flex-col gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.txt,.md,.docx,.csv"
+              className="hidden"
+              aria-hidden="true"
+              tabIndex={-1}
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0];
+                if (nextFile) setFile(nextFile);
+              }}
+            />
+
+            <button
+              type="button"
+              disabled={flowActive}
+              className="w-full rounded-xl text-left focus-ring disabled:cursor-not-allowed"
+              style={{
+                border: `1px dashed ${zoneActive ? "var(--accent-primary)" : "var(--border)"}`,
+                background: zoneActive ? "var(--accent-primary-soft)" : "var(--bg-tertiary)",
+                padding: "1.5rem 1rem",
+                transition: "border-color 0.15s ease, background 0.15s ease",
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onMouseEnter={() => setZoneHover(true)}
+              onMouseLeave={() => setZoneHover(false)}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label={file ? `Choose a different file. Current file: ${file.name}` : "Choose a document to upload"}
+              aria-describedby={file ? undefined : "upload-file-types"}
+            >
+              {file ? (
+                <div className="flex items-center gap-3">
+                  <FileUp
+                    size={18}
+                    className="shrink-0"
+                    aria-hidden="true"
+                    style={{ color: "var(--accent-primary)" }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className="block truncate text-[13px] font-medium"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {file.name}
+                    </span>
+                    <span className="block data-num text-xs" style={{ color: "var(--text-tertiary)" }}>
+                      {file.size < 1024
+                        ? `${Math.max(0.1, Math.round(file.size / 100) / 10)} KB`
+                        : `${Math.round(file.size / 1024)} KB`}
+                    </span>
+                  </span>
+                  {!flowActive ? (
+                    <span className="shrink-0 text-xs font-medium" style={{ color: "var(--text-tertiary)" }}>
+                      Change
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <FileUp size={24} aria-hidden="true" style={{ color: "var(--text-muted)" }} />
+                  <span className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
+                    Choose a document or drop it here
+                  </span>
+                  <span id="upload-file-types" className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    PDF, TXT, Markdown, DOCX, or CSV
+                  </span>
+                </div>
+              )}
+            </button>
+
+            <div className="flex items-center justify-center gap-2 text-xs">
+              <span style={{ color: "var(--text-tertiary)" }}>Have a web link instead?</span>
               <button
-                key={tabMode}
                 type="button"
                 onClick={() => {
                   if (flowActive) return;
-                  setMode(tabMode);
+                  setMode("url");
                   setStatus("idle");
                   setMessage("");
                 }}
                 disabled={flowActive}
-                aria-pressed={isActive}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors focus-ring disabled:cursor-not-allowed"
-                style={{
-                  background: isActive ? "var(--bg-surface)" : "transparent",
-                  color: isActive ? "var(--text-primary)" : "var(--text-muted)",
-                  border: `1px solid ${isActive ? "var(--border-hover)" : "transparent"}`,
-                }}
+                className="inline-flex items-center gap-1 rounded-md font-medium focus-ring disabled:cursor-not-allowed"
+                style={{ color: "var(--accent-primary)" }}
               >
-                {tabMode === "file" ? <FileUp size={12} /> : <LinkIcon size={12} />}
-                {tabMode === "file" ? "Upload file" : "Import URL"}
+                <LinkIcon size={13} aria-hidden="true" />
+                Import from a URL
               </button>
-            );
-          })}
-        </div>
-
-        {mode === "url" ? (
+            </div>
+          </div>
+        ) : (
           <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (flowActive) return;
+                setMode("file");
+                setStatus("idle");
+                setMessage("");
+              }}
+              disabled={flowActive}
+              className="self-start inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium focus-ring disabled:cursor-not-allowed"
+              style={{ color: "var(--accent-primary)" }}
+            >
+              <FileUp size={13} aria-hidden="true" />
+              Upload a file instead
+            </button>
             {!activeWorkspaceId ? (
-              <div
-                className="rounded-lg px-3 py-2 text-xs"
-                style={{ background: "var(--warning-soft)", color: "var(--warning)" }}
-              >
+              <p className="text-xs" style={{ color: "var(--warning)" }} role="status">
                 Select a workspace before importing a URL.
-              </div>
+              </p>
             ) : null}
             <TextField
               label="URL"
@@ -425,85 +493,8 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
               disabled={flowActive}
             />
             <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-              Imports into your active workspace. HTML pages and direct-PDF URLs are
-              supported; content larger than 10&nbsp;MB is rejected.
+              Imports into your active workspace. HTML pages and direct-PDF URLs are supported; content larger than 10 MB is rejected.
             </p>
-          </div>
-        ) : (
-          <div
-            role="button"
-            tabIndex={0}
-            className="rounded-xl cursor-pointer"
-            style={{
-              border: `1px dashed ${zoneActive ? "var(--accent-primary)" : "var(--border)"}`,
-              background: zoneActive ? "var(--accent-primary-soft)" : "var(--bg-tertiary)",
-              padding: "2rem 1rem",
-              textAlign: "center",
-              transition: "border-color 0.15s ease, background 0.15s ease",
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            onMouseEnter={() => setZoneHover(true)}
-            onMouseLeave={() => setZoneHover(false)}
-            onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-            aria-label="Drop a file here or click to browse"
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.txt,.md,.docx,.csv"
-              className="hidden"
-              onChange={(event) => {
-                const nextFile = event.target.files?.[0];
-                if (nextFile) setFile(nextFile);
-              }}
-            />
-            {file ? (
-              <div className="flex flex-col items-center gap-2.5">
-                <div
-                  className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 max-w-full text-left"
-                  style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
-                >
-                  <StatusDot tone={fileTone} pulse={fileTone === "processing"} />
-                  <span className="min-w-0">
-                    <span
-                      className="block truncate text-[13px] font-medium"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {file.name}
-                    </span>
-                    <span className="block data-num text-xs" style={{ color: "var(--text-tertiary)" }}>
-                      {file.size < 1024
-                        ? `${Math.max(0.1, Math.round(file.size / 100) / 10)} KB`
-                        : `${Math.round(file.size / 1024)} KB`}
-                    </span>
-                  </span>
-                </div>
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Click to choose a different file
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <FileUp size={28} style={{ color: "var(--text-muted)" }} />
-                <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
-                  Drop a file here or click to browse
-                </p>
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  PDF, TXT, MD, DOCX, CSV
-                </p>
-              </div>
-            )}
           </div>
         )}
 
@@ -529,6 +520,9 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
                     background: status === "done" ? "var(--success-soft)" : "var(--bg-tertiary)",
                     border: "1px solid var(--border)",
                   }}
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <StatusDot
@@ -546,6 +540,11 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
                     <div
                       className="h-1 rounded-full overflow-hidden"
                       style={{ background: "var(--bg-highest)" }}
+                      role="progressbar"
+                      aria-label="Indexing progress"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={progressPct}
                     >
                       <div
                         className="h-full rounded-full"
@@ -587,7 +586,13 @@ export default function UploadModal({ open, onClose, initialFile }: UploadModalP
           Cancel
         </Button>
         <Button variant="primary" onClick={handleSubmit} disabled={!canSubmit}>
-          {submitting ? "Working…" : mode === "file" ? "Upload" : "Import URL"}
+          {submitting
+            ? "Working…"
+            : flowActive
+              ? "Processing…"
+              : mode === "file"
+                ? "Upload"
+                : "Import URL"}
         </Button>
       </div>
     </Modal>

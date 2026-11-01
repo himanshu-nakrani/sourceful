@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  ArrowUpRight,
   BarChart3,
   BookOpen,
   Bug,
@@ -21,8 +22,9 @@ import {
   Monitor,
   PanelLeftOpen,
   RefreshCcw,
-  Settings,
   StopCircle,
+  SlidersHorizontal,
+  Upload,
 } from "lucide-react";
 import TrustAnalyticsPanel from "./TrustAnalyticsPanel";
 import MessageBubble from "./MessageBubble";
@@ -94,6 +96,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   const [workspaceSources, setWorkspaceSources] = useState<WorkspaceSource[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[] | null>(null);
   const [sourceFilterOpen, setSourceFilterOpen] = useState(false);
+  const sourceFilterId = React.useId();
+  const sourceFilterTriggerRef = useRef<HTMLButtonElement>(null);
 
   const chatLayout = settings.chatLayout ?? "default";
   const router = useRouter();
@@ -639,46 +643,52 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
   }, [activeConversationId, messages.length, streaming, stopStreaming]);
 
   const renderEmptyState = () => {
-    if (!settings.providerApiKey.trim()) {
-      return (
-        <EmptyState
-          icon={<KeyRound size={16} />}
-          title="API Key Required"
-          description="Add your OpenAI or Google AI API key in Settings to start chatting with your documents."
-          action={
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
-            >
-              Open Settings
-            </Button>
-          }
-        />
-      );
-    }
+    const hasProvider = Boolean(settings.providerApiKey.trim());
 
     if (!activeDocument) {
       return (
+        <motion.div
+          className="mx-auto flex w-full max-w-[580px] flex-col items-center px-2 py-12 text-center sm:py-20"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: EASE_OUT }}
+        >
+          <div className="mb-7 flex h-16 w-16 items-center justify-center rounded-[22px]" style={{ background: "var(--accent-primary-soft)", color: "var(--accent-primary)" }}>
+            <BookOpen size={28} strokeWidth={1.4} />
+          </div>
+          <h1 className="text-[34px] font-semibold leading-[1.18] tracking-[-0.045em] sm:text-[42px]" style={{ color: "var(--text-primary)" }}>
+            Your knowledge,<br />within reach.
+          </h1>
+          <p className="mt-5 max-w-[410px] text-sm leading-7" style={{ color: "var(--text-secondary)" }}>
+            A focused space to explore your documents.<br className="hidden sm:block" /> Ask a question. Find an insight. Follow the source.
+          </p>
+          <button
+            type="button"
+            onClick={hasProvider ? onUploadClick : () => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
+            className="focus-ring group mt-9 flex w-full items-center gap-4 rounded-2xl border border-dashed px-5 py-6 text-left transition-colors hover:border-[var(--accent-primary)] hover:bg-[var(--bg-surface-hover)] sm:px-7"
+            style={{ background: "var(--bg-surface)", borderColor: "var(--border-hover)", boxShadow: "var(--shadow-xs)" }}
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--bg-secondary)", color: "var(--accent-primary)" }}>
+              {hasProvider ? <Upload size={20} strokeWidth={1.7} /> : <KeyRound size={20} strokeWidth={1.7} />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium" style={{ color: "var(--text-primary)" }}>{hasProvider ? "Add your first document" : "Connect your AI provider"}</span>
+              <span className="mt-1 block text-xs leading-5" style={{ color: "var(--text-muted)" }}>{hasProvider ? "Drop a file anywhere, or click to browse." : "Bring an OpenAI or Gemini key to get started."}</span>
+            </span>
+            <ArrowUpRight size={18} className="shrink-0 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" style={{ color: "var(--text-tertiary)" }} />
+          </button>
+          <p className="mt-5 text-xs" style={{ color: "var(--text-muted)" }}>{hasProvider ? "PDF, DOCX, and text files · Answers with sources" : "Your key is stored for this browser session."}</p>
+        </motion.div>
+      );
+    }
+
+    if (!hasProvider) {
+      return (
         <EmptyState
-          icon={<FileText size={16} />}
-          title="Welcome to Document RAG"
-          description="Upload a document, inspect the extracted chunks, and ask grounded questions with source citations."
-          action={
-            <div className="flex gap-2">
-              <Button variant="primary" size="sm" onClick={onUploadClick}>
-                Upload Document
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
-              >
-                <Settings size={13} />
-                Open Settings
-              </Button>
-            </div>
-          }
+          icon={<KeyRound size={20} />}
+          title="Connect a model to keep going"
+          description="Add your OpenAI or Gemini key to start exploring this document."
+          action={<Button variant="primary" onClick={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}>Connect provider</Button>}
         />
       );
     }
@@ -687,83 +697,38 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       const failed = activeDocument.status === "error";
       return (
         <EmptyState
-          icon={
-            failed ? (
-              <AlertTriangle size={16} />
-            ) : (
-              <Loader2 size={16} className="animate-spin" />
-            )
-          }
-          title={failed ? "Indexing Failed" : "Indexing In Progress"}
-          description={
-            failed
-              ? activeDocument.last_error || "The document could not be indexed."
-              : "The worker is preparing chunks and embeddings for this document."
-          }
-          action={
-            failed ? (
-              <Button variant="primary" size="sm" onClick={handleRetryDocument}>
-                <RefreshCcw size={13} />
-                Retry Indexing
-              </Button>
-            ) : undefined
-          }
+          icon={failed ? <AlertTriangle size={20} /> : <Loader2 size={20} className="animate-spin" />}
+          title={failed ? "This document needs another try" : "Getting your document ready"}
+          description={failed ? activeDocument.last_error || "We couldn’t prepare this document. Try processing it again." : "We’re reading your file and preparing it for questions. This can take a moment."}
+          action={failed ? <Button variant="primary" onClick={handleRetryDocument}><RefreshCcw size={14} /> Try again</Button> : undefined}
         />
       );
     }
 
     return (
       <motion.div
-        className="flex flex-col items-center justify-center py-20"
-        initial={{ opacity: 0, y: 20 }}
+        className="flex flex-col items-center justify-center py-12 sm:py-20"
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: EASE_OUT }}
       >
-        <div
-          className="flex items-center justify-center rounded-lg mb-5"
-          style={{
-            width: 52,
-            height: 52,
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <FileText size={22} style={{ color: "var(--accent-primary)" }} />
-        </div>
-        <h3
-          className="display text-lg font-semibold mb-1"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Ask about {activeDocument.filename}
-        </h3>
-        <p className="text-sm mb-8 text-center max-w-md" style={{ color: "var(--text-tertiary)" }}>
-          Retrieved chunks will appear with similarity scores and page references.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
+        <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "var(--accent-primary-soft)", color: "var(--accent-primary)" }}><FileText size={25} strokeWidth={1.5} /></div>
+        <h2 className="text-center text-[28px] font-semibold tracking-[-0.035em] sm:text-[32px]" style={{ color: "var(--text-primary)" }}>Where would you like to start?</h2>
+        <p className="mt-3 mb-8 max-w-md text-center text-sm leading-6" style={{ color: "var(--text-secondary)" }}>Ask a question, explore an idea, or try a starting point below.</p>
+        <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
           {suggestions.map((suggestion, i) => (
             <motion.button
               key={suggestion}
               type="button"
-              onClick={() => {
-                setQuestion(suggestion);
-                textareaRef.current?.focus();
-              }}
-              className="text-left px-4 py-3 rounded-lg text-sm transition-colors"
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-secondary)",
-              }}
-              initial={{ opacity: 0, y: 10 }}
+              onClick={() => { setQuestion(suggestion); textareaRef.current?.focus(); }}
+              className="focus-ring flex items-center justify-between gap-4 rounded-xl px-4 py-4 text-left text-[13px] leading-6 transition-colors"
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + i * 0.05, duration: 0.25, ease: EASE_OUT }}
-              whileHover={{
-                borderColor: "var(--border-hover)",
-                background: "var(--bg-surface-hover)",
-              }}
+              transition={{ delay: 0.05 + i * 0.04, duration: 0.25, ease: EASE_OUT }}
+              whileHover={{ borderColor: "var(--border-hover)", background: "var(--bg-surface-hover)" }}
             >
-              <span className="inline-block mr-1.5" style={{ color: "var(--accent-primary)" }}>→</span>
-              {suggestion}
+              {suggestion}<ArrowUpRight size={15} className="shrink-0" style={{ color: "var(--text-muted)" }} />
             </motion.button>
           ))}
         </div>
@@ -787,185 +752,60 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
         : ("processing" as const);
 
   return (
-    <div className="flex-1 flex flex-col h-full w-full min-w-0">
-      {/* Header bar — hairline bottom border, ghost icon controls */}
-      <div
-        className="flex items-center gap-2 px-4 flex-shrink-0 relative"
-        style={{
-          height: "var(--header-height)",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--bg-primary)",
-        }}
+    <main className="flex h-full w-full min-w-0 flex-1 flex-col">
+      <header
+        className="relative z-20 flex shrink-0 items-center gap-3 px-4 sm:px-7"
+        style={{ minHeight: "var(--header-height)", borderBottom: "1px solid var(--border)", background: "var(--bg-primary)" }}
       >
-        <motion.button
+        <button
           type="button"
           onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
-          className={`p-1.5 rounded-md transition-colors ${sidebarOpen ? 'md:hidden' : ''}`}
+          className={`focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--bg-secondary)] ${sidebarOpen ? "md:hidden" : ""}`}
           style={{ color: "var(--text-tertiary)" }}
           aria-label="Toggle sidebar"
           title="Toggle sidebar"
-          whileHover={{ color: "var(--text-secondary)", background: "var(--bg-surface)" }}
-          whileTap={{ scale: 0.92 }}
-        >
-          <PanelLeftOpen size={16} />
-        </motion.button>
-        {isMultiDoc ? (
-          <div className="flex items-center gap-2 min-w-0">
-            <StatusDot
-              tone={multiDocStatus}
-              pulse={multiDocStatus === "processing"}
-            />
-            <span
-              className="text-[13px] font-medium truncate"
-              style={{ color: "var(--text-primary)" }}
-            >
-              {activeDocumentIds.length} documents
-            </span>
-            <span
-              className="data-num flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded"
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-tertiary)",
-              }}
-            >
-              {activeDocuments.reduce((sum, d) => sum + d.chunk_count, 0)} chunks
-            </span>
+        ><PanelLeftOpen size={19} /></button>
+        {activeDocument || isMultiDoc ? (
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg sm:flex" style={{ background: "var(--bg-secondary)", color: "var(--text-tertiary)" }}><FileText size={18} strokeWidth={1.6} /></div>
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-medium" style={{ color: "var(--text-primary)" }} title={isMultiDoc ? undefined : activeDocument?.filename}>{isMultiDoc ? `${activeDocumentIds.length} documents` : activeDocument?.filename}</p>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                <StatusDot tone={isMultiDoc ? multiDocStatus : singleDocStatus} pulse={(isMultiDoc ? multiDocStatus : singleDocStatus) === "processing"} />
+                {(isMultiDoc ? multiDocStatus : singleDocStatus) === "success" ? "Ready to explore" : (isMultiDoc ? multiDocStatus : singleDocStatus) === "error" ? "Needs attention" : "Preparing your sources"}
+              </div>
+            </div>
           </div>
-        ) : activeDocument ? (
-          <div className="flex items-center gap-2 min-w-0">
-            <StatusDot
-              tone={singleDocStatus}
-              pulse={singleDocStatus === "processing"}
-            />
-            <span
-              className="text-[13px] font-medium truncate"
-              style={{ color: "var(--text-primary)" }}
-              title={activeDocument.filename}
-            >
-              {activeDocument.filename}
-            </span>
-            <span
-              className="data-num flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded"
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-tertiary)",
-              }}
-            >
-              {activeDocument.chunk_count} chunks
-            </span>
-          </div>
-        ) : (
-          <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Select a document to start
-          </span>
-        )}
-        <div className="flex-1" />
-        {activeDocument && !isMultiDoc && (
-          <motion.button
-            type="button"
-            onClick={() => router.push(`/documents/${activeDocument.id}/notebook`)}
-            className="p-1.5 rounded-md flex items-center gap-1.5 mr-1 transition-colors"
-            style={{ color: "var(--text-tertiary)" }}
-            aria-label="Open notebook view"
-            title="Open notebook view"
-            whileHover={{ color: "var(--text-secondary)", background: "var(--bg-surface)" }}
-            whileTap={{ scale: 0.92 }}
-          >
-            <BookOpen size={14} />
-            <span className="text-[11px] font-medium hidden sm:inline">Notebook</span>
-          </motion.button>
-        )}
-        {/* Layout mode toggle — segmented control with hairline dividers */}
-        <div
-          className="flex items-center rounded-md overflow-hidden mr-1"
-          style={{ border: "1px solid var(--border)", background: "var(--bg-secondary)" }}
-          role="group"
-          aria-label="Chat layout mode"
-        >
-          {(["default", "focus", "research"] as const).map((mode, index) => {
-            const icons = { default: <Monitor size={12} />, focus: <Focus size={12} />, research: <LayoutPanelLeft size={12} /> };
-            const titles = { default: "Default", focus: "Focus", research: "Research" };
-            const active = chatLayout === mode;
-            return (
-              <motion.button
-                key={mode}
-                type="button"
-                onClick={() => {
-                  dispatch({ type: "SET_SETTINGS", payload: { chatLayout: mode } });
-                  // Focus mode: collapse sidebar. Default/Research: restore it.
-                  if (mode === "focus") {
-                    dispatch({ type: "SET_SIDEBAR", payload: false });
-                  } else {
-                    dispatch({ type: "SET_SIDEBAR", payload: true });
-                  }
-                }}
-                aria-pressed={active}
-                aria-label={`${titles[mode]} layout`}
-                title={`${titles[mode]} layout`}
-                className="px-2 py-1.5 flex items-center gap-1 text-[10px] font-medium transition-colors"
-                style={{
-                  color: active ? "var(--text-primary)" : "var(--text-muted)",
-                  background: active ? "var(--bg-surface)" : "transparent",
-                  borderLeft: index > 0 ? "1px solid var(--border)" : "none",
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {icons[mode]}
-                {active ? <span>{titles[mode]}</span> : null}
-              </motion.button>
-            );
-          })}
-        </div>
-        <motion.button
-          type="button"
-          onClick={() => setAnalyticsOpen((v) => !v)}
-          className="p-1.5 rounded-md flex items-center justify-center transition-colors"
-          style={{
-            color: analyticsOpen ? "var(--accent-primary)" : "var(--text-tertiary)",
-            background: analyticsOpen ? "var(--accent-primary-soft)" : "transparent",
-          }}
-          aria-label="Toggle trust analytics panel"
-          aria-pressed={analyticsOpen}
-          title="Trust analytics"
-          whileHover={{ color: analyticsOpen ? "var(--accent-primary)" : "var(--text-secondary)" }}
-          whileTap={{ scale: 0.92 }}
-        >
-          <BarChart3 size={14} />
-        </motion.button>
-        <motion.button
-          type="button"
-          onClick={() => setDebugOpen((v) => !v)}
-          className="p-1.5 rounded-md flex items-center gap-1.5 transition-colors"
-          style={{
-            color: debugOpen ? "var(--accent-secondary)" : "var(--text-tertiary)",
-            background: debugOpen ? "var(--accent-secondary-soft)" : "transparent",
-          }}
-          aria-label="Toggle retrieval debug panel"
-          aria-pressed={debugOpen}
-          title="Retrieval debug panel"
-          whileHover={{ color: debugOpen ? "var(--accent-secondary)" : "var(--text-secondary)" }}
-          whileTap={{ scale: 0.92 }}
-        >
-          <Bug size={14} />
-          <span className="text-[11px] font-medium hidden sm:inline">Debug</span>
-        </motion.button>
-        {activeDocument && activeDocument.status !== "ready" ? (
-          <motion.button
-            type="button"
-            onClick={handleRetryDocument}
-            className="p-1.5 rounded-md flex items-center justify-center transition-colors"
-            style={{ color: "var(--text-tertiary)" }}
-            aria-label="Retry processing document"
-            title="Retry processing document"
-            whileHover={{ rotate: 180, color: "var(--text-secondary)" }}
-            transition={{ duration: 0.4 }}
-          >
-            <RefreshCcw size={14} />
-          </motion.button>
+        ) : <h2 className="flex-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>Your workspace</h2>}
+        {activeDocument && !isMultiDoc ? (
+          <button type="button" onClick={() => router.push(`/documents/${activeDocument.id}/notebook`)} className="focus-ring flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs transition-colors hover:bg-[var(--bg-secondary)]" style={{ color: "var(--text-secondary)" }} aria-label="Open notebook view" title="Open notebook view"><BookOpen size={16} /><span className="hidden sm:inline">Notebook</span></button>
         ) : null}
-      </div>
+        {activeDocument || isMultiDoc ? (
+          <details
+            className="relative"
+            onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }}
+            onKeyDown={(event) => { if (event.key === "Escape") { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}
+          >
+            <summary aria-label="View options" title="View options" className="focus-ring flex cursor-pointer list-none items-center gap-2 rounded-lg px-2.5 py-2 text-xs transition-colors hover:bg-[var(--bg-secondary)] [&::-webkit-details-marker]:hidden" style={{ color: "var(--text-secondary)" }}><SlidersHorizontal size={16} /><span className="hidden sm:inline">View</span><ChevronDown size={12} /></summary>
+            <div className="absolute right-0 top-full z-30 mt-2 w-[264px] rounded-xl p-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-lg)" }}>
+              <p className="px-1 pb-2 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Workspace view</p>
+              <div className="grid grid-cols-3 gap-1 rounded-lg p-1" style={{ background: "var(--bg-secondary)" }} role="group" aria-label="Chat layout mode">
+                {(["default", "focus", "research"] as const).map((mode) => {
+                  const icons = { default: <Monitor size={15} />, focus: <Focus size={15} />, research: <LayoutPanelLeft size={15} /> };
+                  const titles = { default: "Default", focus: "Focus", research: "Research" };
+                  const active = chatLayout === mode;
+                  return <button key={mode} type="button" aria-pressed={active} aria-label={`${titles[mode]} layout`} className="focus-ring flex flex-col items-center gap-1.5 rounded-md px-1 py-2.5 text-[11px] transition-colors" style={{ color: active ? "var(--text-primary)" : "var(--text-muted)", background: active ? "var(--bg-surface)" : "transparent", boxShadow: active ? "var(--shadow-xs)" : "none" }} onClick={() => { dispatch({ type: "SET_SETTINGS", payload: { chatLayout: mode } }); dispatch({ type: "SET_SIDEBAR", payload: mode !== "focus" }); }}>{icons[mode]}{titles[mode]}</button>;
+                })}
+              </div>
+              <div className="mt-3 flex flex-col gap-1 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+                <button type="button" onClick={() => setAnalyticsOpen((v) => !v)} aria-pressed={analyticsOpen} aria-label="Toggle trust analytics panel" className="focus-ring flex items-center gap-2.5 rounded-lg px-2 py-2.5 text-xs hover:bg-[var(--bg-secondary)]" style={{ color: analyticsOpen ? "var(--accent-primary)" : "var(--text-secondary)" }}><BarChart3 size={15} />Answer insights{analyticsOpen ? <span className="ml-auto">On</span> : null}</button>
+                <button type="button" onClick={() => setDebugOpen((v) => !v)} aria-pressed={debugOpen} aria-label="Toggle retrieval debug panel" className="focus-ring flex items-center gap-2.5 rounded-lg px-2 py-2.5 text-xs hover:bg-[var(--bg-secondary)]" style={{ color: debugOpen ? "var(--accent-primary)" : "var(--text-secondary)" }}><Bug size={15} />Retrieval details{debugOpen ? <span className="ml-auto">On</span> : null}</button>
+              </div>
+            </div>
+          </details>
+        ) : <span className="hidden text-xs sm:block" style={{ color: "var(--text-muted)" }}>A little more clarity.</span>}
+        {activeDocument?.status === "error" ? <button type="button" onClick={handleRetryDocument} className="focus-ring flex h-9 w-9 items-center justify-center rounded-lg hover:bg-[var(--bg-secondary)]" style={{ color: "var(--text-tertiary)" }} aria-label="Retry processing document" title="Retry processing document"><RefreshCcw size={16} /></button> : null}
+      </header>
 
       <TrustAnalyticsPanel
         open={analyticsOpen}
@@ -987,7 +827,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       <div className="flex-1 relative min-h-0">
         <div
           ref={scrollContainerRef}
-          className={`absolute inset-0 overflow-y-auto py-6 ${chatLayout === "focus" ? "px-6" : "px-4"}`}
+          className={`absolute inset-0 overflow-y-auto py-7 sm:py-8 ${chatLayout === "focus" ? "px-6" : "px-4"}`}
           style={{ background: "var(--bg-primary)" }}
         >
           <div className={`${layoutMaxWidth} mx-auto flex flex-col gap-4`}>
@@ -1171,49 +1011,16 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
       {activeDocument?.status === "ready" ? (
         <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ background: "var(--bg-primary)" }}>
           <form onSubmit={handleSubmit} className={`${layoutMaxWidth} mx-auto relative`}>
-            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span
-                className="text-[10px] uppercase tracking-widest mr-1"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Mode
-              </span>
-              {/* Mode selector — segmented control */}
-              <div
-                className="flex items-center rounded-md overflow-hidden"
-                style={{ border: "1px solid var(--border)", background: "var(--bg-secondary)" }}
-                role="group"
-                aria-label="Chat mode"
-              >
-                {(["ask", "compare", "extract", "brief"] as const).map((mode, index) => {
-                  const active = chatMode === mode;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setChatMode(mode)}
-                      aria-pressed={active}
-                      className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors"
-                      style={{
-                        background: active ? "var(--bg-surface)" : "transparent",
-                        color: active ? "var(--text-primary)" : "var(--text-muted)",
-                        borderLeft: index > 0 ? "1px solid var(--border)" : "none",
-                      }}
-                      title={
-                        mode === "ask"
-                          ? "Grounded Q&A (default)"
-                          : mode === "compare"
-                          ? "Compare similarities/differences across sources"
-                          : mode === "extract"
-                            ? "Normalized field extraction with citations"
-                            : "Executive brief / study guide"
-                      }
-                    >
-                      {mode}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                <span className="sr-only">Answer style</span>
+                <select aria-label="Answer style" value={chatMode} onChange={(event) => setChatMode(event.target.value as ChatMode)} className="focus-ring cursor-pointer rounded-lg px-2 py-1.5 text-xs outline-none" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+                  <option value="ask">Ask a question</option>
+                  <option value="compare">Compare sources</option>
+                  <option value="extract">Extract details</option>
+                  <option value="brief">Create a brief</option>
+                </select>
+              </label>
 
               {/* Per-source filter (Phase 1). Hidden when not inside a workspace
                   or when the workspace has fewer than 2 ready sources. */}
@@ -1227,13 +1034,26 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   source filter unavailable
                 </span>
               ) : activeWorkspaceId && workspaceSources.length >= 2 ? (
-                <div className="ml-1 relative">
+                <div
+                  className="ml-1 relative"
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget)) setSourceFilterOpen(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && sourceFilterOpen) {
+                      event.stopPropagation();
+                      setSourceFilterOpen(false);
+                      sourceFilterTriggerRef.current?.focus();
+                    }
+                  }}
+                >
                   <button
+                    ref={sourceFilterTriggerRef}
                     type="button"
                     onClick={() => setSourceFilterOpen((v) => !v)}
-                    aria-haspopup="listbox"
+                    aria-controls={sourceFilterId}
                     aria-expanded={sourceFilterOpen}
-                    className="text-[10px] font-medium px-2 py-1 rounded-md transition-colors flex items-center gap-1"
+                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1"
                     style={{
                       background: selectedSourceIds ? "var(--accent-primary-soft)" : "transparent",
                       color: selectedSourceIds ? "var(--accent-primary)" : "var(--text-muted)",
@@ -1254,7 +1074,9 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                         border: "1px solid var(--border)",
                         boxShadow: "var(--shadow-md)",
                       }}
-                      role="listbox"
+                      id={sourceFilterId}
+                      role="group"
+                      aria-label="Filter workspace sources"
                     >
                       <div
                         className="flex items-center justify-between px-3 py-2"
@@ -1271,6 +1093,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                           onClick={() => {
                             setSelectedSourceIds(null);
                             setSourceFilterOpen(false);
+                            sourceFilterTriggerRef.current?.focus();
                           }}
                           aria-label="Reset to all sources"
                           className="text-[10px] font-medium focus-ring rounded px-1"
@@ -1335,7 +1158,7 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
               ) : null}
             </div>
             <div
-              className="flex items-end rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-surface)] transition-[border-color,box-shadow,opacity] duration-150 focus-within:border-[var(--border-hover)] focus-within:shadow-[0_0_0_3px_var(--accent-soft)]"
+              className="flex items-end overflow-hidden rounded-2xl border border-[var(--border-hover)] bg-[var(--bg-surface)] shadow-[var(--shadow-xs)] transition-[border-color,box-shadow,opacity] duration-150 focus-within:border-[var(--accent-primary)] focus-within:shadow-[0_0_0_3px_var(--accent-soft)]"
               style={{ opacity: streaming ? 0.7 : 1 }}
             >
               <textarea
@@ -1350,26 +1173,26 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                 }}
                 placeholder={
                   streaming
-                    ? "Assistant is responding… press Stop to interrupt"
+                    ? "Writing an answer…"
                     : settings.providerApiKey.trim()
-                    ? "Ask a question about your document…"
-                    : "Add your provider API key in Settings first"
+                    ? "Ask your sources…"
+                    : "Connect a provider first"
                 }
                 disabled={!settings.providerApiKey.trim() || streaming}
                 rows={1}
                 aria-label="Ask a question about your document"
-                className="flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none rounded-lg disabled:cursor-not-allowed"
-                style={{ color: "var(--text-primary)", maxHeight: 160, minHeight: 44 }}
+                className="min-w-0 flex-1 resize-none rounded-2xl bg-transparent px-5 py-4 text-sm outline-none disabled:cursor-not-allowed"
+                style={{ color: "var(--text-primary)", maxHeight: 160, minHeight: 60 }}
               />
-              <div className="flex items-center gap-1.5 p-1.5">
+              <div className="flex items-center gap-1.5 p-2.5">
                 {streaming ? (
                   <motion.button
                     type="button"
                     onClick={stopStreaming}
                     className="flex items-center justify-center rounded-md transition-colors focus-ring"
                     style={{
-                      width: 32,
-                      height: 32,
+                      width: 38,
+                      height: 38,
                       background: "var(--error-soft)",
                       color: "var(--error)",
                       border: "1px solid var(--error-soft)",
@@ -1387,8 +1210,8 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                   disabled={!canAsk}
                   className="flex items-center justify-center rounded-md transition-colors focus-ring disabled:cursor-not-allowed"
                   style={{
-                    width: 32,
-                    height: 32,
+                    width: 38,
+                    height: 38,
                     background: canAsk ? "var(--accent)" : "transparent",
                     color: canAsk ? "var(--accent-fg)" : "var(--text-muted)",
                     border: canAsk ? "1px solid transparent" : "1px solid var(--border)",
@@ -1414,13 +1237,14 @@ export default function ChatArea({ onUploadClick }: ChatAreaProps) {
                 </motion.button>
               </div>
             </div>
-            <p className="text-center mt-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
-              Sources include chunk IDs, scores, and page references.
-            </p>
+            <div className="mt-3 flex items-center justify-between gap-3 px-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+              <span>Grounded in your sources. Guided by your curiosity.</span>
+              <span className="hidden shrink-0 sm:inline">Enter to send · Shift + Enter for a new line</span>
+            </div>
           </form>
         </div>
       ) : null}
-    </div>
+    </main>
   );
 }
 

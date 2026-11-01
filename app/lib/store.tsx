@@ -92,7 +92,7 @@ function loadSettings(): AppSettings {
       clientSessionId: "",
       topK: 5,
       similarityThreshold: 0.0,
-      theme: "dark",
+      theme: "light",
       highContrast: false,
       reducedMotion: false,
       accentPack: "lime",
@@ -107,7 +107,7 @@ function loadSettings(): AppSettings {
 
   let topK = 5;
   let similarityThreshold = 0.0;
-  let theme: "dark" | "light" = "dark";
+  let theme: "dark" | "light" = "light";
   let highContrast = false;
   let reducedMotion = false;
   let accentPack: "lime" | "pulse" | "beam" = "lime";
@@ -211,7 +211,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   clientSessionId: "",
   topK: 5,
   similarityThreshold: 0.0,
-  theme: "dark",
+  theme: "light",
   highContrast: false,
   reducedMotion: false,
   accentPack: "lime",

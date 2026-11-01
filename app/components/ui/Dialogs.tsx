@@ -122,7 +122,10 @@ function PromptForm({
 
   // Select the text once the modal has focused the input (DOM only).
   useEffect(() => {
-    const timer = window.setTimeout(() => inputRef.current?.select(), 60);
+    const timer = window.setTimeout(() => {
+      const input = inputRef.current;
+      if (input && document.activeElement === input) input.select();
+    }, 60);
     return () => window.clearTimeout(timer);
   }, []);
 

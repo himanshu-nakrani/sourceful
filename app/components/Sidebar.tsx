@@ -4,6 +4,8 @@ import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart3,
+  BookOpen,
+  ChevronDown,
   Download,
   FileText,
   Loader2,
@@ -49,6 +51,7 @@ import WorkspaceNotesPanel from "./WorkspaceNotesPanel";
 import WorkspaceMembersPanel from "./WorkspaceMembersPanel";
 import WorkspaceSourcesPanel from "./WorkspaceSourcesPanel";
 import WorkspaceAnalyticsPanel from "./WorkspaceAnalyticsPanel";
+import Brand from "./Brand";
 
 interface SidebarProps {
   onUploadClick: () => void;
@@ -64,11 +67,12 @@ const STATUS_TONE: Record<JobStatus, StatusTone> = {
 
 const statusTone = (status: JobStatus): StatusTone => STATUS_TONE[status] ?? "idle";
 const statusPulse = (status: JobStatus): boolean => status === "processing";
+const statusLabel = (status: JobStatus): string =>
+  status === "error"
+    ? "Needs attention"
+    : `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
 
-/**
- * Ghost icon button: quiet, tooltip-bearing control for secondary actions
- * (theme, settings, workspace tools, row actions).
- */
+/** Quiet icon button for secondary navigation and row actions. */
 function GhostIconButton({
   label,
   onClick,
@@ -105,10 +109,8 @@ function GhostIconButton({
 /**
  * Render the app sidebar for document indexing and conversation management.
  *
- * Displays controls for upload, theme, and settings; a searchable list of documents;
- * multi-document selection and a "Chat" action for selected docs; per-document actions
- * (select, toggle selection, reprocess, delete); conversation management (new chat,
- * rename, delete, export); chunk previews for ready documents; and refresh/error loading states.
+ * Keeps upload, workspace tools, document navigation, multi-document chat, conversations,
+ * and source previews in a compact rail. Previews stay behind an explicit disclosure.
  *
  * @param onUploadClick - Callback invoked when the Upload button is clicked
  * @returns The sidebar element used for document navigation and conversation management
@@ -151,6 +153,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
 
   // Dialog state machines (replace window.prompt / window.confirm).
   const [renameOpen, setRenameOpen] = useState(false);
@@ -174,7 +177,7 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
   );
 
   const visibleDocuments = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = activeDocumentId ? search.trim().toLowerCase() : "";
     // Phase 1: scope the sidebar document list to the active workspace when one
     // is selected. Legacy documents without a workspace_id are kept visible so
     // existing flows keep working during migration.
@@ -186,13 +189,33 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
       : documents;
     if (!term) return scoped;
     return scoped.filter((document) => document.filename.toLowerCase().includes(term));
-  }, [documents, search, activeWorkspaceId]);
+  }, [documents, search, activeDocumentId, activeWorkspaceId]);
 
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId
   ) ?? null;
 
   const { toast } = useToast();
+  const closeMobileSidebar = () => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 767px)").matches
+    ) {
+      dispatch({ type: "SET_SIDEBAR", payload: false });
+    }
+  };
+  const handleSelectDocument = (documentId: string) => {
+    void selectDocument(documentId);
+    closeMobileSidebar();
+  };
+  const handleSelectConversation = (conversationId: string | null) => {
+    void selectConversation(conversationId);
+    closeMobileSidebar();
+  };
+  const handleOpenLibrary = () => {
+    void selectDocument(null);
+    closeMobileSidebar();
+  };
 
   const handleDeleteDocument = async (documentId: string) => {
     const doc = documents.find((d) => d.id === documentId);
@@ -303,18 +326,20 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
 
   const activeWorkspace = state.workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
   const multiSelectCount = activeDocumentIds.length;
+  const isLibraryActive = activeDocumentId === null;
 
   return (
     <>
     <aside
       style={{ width: "var(--sidebar-width)" }}
+      inert={!sidebarOpen}
       className={`absolute md:relative z-40 flex flex-col h-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] flex-shrink-0 ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden"
       }`}
       role="navigation"
       aria-label="Sidebar"
     >
-      {/* Sidebar surface: flat graphite, hairline right edge */}
+      {/* Sidebar surface */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -323,31 +348,12 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         }}
       />
 
-      {/* Header */}
+      {/* Brand */}
       <div
         className="relative flex items-center justify-between px-4 flex-shrink-0"
         style={{ height: "var(--header-height)" }}
       >
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex items-center justify-center"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "var(--radius-md)",
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <FileText size={14} style={{ color: "var(--accent-primary)" }} />
-          </div>
-          <span
-            className="display text-sm font-bold"
-            style={{ color: "var(--text-primary)", letterSpacing: "-0.02em" }}
-          >
-            Sourceful
-          </span>
-        </div>
+        <Brand />
         <GhostIconButton
           label="Toggle sidebar"
           onClick={() => dispatch({ type: "TOGGLE_SIDEBAR" })}
@@ -356,146 +362,227 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         </GhostIconButton>
       </div>
 
-      {/* Workspace switcher (Phase 1) */}
-      <WorkspaceSwitcher />
-
-      {/* Phase 2/3 — workspace tools (notes + members) as ghost icon buttons */}
-      {activeWorkspaceId ? (
-        <div className="relative px-3 pb-1 flex-shrink-0 flex items-center gap-0.5">
-          <GhostIconButton
-            label="Workspace sources & sync state"
-            onClick={() => setSourcesOpen(true)}
-          >
-            <FileText size={13} />
-          </GhostIconButton>
-          <GhostIconButton
-            label="Workspace notes & saved answers"
-            onClick={() => setNotesOpen(true)}
-          >
-            <StickyNote size={13} />
-          </GhostIconButton>
-          <GhostIconButton
-            label="Members & invitations"
-            onClick={() => setMembersOpen(true)}
-          >
-            <Users size={13} />
-          </GhostIconButton>
-          <GhostIconButton
-            label="Workspace overview"
-            onClick={() => setAnalyticsOpen(true)}
-          >
-            <BarChart3 size={13} />
-          </GhostIconButton>
-        </div>
-      ) : null}
-
-      {/* Primary action — the single lime accent in the shell */}
-      <div className="relative px-3 pt-2 pb-1.5 flex-shrink-0">
-        <Button variant="primary" size="md" className="w-full" onClick={onUploadClick}>
-          <Upload size={13} />
-          Upload Document
-        </Button>
-      </div>
-
-      {/* Maintenance actions — quiet ghost row */}
-      <div className="relative px-3 pb-2 flex items-center gap-0.5 flex-shrink-0">
-        <GhostIconButton
-          label={settings.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          onClick={() =>
-            dispatch({
-              type: "SET_SETTINGS",
-              payload: { theme: settings.theme === "dark" ? "light" : "dark" },
-            })
-          }
+      {/* Primary navigation */}
+      <div className="relative flex flex-shrink-0 items-center gap-2 px-3 pt-2 pb-1">
+        <motion.button
+          type="button"
+          onClick={handleOpenLibrary}
+          aria-current={isLibraryActive ? "page" : undefined}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors focus-ring"
+          style={{
+            background: isLibraryActive ? "var(--bg-surface)" : "transparent",
+            border: `1px solid ${isLibraryActive ? "var(--border)" : "transparent"}`,
+            color: isLibraryActive ? "var(--text-primary)" : "var(--text-secondary)",
+          }}
+          whileHover={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+          whileTap={{ scale: 0.99 }}
+          transition={transitionFast}
         >
-          {settings.theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
-        </GhostIconButton>
-        <GhostIconButton label="Open settings" onClick={() => dispatch({ type: "TOGGLE_SETTINGS" })}>
-          <Settings size={13} />
-        </GhostIconButton>
-        <div className="flex-1" />
-        <span
-          className="text-[10px]"
-          style={{ color: "var(--text-muted)" }}
-          title="Keyboard shortcut for upload"
-        >
-          ⌘U upload
-        </span>
-      </div>
-
-      {/* Search */}
-      <div className="relative px-3 pb-2 flex-shrink-0">
-        <div
-          className="flex items-center gap-2 px-2.5 py-1.5 transition-colors relative"
+          <BookOpen size={15} aria-hidden="true" />
+          <span className="truncate">Library</span>
+        </motion.button>
+        <button
+          type="button"
+          onClick={onUploadClick}
+          title="Upload a document (⌘U)"
+          aria-label="Upload document"
+          className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors focus-ring hover:bg-[var(--bg-surface)]"
           style={{
             background: "var(--bg-surface)",
-            border: `1px solid ${searchFocused ? "var(--border-strong)" : "var(--border)"}`,
-            borderRadius: "var(--radius-lg)",
-            boxShadow: searchFocused ? "0 0 0 2px var(--accent-primary-soft)" : "none",
+            borderColor: "var(--border)",
+            color: "var(--accent-primary)",
           }}
         >
-          <Search size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-          {/* [a11y] Added aria-label — input has no associated label element */}
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            placeholder="Search documents"
-            aria-label="Search documents"
-            className="w-full bg-transparent text-xs outline-none min-w-0"
-            style={{ color: "var(--text-primary)", paddingRight: search ? "24px" : "0" }}
-          />
-          <AnimatePresence>
-            {search ? (
+          <Upload size={14} aria-hidden="true" />
+          Upload
+        </button>
+      </div>
+
+      <WorkspaceSwitcher />
+
+      {activeWorkspaceId ? (
+        <div
+          className="relative flex-shrink-0 border-b px-3 pb-2 pt-1"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <motion.button
+            id="workspace-tools-trigger"
+            type="button"
+            aria-expanded={workspaceToolsOpen}
+            aria-controls={workspaceToolsOpen ? "workspace-tools-menu" : undefined}
+            onClick={() => setWorkspaceToolsOpen((open) => !open)}
+            className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-ring"
+            style={{ color: "var(--text-secondary)" }}
+            whileHover={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+            whileTap={{ scale: 0.99 }}
+            transition={transitionFast}
+          >
+            <span className="flex items-center gap-2">
+              <Settings size={14} />
+              Workspace tools
+            </span>
+            <ChevronDown
+              size={15}
+              style={{
+                color: "var(--text-muted)",
+                transform: workspaceToolsOpen ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 160ms ease",
+              }}
+            />
+          </motion.button>
+          <AnimatePresence initial={false}>
+            {workspaceToolsOpen ? (
               <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
+                id="workspace-tools-menu"
+                aria-labelledby="workspace-tools-trigger"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
                 transition={transitionFast}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center"
+                className="ml-2 grid grid-cols-2 gap-x-1 gap-y-0.5 overflow-hidden border-l pl-2 pt-1"
+                style={{ borderColor: "var(--border)" }}
               >
-                <GhostIconButton
-                  label="Clear search"
-                  onClick={() => setSearch("")}
+                <motion.button
+                  type="button"
+                  aria-label="Workspace sources and sync state"
+                  onClick={() => {
+                    setSourcesOpen(true);
+                    setWorkspaceToolsOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors focus-ring"
+                  style={{ color: "var(--text-secondary)" }}
+                  whileHover={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                  transition={transitionFast}
                 >
-                  <X size={12} />
-                </GhostIconButton>
+                  <FileText size={14} />
+                  Sources
+                </motion.button>
+                <motion.button
+                  type="button"
+                  aria-label="Workspace notes and saved answers"
+                  onClick={() => {
+                    setNotesOpen(true);
+                    setWorkspaceToolsOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors focus-ring"
+                  style={{ color: "var(--text-secondary)" }}
+                  whileHover={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                  transition={transitionFast}
+                >
+                  <StickyNote size={14} />
+                  Notes
+                </motion.button>
+                <motion.button
+                  type="button"
+                  aria-label="Members and invitations"
+                  onClick={() => {
+                    setMembersOpen(true);
+                    setWorkspaceToolsOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors focus-ring"
+                  style={{ color: "var(--text-secondary)" }}
+                  whileHover={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                  transition={transitionFast}
+                >
+                  <Users size={14} />
+                  Members
+                </motion.button>
+                <motion.button
+                  type="button"
+                  aria-label="Workspace overview"
+                  onClick={() => {
+                    setAnalyticsOpen(true);
+                    setWorkspaceToolsOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors focus-ring"
+                  style={{ color: "var(--text-secondary)" }}
+                  whileHover={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                  transition={transitionFast}
+                >
+                  <BarChart3 size={14} />
+                  Overview
+                </motion.button>
               </motion.div>
             ) : null}
           </AnimatePresence>
         </div>
-      </div>
+      ) : null}
+
+      {/* Search */}
+      {activeDocumentId ? (
+        <div className="relative flex-shrink-0 px-3 pt-2 pb-2">
+          <div
+            className="relative flex items-center gap-2 rounded-md px-2.5 py-2 transition-colors"
+            style={{
+              background: "var(--bg-surface)",
+              border: `1px solid ${searchFocused ? "var(--accent-primary)" : "var(--border)"}`,
+            }}
+          >
+            <Search size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            {/* [a11y] Added aria-label — input has no associated label element */}
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="Search documents"
+              aria-label="Search documents"
+              className="w-full min-w-0 bg-transparent text-[13px] outline-none"
+              style={{ color: "var(--text-primary)", paddingRight: search ? "24px" : "0" }}
+            />
+            <AnimatePresence>
+              {search ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={transitionFast}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center"
+                >
+                  <GhostIconButton
+                    label="Clear search"
+                    onClick={() => setSearch("")}
+                  >
+                    <X size={14} />
+                  </GhostIconButton>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
+        </div>
+      ) : null}
 
       {/* Document list */}
-      <div className="relative flex-1 overflow-y-auto px-2 pb-3">
-        {/* Section header — eyebrow label + mono count + hairline divider */}
-        <div className="px-2 pt-1.5 pb-1.5 flex items-center justify-between">
-          <div className="flex items-baseline gap-1.5">
-            <span
-              className="text-[10px] font-medium uppercase tracking-widest"
-              style={{ color: "var(--text-tertiary)" }}
-            >
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        <div
+          className="flex items-center justify-between gap-2 border-b px-1 pt-1 pb-2"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
               Documents
-            </span>
-            <span className="data-num text-[10px]" style={{ color: "var(--accent-secondary)" }}>
+            </h2>
+            <span className="data-num text-xs" style={{ color: "var(--text-muted)" }}>
               {visibleDocuments.length}
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {(documentsLoading || conversationsLoading) && (
               <Loader2
-                size={10}
+                size={14}
                 className="animate-spin"
                 style={{ color: "var(--text-muted)" }}
               />
             )}
-            <GhostIconButton label="Refresh documents" onClick={() => void refreshDocuments()}>
-              <RefreshCcw size={10} />
+            <GhostIconButton
+              label="Refresh documents"
+              onClick={() => void refreshDocuments()}
+              className="h-7 w-7"
+            >
+              <RefreshCcw size={15} />
             </GhostIconButton>
           </div>
         </div>
-        <div className="mx-2 mb-2" style={{ borderTop: "1px solid var(--border)" }} />
 
         <AnimatePresence>
           {documentsError ? (
@@ -538,11 +625,11 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
         {visibleDocuments.length === 0 && !documentsLoading ? (
           <EmptyState
             icon={<FileText size={16} />}
-            title={search ? "No matching documents" : "No indexed documents yet"}
+            title={search ? "No matching documents" : "No documents yet"}
             description={
               search
                 ? "Try a different search term."
-                : "Upload a document to start grounding chat in your sources."
+                : "Upload a file to add it to this workspace."
             }
             action={
               search ? (
@@ -570,21 +657,19 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
               <motion.div
                 role="button"
                 tabIndex={0}
-                className={`group relative cursor-pointer w-full text-left overflow-hidden px-2.5 py-2 ${
-                  isActive ? "sidebar-item-active" : ""
-                }`}
+                aria-pressed={isActive}
+                className="group relative w-full cursor-pointer overflow-hidden rounded-md px-2.5 py-2 text-left focus-ring"
                 style={{
                   background: isActive
-                    ? "var(--bg-surface)"
+                    ? "var(--accent-primary-soft)"
                     : isSelected
                       ? "var(--accent-primary-soft)"
                       : "transparent",
                   border: `1px solid ${isActive ? "var(--border)" : "transparent"}`,
-                  borderRadius: "var(--radius-md)",
                 }}
                 whileHover={{
                   background: isActive
-                    ? "var(--bg-surface)"
+                    ? "var(--accent-primary-soft)"
                     : isSelected
                       ? "var(--accent-primary-soft)"
                       : "var(--bg-surface)",
@@ -594,26 +679,40 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                   if (e.shiftKey || e.ctrlKey || e.metaKey) {
                     dispatch({ type: "TOGGLE_DOCUMENT_SELECTION", payload: document.id });
                   } else {
-                    void selectDocument(document.id);
+                    handleSelectDocument(document.id);
                   }
                 }}
                 onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    void selectDocument(document.id);
+                    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+                      dispatch({ type: "TOGGLE_DOCUMENT_SELECTION", payload: document.id });
+                    } else {
+                      handleSelectDocument(document.id);
+                    }
                   }
                 }}
               >
                 <div className="flex items-start gap-2.5">
-                  {multiSelectCount > 1 || isSelected ? (
+                  {multiSelectCount > 1 ? (
                     <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => dispatch({ type: "TOGGLE_DOCUMENT_SELECTION", payload: document.id })}
                       onClick={(e) => e.stopPropagation()}
-                      className="mt-1 flex-shrink-0 cursor-pointer"
+                      className="mt-1 h-4 w-4 flex-shrink-0 cursor-pointer"
+                      style={{ accentColor: "var(--accent-primary)" }}
                       aria-label={`Select ${document.filename}`}
                     />
+                  ) : isSelected || isActive ? (
+                    <span className="mt-1 flex-shrink-0">
+                      <FileText
+                        size={14}
+                        aria-hidden="true"
+                        style={{ color: "var(--accent-primary)" }}
+                      />
+                    </span>
                   ) : (
                     <span className="mt-1.5 flex-shrink-0">
                       <StatusDot
@@ -622,58 +721,59 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                       />
                     </span>
                   )}
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 pr-16 transition-[padding] md:pr-0 md:group-hover:pr-16 md:group-focus-within:pr-16">
                     <p
-                      className="text-[13px] font-medium truncate"
+                      className="truncate text-[13px] font-medium leading-snug"
                       style={{ color: "var(--text-primary)" }}
                     >
                       {document.filename}
                     </p>
-                    {/* Single inline text run: wrapping flex items here used to
-                        orphan "·" separators at line breaks in the narrow
-                        sidebar. Truncation guards the widest case instead. */}
-                    <p
-                      className="text-[11px] mt-0.5 truncate"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      {document.current_stage && document.status !== "ready"
-                        ? `${document.status} · ${document.current_stage}`
-                        : document.status}{" "}
-                      · <span className="data-num">{document.chunk_count}</span> chunks
-                      {document.page_count ? (
-                        <>
-                          {" "}
-                          · <span className="data-num">{document.page_count}</span> pages
-                        </>
-                      ) : null}
-                    </p>
+                    {document.status !== "ready" ? (
+                      <p
+                        className="mt-1 flex min-w-0 items-center gap-1 truncate text-xs"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        <span className="flex-shrink-0">{statusLabel(document.status)}</span>
+                        {document.current_stage ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="truncate">{document.current_stage}</span>
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
                     {document.last_error ? (
                       <p
-                        className="text-[11px] mt-0.5 line-clamp-2"
+                        className="mt-1 line-clamp-2 text-xs leading-snug"
                         style={{ color: "var(--error)" }}
                       >
                         {document.last_error}
                       </p>
                     ) : null}
                   </div>
-                  {/* [a11y] Hover/focus-within reveal keeps row actions keyboard-reachable */}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                  <div
+                    className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md px-0.5 opacity-100 transition-opacity md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100"
+                    style={{
+                      background: isSelected && !isActive
+                        ? "var(--accent-primary-soft)"
+                        : "var(--bg-surface)",
+                    }}
+                  >
                     {document.status === "error" || document.status === "ready" ? (
                       <GhostIconButton
                         label="Reprocess document"
                         stopPropagation
                         onClick={() => void handleReprocess(document.id)}
                       >
-                        <RefreshCcw size={12} />
+                        <RefreshCcw size={14} />
                       </GhostIconButton>
                     ) : null}
-                    {/* [flow] Destructive delete routes through a confirm dialog */}
                     <GhostIconButton
                       label="Delete document"
                       stopPropagation
                       onClick={() => setDeleteDocTarget(document)}
                     >
-                      <Trash2 size={12} />
+                      <Trash2 size={14} />
                     </GhostIconButton>
                   </div>
                 </div>
@@ -686,31 +786,26 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={transitionNormal}
-                    className="ml-5 mt-1 pl-3 overflow-hidden"
-                    style={{ borderLeft: "1px solid var(--border)" }}
+                    className="ml-3 mt-1 overflow-hidden border-l pl-3"
+                    style={{ borderColor: "var(--border)" }}
                   >
-                    <div className="flex items-center gap-1 mb-1.5">
+                    <div className="group relative flex items-center gap-2 py-1.5">
+                      <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+                        Chats
+                      </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => void selectConversation(null)}
+                        onClick={() => handleSelectConversation(null)}
                       >
-                        <Plus size={11} />
-                        New Chat
+                        <Plus size={14} />
+                        New chat
                       </Button>
-                      {/* silent-failure fix: surface conversation load errors */}
-                      {conversationsError ? (
-                        <span
-                          className="text-[10px] truncate"
-                          style={{ color: "var(--error)" }}
-                          title={conversationsError}
-                          role="alert"
-                        >
-                          couldn&apos;t load chats
-                        </span>
-                      ) : null}
                       {activeConversation ? (
-                        <>
+                        <div
+                          className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md px-0.5 opacity-100 transition-opacity md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100"
+                          style={{ background: "var(--bg-surface)" }}
+                        >
                           <GhostIconButton
                             label="Rename conversation"
                             onClick={() => setRenameOpen(true)}
@@ -721,37 +816,55 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                             label="Export conversation"
                             onClick={() => void handleExportConversation("markdown")}
                           >
-                            <Download size={11} />
+                            <Download size={14} />
                           </GhostIconButton>
-                        </>
+                        </div>
                       ) : null}
                     </div>
+
+                    {conversationsError ? (
+                      <p
+                        className="mb-2 text-xs leading-snug"
+                        style={{ color: "var(--error)" }}
+                        title={conversationsError}
+                        role="alert"
+                      >
+                        {conversationsError}
+                      </p>
+                    ) : null}
+
+                    {conversations.length === 0 && !conversationsLoading ? (
+                      <p className="px-2 py-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                        No conversations yet.
+                      </p>
+                    ) : null}
 
                     {conversations.map((conversation) => (
                       <motion.div
                         key={conversation.id}
-                        className="group flex items-center gap-2 px-2 py-1.5 w-full"
+                        className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5"
                         style={{
                           background:
                             activeConversationId === conversation.id
                               ? "var(--bg-surface)"
                               : "transparent",
-                          borderRadius: "var(--radius-sm)",
+                          borderLeft: `2px solid ${activeConversationId === conversation.id ? "var(--accent-primary)" : "transparent"}`,
                         }}
                         whileHover={{ background: "var(--bg-surface)" }}
                         transition={transitionFast}
                       >
                         <button
                           type="button"
-                          className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                          onClick={() => void selectConversation(conversation.id)}
+                          aria-pressed={activeConversationId === conversation.id}
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left focus-ring"
+                          onClick={() => handleSelectConversation(conversation.id)}
                         >
                           <MessageSquare
-                            size={10}
+                            size={14}
                             style={{ color: "var(--text-muted)", flexShrink: 0 }}
                           />
                           <span
-                            className="text-[11px] truncate flex-1"
+                            className="flex-1 truncate text-[13px]"
                             style={{
                               color:
                                 activeConversationId === conversation.id
@@ -765,66 +878,79 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
                         <button
                           type="button"
                           onClick={() => setDeleteConversationTarget(conversation)}
-                          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1 rounded-xs transition-opacity"
+                          className="rounded-md p-1 opacity-100 transition-opacity focus-ring md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                           style={{ color: "var(--text-muted)" }}
-                          aria-label="Delete conversation"
+                          aria-label={`Delete conversation ${conversation.title}`}
                           title="Delete conversation"
                         >
-                          <Trash2 size={9} />
+                          <Trash2 size={13} />
                         </button>
                       </motion.div>
                     ))}
 
-                    {document.status === "ready" ? (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span
-                            className="text-[10px] uppercase tracking-widest"
-                            style={{ color: "var(--text-tertiary)" }}
-                          >
-                            Chunk Preview
-                          </span>
+                    <details className="mt-2">
+                      <summary
+                        className="flex cursor-pointer list-none items-center justify-between gap-2 border-t py-2 text-xs font-medium focus-ring"
+                        style={{ color: "var(--text-secondary)", borderColor: "var(--border)" }}
+                      >
+                        <span title="Document details and source preview">Document details</span>
+                        <div className="flex flex-shrink-0 items-center gap-2">
                           {chunkPreviewLoading ? (
                             <Loader2
-                              size={10}
+                              size={14}
                               className="animate-spin"
                               style={{ color: "var(--text-muted)" }}
                             />
                           ) : null}
+                          <ChevronDown size={15} style={{ color: "var(--text-muted)" }} />
                         </div>
-                        {chunkPreview.slice(0, 4).map((chunk) => (
-                          <div
-                            key={chunk.chunk_id}
-                            className="px-2.5 py-1.5 mb-1.5"
-                            style={{
-                              background: "var(--bg-surface)",
-                              border: "1px solid var(--border)",
-                              borderRadius: "var(--radius-md)",
-                            }}
-                          >
-                            <div
-                              className="flex items-center gap-2 text-[10px] mb-1"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              <span>
-                                Chunk <span className="data-num">{chunk.chunk_index + 1}</span>
-                              </span>
-                              {chunk.page_number ? (
-                                <span>
-                                  p.<span className="data-num">{chunk.page_number}</span>
-                                </span>
-                              ) : null}
+                      </summary>
+                      <div className="pb-2">
+                        <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+                          <span>{document.chunk_count} chunks</span>
+                          {document.page_count ? (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span>{document.page_count} pages</span>
+                            </>
+                          ) : null}
+                        </div>
+                        {document.status === "ready" ? (
+                          chunkPreview.length > 0 ? (
+                            <div>
+                              <p className="pb-1 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                                Source preview
+                              </p>
+                              {chunkPreview.slice(0, 4).map((chunk) => (
+                                <div
+                                  key={chunk.chunk_id}
+                                  className="py-2.5"
+                                  style={{ borderTop: "1px solid var(--border)" }}
+                                >
+                                  <div
+                                    className="mb-1 flex items-center justify-between gap-2 text-xs"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    <span>Passage {chunk.chunk_index + 1}</span>
+                                    {chunk.page_number ? <span>Page {chunk.page_number}</span> : null}
+                                  </div>
+                                  <p
+                                    className="line-clamp-3 text-xs leading-relaxed"
+                                    style={{ color: "var(--text-tertiary)" }}
+                                  >
+                                    {chunk.content}
+                                  </p>
+                                </div>
+                              ))}
                             </div>
-                            <p
-                              className="text-[11px] line-clamp-3 leading-relaxed"
-                              style={{ color: "var(--text-tertiary)" }}
-                            >
-                              {chunk.content}
+                          ) : chunkPreviewLoading ? null : (
+                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                              No source preview is available yet.
                             </p>
-                          </div>
-                        ))}
+                          )
+                        ) : null}
                       </div>
-                    ) : null}
+                    </details>
                   </motion.div>
                 ) : null}
               </AnimatePresence>
@@ -842,28 +968,68 @@ export default function Sidebar({ onUploadClick }: SidebarProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={transitionFast}
-            className="relative flex-shrink-0 flex items-center justify-between gap-2 px-3 py-2"
+            className="relative flex-shrink-0 flex items-center justify-between gap-3 px-4 py-3"
             style={{ borderTop: "1px solid var(--border)", background: "var(--bg-secondary)" }}
           >
-            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-              <span className="data-num" style={{ color: "var(--accent-secondary)" }}>
+            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+              <span className="data-num" style={{ color: "var(--accent-primary)" }}>
                 {multiSelectCount}
               </span>{" "}
-              docs selected
+              selected
             </span>
             <Button
               variant="primary"
               size="sm"
               onClick={() => {
                 dispatch({ type: "SET_ACTIVE_DOCUMENT_IDS", payload: activeDocumentIds });
-                void selectConversation(null);
+                handleSelectConversation(null);
               }}
             >
+              <MessageSquare size={14} />
               Chat with <span className="data-num">{multiSelectCount}</span>
             </Button>
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      <div
+        className="relative flex flex-shrink-0 items-center gap-1 px-3 py-3"
+        style={{ borderTop: "1px solid var(--border)" }}
+      >
+        <motion.button
+          type="button"
+          onClick={() => dispatch({ type: "TOGGLE_SETTINGS" })}
+          aria-label="Open settings"
+          title="Open settings"
+          className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-medium focus-ring"
+          style={{ color: "var(--text-secondary)" }}
+          whileHover={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+          whileTap={{ scale: 0.98 }}
+          transition={transitionFast}
+        >
+          <Settings size={15} />
+          Settings
+        </motion.button>
+        <motion.button
+          type="button"
+          onClick={() =>
+            dispatch({
+              type: "SET_SETTINGS",
+              payload: { theme: settings.theme === "dark" ? "light" : "dark" },
+            })
+          }
+          aria-label={settings.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={settings.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-medium focus-ring"
+          style={{ color: "var(--text-secondary)" }}
+          whileHover={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+          whileTap={{ scale: 0.98 }}
+          transition={transitionFast}
+        >
+          {settings.theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          {settings.theme === "dark" ? "Light" : "Dark"}
+        </motion.button>
+      </div>
     </aside>
 
     {/* Dialogs — replace window.prompt / window.confirm */}

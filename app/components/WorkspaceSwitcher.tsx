@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, FolderPlus, Layers, Loader2 } from "lucide-react";
+import { Check, ChevronDown, FolderPlus, Loader2 } from "lucide-react";
 import { createWorkspace, listWorkspaces, type Workspace } from "../lib/api";
 import { transitionFast, transitionNormal } from "../lib/motion";
 import { useStore } from "../lib/store";
@@ -110,7 +110,11 @@ export default function WorkspaceSwitcher() {
   };
 
   return (
-    <div ref={rootRef} className="relative px-3 pt-2 pb-1 flex-shrink-0">
+    <div
+      ref={rootRef}
+      className="relative flex-shrink-0 border-b px-3 py-1"
+      style={{ borderColor: "var(--border)" }}
+    >
       <motion.button
         ref={triggerRef}
         type="button"
@@ -120,24 +124,17 @@ export default function WorkspaceSwitcher() {
             void refreshWorkspaces();
           }
         }}
-        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs focus-ring transition-colors"
-        style={{
-          background: "var(--bg-surface)",
-          color: "var(--text-primary)",
-          border: "1px solid var(--border)",
-        }}
-        whileHover={{ borderColor: "var(--border-hover)" }}
-        whileTap={{ scale: 0.98 }}
+        className="w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 text-sm focus-ring transition-colors"
+        style={{ background: "transparent", color: "var(--text-primary)" }}
+        whileHover={{ background: "var(--bg-surface)" }}
+        whileTap={{ scale: 0.99 }}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={active ? `Switch workspace. Current workspace: ${active.name}` : "Select a workspace"}
         title="Switch workspace"
       >
-        <Layers size={13} style={{ color: "var(--accent-primary)" }} />
         <div className="flex-1 min-w-0 text-left">
-          <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-            Workspace
-          </div>
-          <div className="text-xs font-semibold truncate">
+          <div className="truncate text-[13px] font-medium">
             {workspacesLoading && !active ? "Loading…" : active ? active.name : "Select workspace"}
           </div>
         </div>
@@ -158,11 +155,10 @@ export default function WorkspaceSwitcher() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={transitionNormal}
-            className="absolute left-3 right-3 mt-1 z-40 rounded-xl overflow-hidden"
+            className="absolute left-3 right-3 z-40 mt-1.5 overflow-hidden rounded-md"
             style={{
               background: "var(--bg-secondary)",
               border: "1px solid var(--border)",
-              boxShadow: "var(--shadow-md)",
             }}
             role="listbox"
           >
@@ -203,7 +199,7 @@ export default function WorkspaceSwitcher() {
                     <button
                       type="button"
                       onClick={() => handleSelect(ws)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs rounded-lg transition-colors focus-ring ${
+                      className={`w-full flex items-center gap-2 rounded-md px-3 py-2 text-left text-xs transition-colors focus-ring ${
                         isActive ? "" : "hover:bg-[var(--bg-surface)]"
                       }`}
                       style={{

@@ -19,7 +19,7 @@ import re
 import uuid
 from typing import Any
 
-from backend.database import execute, fetch_all, fetch_one
+from backend.database import execute, execute_returning, fetch_all, fetch_one
 from backend.settings import settings
 
 
@@ -180,9 +180,6 @@ async def update_workspace(
     visibility: str | None = None,
     archived: bool | None = None,
 ) -> dict[str, Any] | None:
-    existing = await get_workspace(workspace_id, owner_scope)
-    if not existing:
-        return None
     sets: list[str] = []
     params: list[Any] = []
     if name is not None:
@@ -203,13 +200,18 @@ async def update_workspace(
         sets.append("archived = ?")
         params.append((True if settings.using_postgres else 1) if archived else (False if settings.using_postgres else 0))
     if not sets:
-        return existing
+        return await get_workspace(workspace_id, owner_scope)
     sets.append(f"updated_at = {TIMESTAMP_SQL}")
     params.extend([workspace_id, owner_scope])
-    await execute(
-        f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ? AND owner_scope = ?",
+
+    # ⚡ BOLT OPTIMIZATION: Combine existence check and UPDATE into a single query using RETURNING
+    # to reduce unnecessary database network roundtrips.
+    row = await execute_returning(
+        f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ? AND owner_scope = ? RETURNING id",
         tuple(params),
     )
+    if not row:
+        return None
     return await get_workspace(workspace_id, owner_scope)
 
 
